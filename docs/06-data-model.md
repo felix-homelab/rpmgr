@@ -585,10 +585,16 @@ and so do `rpmgr backup` and `rpmgr restore` for PostgreSQL
   source's hash is taken while it is read, so the source is read once. A difference rolls the
   target back and names the table. The report lists the tables, counts and hashes, and the hash of
   the hashes; it holds no value.
-- **The source is read-only for the copy, and retired after it.** The copier opens the source
-  read-only. `migrate-db` has the same `db_epoch` and revisions on both sides, so a controller
+- **The source is held for the copy, and retired after it.** `migrate-db` reads the source in one
+  transaction that also keeps every other writer out until the end (`BEGIN IMMEDIATE` on SQLite),
+  so a command that takes no controller lock cannot write to a database about to be retired, and
+  retires it in that same transaction. The path of a SQLite database is resolved through symbolic
+  links before its lock file is named, and a source with a second hard link is refused. `migrate-db` has the same `db_epoch` and revisions on both sides, so a controller
   started on each would hand agents two histories; after the target's transaction has committed,
   `migrate-db` therefore sets `instance.retired_at` and `retired_to` on the source, and **a
-  controller refuses to start on a retired database**. `--no-retire` leaves the source usable, for
-  a test copy, and says so. Backup and restore never retire anything
+  controller refuses to start on a retired database**. Every command that opens the database without the controller
+  lock refuses a retired one, naming `retired_to`. `--no-retire` leaves the source usable, for
+  a test copy, and says so. A restore creates a new database, which is not retired; it keeps the database it replaces, retired
+  or not, under the suffix of the replaced files, and `restore --replaces` warns when it names a
+  retired one (slice 8.5). Backup and restore never retire anything
   ([10](10-operations.md#moving-between-sqlite-and-postgresql)).

@@ -481,6 +481,9 @@ func ImportRelease(ctx context.Context, path, dir, version string, roots []relea
 		return nil, err
 	}
 	defer func() { _ = db.Close() }()
+	if err := refuseRetired(ctx, db); err != nil {
+		return nil, err
+	}
 	sys, err := authz.System(ctx, "local-cli", "rpmgr release import "+version, audit.SystemScopes(db))
 	if err != nil {
 		return nil, err

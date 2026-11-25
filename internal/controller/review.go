@@ -33,6 +33,9 @@ func ConfirmRestore(ctx context.Context, path, org string) ([]string, error) {
 		return nil, err
 	}
 	defer func() { _ = db.Close() }()
+	if err := refuseRetired(ctx, db); err != nil {
+		return nil, err
+	}
 	sys, err := authz.System(ctx, "local-cli", "rpmgr restore confirm", audit.SystemScopes(db))
 	if err != nil {
 		return nil, err

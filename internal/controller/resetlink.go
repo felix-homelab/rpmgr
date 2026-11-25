@@ -38,6 +38,9 @@ func ResetPasswordLink(ctx context.Context, path, email string) (Link, error) {
 		return Link{}, err
 	}
 	defer func() { _ = db.Close() }()
+	if err := refuseRetired(ctx, db); err != nil {
+		return Link{}, err
+	}
 	sys, err := authz.System(ctx, "local-cli", "rpmgr user reset-password", audit.SystemScopes(db))
 	if err != nil {
 		return Link{}, err

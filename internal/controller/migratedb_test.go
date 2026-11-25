@@ -266,6 +266,18 @@ func TestMigrateDB_SecretsStaySealed(t *testing.T) {
 			t.Error("a result carries the DSN or the password")
 		}
 	})
+
+	t.Run("postgresql to postgresql", func(t *testing.T) {
+		first, _ := pgDatabase(t)
+		if _, err := migrateDB(src.cfg, first, true); err != nil {
+			t.Fatal(err)
+		}
+		second, _ := pgDatabase(t)
+		if _, err := migrateDB(first, second, true); err != nil {
+			t.Fatal(err)
+		}
+		check(t, "postgres to postgres", openBoot(t, second))
+	})
 }
 
 // TestMigrateDB_Arguments: a database address as an argument, whatever its form, is refused before
@@ -535,4 +547,227 @@ func TestMigrateDB_PostgresTargets(t *testing.T) {
 		t.Fatalf("a PostgreSQL database with a table of its own: %v", err)
 	}
 	assertNotRetired(t, src.cfg)
+}
+
+// TestMigrateDB_SourceHeldDuringCopy (S1): while the copy runs, a connection that takes no
+// controller lock, as `ca rotate-intermediate` or `user reset-password` do, cannot write to the
+// source, so nothing lands only in a database that is about to be retired.
+func TestMigrateDB_SourceHeldDuringCopy(t *testing.T) {
+	src := newMigrateHost(t)
+	dst := sqliteBoot(t, filepath.Join(t.TempDir(), "to.db"))
+	var writeErr error
+	tried := false
+	_, err := controller.MigrateDB(context.Background(), controller.MigrateDBOptions{From: src.cfg, ToFile: dst, Getenv: noEnv,
+		Progress: func(string, int64) {
+			if tried {
+				return
+			}
+			tried = true
+			other, err := store.OpenSQLite(context.Background(), src.db, store.SQLiteOptions{BusyTimeout: 100 * time.Millisecond})
+			if err != nil {
+				writeErr = err
+				return
+			}
+			defer func() { _ = other.Close() }()
+			_, writeErr = other.Writer.Exec("UPDATE instance SET db_epoch = db_epoch || 'x'")
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tried || writeErr == nil {
+		t.Fatalf("a lock-free write to the source during the copy: tried %v, error %v", tried, writeErr)
+	}
+}
+
+// TestMigrateDB_RetiredRefusedByLockFreeCommands (S1): every command that opens the database
+// without the controller lock refuses a retired one, naming where it went.
+func TestMigrateDB_RetiredRefusedByLockFreeCommands(t *testing.T) {
+	ctx := context.Background()
+	src := newMigrateHost(t)
+	dst := sqliteBoot(t, filepath.Join(t.TempDir(), "to.db"))
+	if _, err := migrateDB(src.cfg, dst, false); err != nil {
+		t.Fatal(err)
+	}
+	calls := map[string]func() error{
+		"ca status":       func() error { _, err := controller.CAStatus(ctx, src.cfg); return err },
+		"restore confirm": func() error { _, err := controller.ConfirmRestore(ctx, src.cfg, ""); return err },
+		"reset-password":  func() error { _, err := controller.ResetPasswordLink(ctx, src.cfg, "a@example.com"); return err },
+		"release import": func() error {
+			_, err := controller.ImportRelease(ctx, src.cfg, t.TempDir(), "1.4.2", nil, time.Now)
+			return err
+		},
+	}
+	for name, call := range calls {
+		if err := call(); !errors.Is(err, controller.ErrRetired) || !strings.Contains(err.Error(), "boot.yaml") {
+			t.Errorf("%s on a retired database: %v", name, err)
+		}
+	}
+}
+
+// TestMigrateDB_OtherNamesOfTheSource (S2): a symbolic link to the source reaches the same lock as
+// the path itself, and a hard link, whose lock would differ, is refused.
+func TestMigrateDB_OtherNamesOfTheSource(t *testing.T) {
+	src := newMigrateHost(t)
+	dst := sqliteBoot(t, filepath.Join(t.TempDir(), "to.db"))
+
+	link := filepath.Join(t.TempDir(), "link.db")
+	if err := os.Symlink(src.db, link); err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := store.HoldLock(src.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := migrateDB(link, dst, false); !errors.Is(err, controller.ErrStopController) {
+		t.Errorf("a symbolic link to a database a controller holds: %v", err)
+	}
+	if _, err := store.HoldLock(link); !errors.Is(err, store.ErrLocked) {
+		t.Errorf("HoldLock through the link: %v", err)
+	}
+	_ = unlock()
+	assertNotRetired(t, src.cfg)
+
+	hard := filepath.Join(t.TempDir(), "hard.db")
+	if err := os.Link(src.db, hard); err != nil {
+		t.Skipf("no hard links here: %v", err)
+	}
+	if _, err := migrateDB(hard, dst, false); !errors.Is(err, controller.ErrHardLinked) {
+		t.Errorf("a hard-linked source: %v", err)
+	}
+	if _, err := migrateDB(src.db, dst, false); !errors.Is(err, controller.ErrHardLinked) {
+		t.Errorf("the other name of a hard-linked source: %v", err)
+	}
+}
+
+// TestMigrateDB_LockLost (S3): when the session that holds a PostgreSQL controller lock ends during
+// the copy, the copy stops, the target is not committed and the source is not retired.
+func TestMigrateDB_LockLost(t *testing.T) {
+	src := newMigrateHost(t)
+	pgBoot, dsn := pgDatabase(t)
+	admin, err := sql.Open("pgx", os.Getenv("RPMGR_TEST_PG"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = admin.Close() }()
+	killed := false
+	_, err = controller.MigrateDB(context.Background(), controller.MigrateDBOptions{From: src.cfg, ToFile: pgBoot, Getenv: noEnv,
+		Progress: func(string, int64) {
+			if killed {
+				return
+			}
+			killed = true
+			u, _ := url.Parse(dsn)
+			var n int
+			// The lock's session is the only one of this database that holds an advisory lock.
+			if err := admin.QueryRow(`SELECT count(pg_terminate_backend(l.pid)) FROM pg_locks l JOIN pg_database d ON d.oid = l.database
+				WHERE l.locktype = 'advisory' AND d.datname = $1`, strings.TrimPrefix(u.Path, "/")).Scan(&n); err != nil || n == 0 {
+				t.Errorf("ending the lock session: %d, %v", n, err)
+			}
+			time.Sleep(8 * time.Second) // longer than the interval at which the lock is checked
+		}})
+	if !killed || !errors.Is(err, controller.ErrLockLost) {
+		t.Fatalf("a lost lock: killed %v, %v", killed, err)
+	}
+	assertNotRetired(t, src.cfg)
+	var rows int
+	if err := openBoot(t, pgBoot).Reader.QueryRow("SELECT count(*) FROM instance").Scan(&rows); err != nil || rows != 0 {
+		t.Errorf("the target holds %d instance rows after a lost lock (%v)", rows, err)
+	}
+}
+
+// TestMigrateDB_ReadOnlySource (S4): a source that cannot be written is refused before anything is
+// copied and before a target file exists.
+func TestMigrateDB_ReadOnlySource(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes to a read-only file")
+	}
+	src := newMigrateHost(t)
+	if err := os.Chmod(src.db, 0o400); err != nil { //nolint:gosec // G302: read-only on purpose
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "to.db")
+	if _, err := migrateDB(src.cfg, sqliteBoot(t, target), false); err == nil {
+		t.Fatal("a read-only source was accepted")
+	}
+	if _, err := os.Stat(target); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a refused migration left the target file: %v", err)
+	}
+}
+
+// TestMigrateDB_TargetFile (S5): a SQLite target the command creates has mode 0600, as a restore
+// makes it, and, when root runs the command, the owner of its directory.
+func TestMigrateDB_TargetFile(t *testing.T) {
+	src := newMigrateHost(t)
+	dir := t.TempDir()
+	target := filepath.Join(dir, "to.db")
+	if _, err := migrateDB(src.cfg, sqliteBoot(t, target), true); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{target, target + ".lock"} {
+		fi, err := os.Stat(name)
+		if err != nil || fi.Mode().Perm() != 0o600 {
+			t.Errorf("%s: %v, %v; want mode 0600", name, fi, err)
+		}
+	}
+	if os.Geteuid() == 0 {
+		di, _ := os.Stat(dir)
+		fi, _ := os.Stat(target)
+		if !sameOwner(di, fi) {
+			t.Error("the target is not owned like its directory")
+		}
+	}
+}
+
+// TestMigrateDB_RefusalsLeaveNoTarget: a source that is retired or behind this binary is refused
+// before the target is created.
+func TestMigrateDB_RefusalsLeaveNoTarget(t *testing.T) {
+	src := newMigrateHost(t)
+	if _, err := migrateDB(src.cfg, sqliteBoot(t, filepath.Join(t.TempDir(), "first.db")), false); err != nil {
+		t.Fatal(err)
+	}
+	old := newMigrateHost(t)
+	olderDatabase(t, old.db)
+	for name, from := range map[string]string{"retired": src.cfg, "behind": old.db} {
+		target := filepath.Join(t.TempDir(), "to.db")
+		if _, err := migrateDB(from, sqliteBoot(t, target), false); err == nil {
+			t.Errorf("%s source was accepted", name)
+		}
+		if _, err := os.Stat(target); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s source: the target file exists: %v", name, err)
+		}
+	}
+}
+
+// TestMigrateDB_PostgresToPostgres: the sealed values also survive a copy between two PostgreSQL
+// databases, and a target that is the source under another host name is named as such.
+func TestMigrateDB_PostgresToPostgres(t *testing.T) {
+	src := newMigrateHost(t)
+	want := sealedValues(t, openBoot(t, src.cfg))
+	first, firstDSN := pgDatabase(t)
+	if _, err := migrateDB(src.cfg, first, true); err != nil {
+		t.Fatal(err)
+	}
+	second, _ := pgDatabase(t)
+	if _, err := migrateDB(first, second, true); err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(sealedValues(t, openBoot(t, second))) != fmt.Sprint(want) {
+		t.Error("the sealed columns changed on the way")
+	}
+
+	// The same database, spelled with another host name.
+	body, err := os.ReadFile(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spelled := filepath.Join(t.TempDir(), "localhost.yaml")
+	if err := os.WriteFile(spelled, //nolint:gosec // G703: a path of this test
+		[]byte(strings.ReplaceAll(string(body), "127.0.0.1", "localhost")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_ = firstDSN
+	_, err = migrateDB(first, spelled, true)
+	if !errors.Is(err, controller.ErrStopController) || !strings.Contains(err.Error(), "under another name") {
+		t.Errorf("one database under two names: %v", err)
+	}
 }

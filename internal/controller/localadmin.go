@@ -57,6 +57,10 @@ func openLocal(ctx context.Context, path, what string) (config.Controller, *stor
 	if err != nil {
 		return cfg, nil, nil, err
 	}
+	if err := refuseRetired(ctx, db); err != nil {
+		_ = db.Close()
+		return cfg, nil, nil, err
+	}
 	sys, err := authz.System(ctx, "local-cli", what, audit.SystemScopes(db))
 	if err != nil {
 		_ = db.Close()

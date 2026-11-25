@@ -24,6 +24,9 @@ for preparing the move and for copying a database to a test host; its target, a 
 - Once the target has committed, it **retires the source**: a controller refuses to start on it,
   because two controllers on the same history would give agents two versions of the truth.
   `--no-retire` leaves the source usable, for a test copy; you then never run a controller on both.
+- A SQLite target that the command creates has mode 0600, as a restore makes it, and belongs to the
+  owner of its directory when `root` runs the command, so the service user can open it. A target
+  that fails to fill is removed again.
 - It records the migration in the target's audit log, as the actor `local-cli`
   ([Audit log](audit-log.md)).
 
@@ -70,7 +73,11 @@ PostgreSQL database is retired the same way.
 | The source is behind this release | Run `rpmgr migrate` on it first, or upgrade |
 | The source is retired already | It was moved before; use its target |
 | A database address as an argument | Name the boot file instead |
-| Source and target are the same database | Name two different databases |
+| Source and target are the same database, even under two host names | Name two different databases |
+| The source file has a second hard link, or cannot be written | Name its only path; make it writable |
+
+The commands that run beside a controller, such as `rpmgr ca status`, refuse a retired database
+too. A restore over a retired SQLite database keeps it under the suffix of the replaced files.
 
 None of them changes the source, and none of them leaves anything half copied in the target.
 

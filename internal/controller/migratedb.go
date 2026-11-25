@@ -19,7 +19,6 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/store"
-	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/migrations"
 )
 
@@ -68,7 +67,7 @@ type MigrateDBResult struct {
 // refused by the copier (store.ErrTargetNotEmpty, store.ErrSchemaMismatch). After the target's
 // transaction has committed the source is retired unless o.NoRetire, and the migration is audited
 // as local-cli in the target.
-func MigrateDB(ctx context.Context, o MigrateDBOptions) (MigrateDBResult, error) {
+func MigrateDB(ctx context.Context, o MigrateDBOptions) (res MigrateDBResult, err error) {
 	if o.Getenv == nil {
 		o.Getenv = os.Getenv
 	}
@@ -92,8 +91,8 @@ func MigrateDB(ctx context.Context, o MigrateDBOptions) (MigrateDBResult, error)
 		return MigrateDBResult{}, ErrSameDatabase
 	}
 	if from.Driver == "sqlite" {
-		if _, err := os.Stat(from.DSN); err != nil {
-			return MigrateDBResult{}, fmt.Errorf("controller: no source database at %s: %w", from.DSN, err)
+		if err := checkSourceFile(from.DSN); err != nil {
+			return MigrateDBResult{}, err
 		}
 	}
 	src, err := openMigrateEnd(ctx, from, o.Getenv)
@@ -101,33 +100,66 @@ func MigrateDB(ctx context.Context, o MigrateDBOptions) (MigrateDBResult, error)
 		return MigrateDBResult{}, fmt.Errorf("source: %w", err)
 	}
 	defer func() { _ = src.Close() }()
+	if err := checkSource(ctx, src); err != nil {
+		return MigrateDBResult{}, fmt.Errorf("source: %w", err)
+	}
+	// From here to the end the source is held in one write transaction: what the copy reads is one
+	// moment of it, nothing else can write to it meanwhile, and the retirement joins it.
+	stx, err := store.BeginSource(ctx, src)
+	if err != nil {
+		return MigrateDBResult{}, fmt.Errorf("source: %w", err)
+	}
+	defer func() { _ = stx.Rollback() }()
+
+	created, err := createSQLiteTarget(to)
+	if err != nil {
+		return MigrateDBResult{}, fmt.Errorf("target: %w", err)
+	}
+	committed := false
+	defer func() { // a target this command made, and that holds no copy, is not left behind
+		if created != nil {
+			created.finish(!committed && err != nil)
+		}
+	}()
 	dst, err := openMigrateEnd(ctx, to, o.Getenv)
+	if errors.Is(err, store.ErrLocked) || errors.Is(err, ErrStopController) {
+		if from.Driver == to.Driver {
+			err = fmt.Errorf("%w; the target may be the source under another name", err)
+		}
+	}
 	if err != nil {
 		return MigrateDBResult{}, fmt.Errorf("target: %w", err)
 	}
 	defer func() { _ = dst.Close() }()
-
-	if err := checkSource(ctx, src); err != nil {
-		return MigrateDBResult{}, fmt.Errorf("source: %w", err)
-	}
 	if err := migrateEmptyTarget(ctx, dst); err != nil {
 		return MigrateDBResult{}, fmt.Errorf("target: %w", err)
 	}
-	res := MigrateDBResult{From: src.Dialect, To: dst.Dialect}
-	if res.Copy, err = store.CopyDatabase(ctx, src, dst, store.CopyOptions{Progress: o.Progress}); err != nil {
-		return MigrateDBResult{}, err
+
+	// A PostgreSQL controller lock lost during the copy means another controller may run: stop.
+	copyCtx, cancel := untilLost(ctx, src, dst)
+	defer cancel(nil)
+	res = MigrateDBResult{From: src.Dialect, To: dst.Dialect}
+	if res.Copy, err = store.CopyDatabase(copyCtx, src, dst, store.CopyOptions{Source: stx, Progress: o.Progress}); err != nil {
+		return MigrateDBResult{}, errors.Join(err, context.Cause(copyCtx))
+	}
+	committed = true
+	if err := lockHeld(src, dst); err != nil {
+		return res, fmt.Errorf("controller: the copy committed, but %w; do not start a controller on the source before checking it", err)
 	}
 
-	// The target has committed. The source is retired before anything else can fail, so that no
-	// controller can start on it; the audit entry says what happened to it.
+	// The target has committed. The source is retired in its own transaction, which has held the
+	// file since before the copy; the audit entry says what happened to it.
 	reason := fmt.Sprintf("%s to %s: %d tables, %d rows, hash %s; source kept (--no-retire)",
 		res.From, res.To, res.Copy.Tables, res.Copy.Rows, res.Copy.Hash)
 	if !o.NoRetire {
-		if err := retire(ctx, src, o.ToFile, o.Now()); err != nil {
+		if err := retire(ctx, src, stx, o.ToFile, o.Now()); err != nil {
 			return res, fmt.Errorf("controller: the copy committed, but the source could not be retired, so do not start a controller on it: %w", err)
 		}
 		res.Retired = true
 		reason = strings.TrimSuffix(reason, "source kept (--no-retire)") + "source retired"
+	}
+	if err := stx.Commit(); err != nil {
+		return res, fmt.Errorf("controller: the copy committed, but the source's retirement did not: %w", err)
 	}
 	sys, err := authz.System(ctx, "local-cli", "rpmgr migrate-db", audit.SystemScopes(dst))
 	if err != nil {
@@ -138,6 +170,37 @@ func MigrateDB(ctx context.Context, o MigrateDBOptions) (MigrateDBResult, error)
 		return res, fmt.Errorf("controller: the copy committed, but its audit entry failed: %w", err)
 	}
 	return res, nil
+}
+
+// ErrLockLost is returned when the PostgreSQL session that holds a database's controller lock ends
+// while the command works on it.
+var ErrLockLost = errors.New("controller: the PostgreSQL controller lock was lost")
+
+// untilLost derives a context that ends when either database loses its controller lock.
+func untilLost(ctx context.Context, dbs ...*store.DB) (context.Context, context.CancelCauseFunc) {
+	c, cancel := context.WithCancelCause(ctx)
+	for _, db := range dbs {
+		go func() {
+			select {
+			case <-db.LockLost():
+				cancel(ErrLockLost)
+			case <-c.Done():
+			}
+		}()
+	}
+	return c, cancel
+}
+
+// lockHeld checks again that no lock was lost.
+func lockHeld(dbs ...*store.DB) error {
+	for _, db := range dbs {
+		select {
+		case <-db.LockLost():
+			return ErrLockLost
+		default:
+		}
+	}
+	return nil
 }
 
 var sqliteMagic = []byte("SQLite format 3\x00")
@@ -269,18 +332,85 @@ func migrateScope(ctx context.Context) context.Context {
 	return sys
 }
 
-// retire marks the installation of src as moved to the boot file to.
-func retire(ctx context.Context, src *store.DB, to string, now time.Time) error {
+// retire marks the installation of src as moved to the boot file to, in the transaction stx.
+func retire(ctx context.Context, src *store.DB, stx *store.SourceTx, to string, now time.Time) error {
 	abs, err := filepath.Abs(to)
 	if err != nil {
 		abs = to
 	}
-	n, err := src.Client().Instance.Update().Where(instance.RetiredAtIsNil()).SetRetiredAt(now.UTC()).SetRetiredTo(abs).Save(migrateScope(ctx))
+	q := "UPDATE instance SET retired_at = ?, retired_to = ? WHERE retired_at IS NULL"
+	if src.Dialect == store.Postgres {
+		q = "UPDATE instance SET retired_at = $1, retired_to = $2 WHERE retired_at IS NULL"
+	}
+	r, err := stx.ExecContext(ctx, q, now.UTC(), abs)
 	if err != nil {
 		return err
 	}
-	if n != 1 {
-		return errors.New("no installation to retire")
+	if n, err := r.RowsAffected(); err != nil || n != 1 {
+		return errors.Join(err, errors.New("no installation to retire"))
 	}
 	return nil
+}
+
+// refuseRetired is the check of every command that opens a database without the controller lock:
+// what it writes to a retired database would reach no controller.
+func refuseRetired(ctx context.Context, db *store.DB) error {
+	if at, to, ok := db.Retired(ctx); ok {
+		return fmt.Errorf("%w (retired %s to %s)", ErrRetired, at.UTC().Format(time.RFC3339), to)
+	}
+	return nil
+}
+
+// ErrHardLinked is returned for a SQLite source with another name: the controller lock and the
+// write-ahead log are named after the path, so a second name would bypass both.
+var ErrHardLinked = errors.New("controller: the source database has more than one hard link; name its only path")
+
+// checkSourceFile refuses a missing source and one with more than one name.
+func checkSourceFile(path string) error {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("controller: no source database at %s: %w", path, err)
+	}
+	if hardLinks(fi) {
+		return ErrHardLinked
+	}
+	return nil
+}
+
+// newTarget is a SQLite target that this command created.
+type newTarget struct{ path string }
+
+// createSQLiteTarget creates the target file of a SQLite database that does not exist yet, with
+// mode 0600 as a restore does and never over another file. It returns nil for any other target.
+func createSQLiteTarget(to config.Database) (*newTarget, error) {
+	if to.Driver != "sqlite" {
+		return nil, nil
+	}
+	path := store.ResolvePath(to.DSN)
+	if _, err := os.Lstat(path); err == nil {
+		return nil, nil
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // G304: the operator's boot file names it
+	if err != nil {
+		return nil, err
+	}
+	return &newTarget{path}, f.Close()
+}
+
+// finish runs when the target is closed. A target that holds no copy is removed with its log files, but
+// not its lock file, which a controller may hold; one that does is given to the owner of its directory when root made it, so that the
+// service user can open it.
+func (t *newTarget) finish(remove bool) {
+	for _, suffix := range []string{"", ".lock", "-wal", "-shm"} {
+		name := t.path + suffix
+		if remove {
+			if suffix != ".lock" { // never the lock: a controller may hold it
+				_ = os.Remove(name)
+			}
+		} else if os.Geteuid() == 0 {
+			if uid, gid, ok := dirOwner(filepath.Dir(t.path)); ok {
+				_ = os.Chown(name, uid, gid)
+			}
+		}
+	}
 }
