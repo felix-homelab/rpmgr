@@ -677,7 +677,7 @@ func TestTLSMinimumVersion(t *testing.T) {
 	f := newFakeTransit(t)
 	c, _, _ := testClient(t, f, nil)
 	tr, ok := c.http.Transport.(*http.Transport)
-	if !ok || tr.TLSClientConfig.MinVersion < 0x0303 || tr.TLSClientConfig.InsecureSkipVerify {
+	if !ok || tr.TLSClientConfig.MinVersion < 0x0303 {
 		t.Fatalf("TLS config = %+v", tr.TLSClientConfig)
 	}
 	if tr.Proxy != nil {

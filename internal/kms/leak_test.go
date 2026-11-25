@@ -90,7 +90,7 @@ func TestKMS_CredentialsNeverLogged(t *testing.T) {
 				status, echo := get()
 				if strings.HasPrefix(r.URL.Path, "/v1/auth/") && status != 0 && echo == "login" {
 					rw.WriteHeader(status)
-					_, _ = rw.Write([]byte(fmt.Sprintf(`{"errors":["bad %s and %s\nsecond line"]}`, testSecretID, testRoleID)))
+					_, _ = fmt.Fprintf(rw, `{"errors":["bad %s and %s\nsecond line"]}`, testSecretID, testRoleID)
 					return true
 				}
 				if !strings.Contains(r.URL.Path, "/transit/") || status == 0 {
@@ -104,7 +104,7 @@ func TestKMS_CredentialsNeverLogged(t *testing.T) {
 					}
 				case "malformed":
 					rw.WriteHeader(status)
-					_, _ = rw.Write([]byte(fmt.Sprintf("<html>%s %s vault:v1:%s</html>", r.Header.Get("X-Vault-Token"), testSecretID, wrapped)))
+					_, _ = fmt.Fprintf(rw, "<html>%s %s vault:v1:%s</html>", r.Header.Get("X-Vault-Token"), testSecretID, wrapped) //nolint:gosec // G705: a test server that echoes secrets on purpose
 				default:
 					tok := r.Header.Get("X-Vault-Token")
 					body, _ := json.Marshal(map[string]any{"errors": []string{

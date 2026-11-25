@@ -165,8 +165,8 @@ func (f *fakeTransit) handle(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	path := strings.TrimPrefix(r.URL.Path, "/v1/")
-	switch {
-	case path == "auth/approle/login":
+	switch path {
+	case "auth/approle/login":
 		var in map[string]string
 		_ = json.NewDecoder(r.Body).Decode(&in)
 		if in["role_id"] != f.roleID || in["secret_id"] != f.secretID {
@@ -179,7 +179,7 @@ func (f *fakeTransit) handle(w http.ResponseWriter, r *http.Request) {
 		f.reply(w, 200, map[string]any{"auth": map[string]any{
 			"client_token": tok, "lease_duration": f.lease, "renewable": f.renew}})
 		return
-	case path == "auth/token/renew-self":
+	case "auth/token/renew-self":
 		if !f.tokens[r.Header.Get("X-Vault-Token")] {
 			f.fail(w, http.StatusForbidden, "permission denied")
 			return

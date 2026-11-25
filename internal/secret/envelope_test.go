@@ -613,9 +613,9 @@ func TestV1Vector(t *testing.T) {
 func TestKEKVersionOfTransit(t *testing.T) {
 	hdr := func(wrapped string) []byte {
 		id := "transit/rpmgr"
-		b := []byte{formatV2, KindTransit, 0, byte(len(id))}
+		b := []byte{formatV2, KindTransit, 0, byte(len(id))} //nolint:gosec // G115: short test strings
 		b = append(b, id...)
-		b = append(b, 0, byte(len(wrapped)))
+		b = append(b, 0, byte(len(wrapped))) //nolint:gosec // G115: short test strings
 		b = append(b, wrapped...)
 		return append(b, make([]byte, nonceLen+tagLen)...)
 	}
