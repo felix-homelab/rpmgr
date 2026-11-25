@@ -132,9 +132,13 @@ func OpenSQLite(ctx context.Context, path string, o SQLiteOptions) (*DB, error) 
 			_ = db.Close()
 			return nil, fmt.Errorf("store: create %s: %w", path, err)
 		default: // it exists: anything but a regular file, a link included, is refused
-			if fi, err := os.Lstat(path); err != nil || !fi.Mode().IsRegular() {
+			fi, err := os.Lstat(path)
+			if err == nil && !fi.Mode().IsRegular() {
+				err = errors.New("it exists and is not a regular file")
+			}
+			if err != nil {
 				_ = db.Close()
-				return nil, fmt.Errorf("store: create %s: it exists and is not a regular file: %v", path, err)
+				return nil, fmt.Errorf("store: create %s: %w", path, err)
 			}
 		}
 	}
