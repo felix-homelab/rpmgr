@@ -44,12 +44,13 @@ func TestKMS_CredentialsNeverLogged(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	cfgs := map[string]func(*Config){
 		"token file": func(c *Config) { c.Logger = logger },
+		"approle":    func(c *Config) { appRoleCfg(t)(c); c.Logger = logger },
 	}
 
 	wrapped := ""
 	forbidden := func() []string {
 		dkB64 := base64.StdEncoding.EncodeToString(dk)
-		return []string{testToken, dkB64, wrapped}
+		return []string{testToken, testRoleID, testSecretID, "approle-token-", dkB64, wrapped}
 	}
 	var errs []string
 	record := func(err error) {
@@ -87,6 +88,11 @@ func TestKMS_CredentialsNeverLogged(t *testing.T) {
 			}
 			f.override = func(rw http.ResponseWriter, r *http.Request) bool {
 				status, echo := get()
+				if strings.HasPrefix(r.URL.Path, "/v1/auth/") && status != 0 && echo == "login" {
+					rw.WriteHeader(status)
+					_, _ = fmt.Fprintf(rw, `{"errors":["bad %s and %s\nsecond line"]}`, testSecretID, testRoleID)
+					return true
+				}
 				if !strings.Contains(r.URL.Path, "/transit/") || status == 0 {
 					return false
 				}
@@ -98,11 +104,11 @@ func TestKMS_CredentialsNeverLogged(t *testing.T) {
 					}
 				case "malformed":
 					rw.WriteHeader(status)
-					_, _ = fmt.Fprintf(rw, "<html>%s vault:v1:%s</html>", r.Header.Get("X-Vault-Token"), wrapped) //nolint:gosec // G705: a test server that echoes secrets on purpose
+					_, _ = fmt.Fprintf(rw, "<html>%s %s vault:v1:%s</html>", r.Header.Get("X-Vault-Token"), testSecretID, wrapped) //nolint:gosec // G705: a test server that echoes secrets on purpose
 				default:
 					tok := r.Header.Get("X-Vault-Token")
 					body, _ := json.Marshal(map[string]any{"errors": []string{
-						"token " + tok + " line\nbreak key vault:v1:" + wrapped + " done",
+						"token " + tok + " secret_id " + knownSecret(name) + " key vault:v1:" + wrapped + " done",
 					}})
 					rw.WriteHeader(status)
 					_, _ = rw.Write(body)
@@ -121,6 +127,14 @@ func TestKMS_CredentialsNeverLogged(t *testing.T) {
 				_, err = c.Rewrap(context.Background(), w, aadA)
 				record(err)
 				_, err = c.Check(context.Background())
+				record(err)
+			}
+			if name == "approle" {
+				// The login itself fails with a message that echoes the credentials. A new client has
+				// no token yet.
+				c2, _, _ := testClient(t, f, mut)
+				set(400, "login")
+				_, err := c2.Wrap(context.Background(), dk, aadA)
 				record(err)
 			}
 			set(0, "")
@@ -169,6 +183,15 @@ func TestKMS_CredentialsNeverLogged(t *testing.T) {
 	if !strings.Contains(strings.Join(errs, "\n"), "[REDACTED]") {
 		t.Error("no error shows a redaction")
 	}
+}
+
+// knownSecret is the secret ID that the client has been given, if any; a client cannot redact one
+// it never saw.
+func knownSecret(mode string) string {
+	if mode == "approle" {
+		return testSecretID
+	}
+	return "unknown"
 }
 
 func writeLoose(path, content string) error {
