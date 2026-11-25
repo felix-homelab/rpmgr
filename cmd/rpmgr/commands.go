@@ -163,7 +163,7 @@ func runController(ctx context.Context, env *cli.Env, path string) error {
 		return err
 	}
 	defer stop()
-	return controller.Run(ctx, controller.RunOptions{Config: cfg, Version: version.Get().Version, Sources: routes.Sources(),
+	return controller.Run(ctx, controller.RunOptions{Config: cfg, ConfigFile: path, Version: version.Get().Version, Sources: routes.Sources(),
 		Getenv: env.Getenv, Logger: logger, Now: agentcmd.Clock, SelfUpdate: true})
 }
 
@@ -182,7 +182,7 @@ func runAllInOne(ctx context.Context, env *cli.Env, path string) error {
 		return err
 	}
 	defer stop()
-	return allinone.Run(ctx, allinone.RunOptions{Config: cfg, Version: version.Get().Version, Getenv: env.Getenv, Logger: logger,
+	return allinone.Run(ctx, allinone.RunOptions{Config: cfg, ConfigFile: path, Version: version.Get().Version, Getenv: env.Getenv, Logger: logger,
 		Handoff: handoff.LinkFrom(ctx)})
 }
 

@@ -22,6 +22,14 @@ Changes to the design documents are not recorded here: see the git history and t
   release cannot read a padded name, so upgrade every controller replica promptly and do not
   downgrade after the first new entry.
 
+### Added
+
+- The Settings page shows the Instance Admin the controller's boot settings, read-only: the
+  database driver (for PostgreSQL its server, database, user and TLS mode), the kind of KEK
+  source, the listen addresses and the revocation-log sink. The API method `GetBootSettings`
+  returns them to the Instance Admin only; no secret, DSN or path of a secret file is ever
+  returned.
+
 ### Changed
 
 - The keys that authenticate the API's page tokens and the previews of gateway pages are random and

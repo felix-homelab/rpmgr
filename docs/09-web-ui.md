@@ -885,7 +885,10 @@ one page, with a section list beside them that jumps to each section
   of the controller's boot file with the time it was loaded. It has no control that changes anything
   and says that the file is edited on the host and read at the next restart. Secrets are not shown,
   nor the path of a secret file: only the kind of source, such as "password: file". With replicas
-  the section names the replica that answered. Org settings and other roles never see it.
+  the section names the replica that answered. Org settings and other roles never see it. The section
+  sits below the instance settings as a list of names and values. For SQLite it shows the driver
+  only, since the database file is a path of the host. The KMS login details and an S3 sink are not
+  in the section until the boot file can set them (slice 8.9).
 - **The revocation log** ([10](10-operations.md#backup-and-restore)) is shown to the Instance Admin
   above the settings:
   - **No sink:** the standing warning that the log has no copy off the host.

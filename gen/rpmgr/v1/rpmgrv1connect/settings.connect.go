@@ -44,6 +44,9 @@ const (
 	// SettingsServiceSetSmtpPasswordProcedure is the fully-qualified name of the SettingsService's
 	// SetSmtpPassword RPC.
 	SettingsServiceSetSmtpPasswordProcedure = "/rpmgr.v1.SettingsService/SetSmtpPassword"
+	// SettingsServiceGetBootSettingsProcedure is the fully-qualified name of the SettingsService's
+	// GetBootSettings RPC.
+	SettingsServiceGetBootSettingsProcedure = "/rpmgr.v1.SettingsService/GetBootSettings"
 	// SettingsServiceGetOrgSettingsProcedure is the fully-qualified name of the SettingsService's
 	// GetOrgSettings RPC.
 	SettingsServiceGetOrgSettingsProcedure = "/rpmgr.v1.SettingsService/GetOrgSettings"
@@ -61,6 +64,9 @@ type SettingsServiceClient interface {
 	UpdateInstanceSettings(context.Context, *connect.Request[v1.UpdateInstanceSettingsRequest]) (*connect.Response[v1.UpdateInstanceSettingsResponse], error)
 	// SetSmtpPassword stores the mail relay's password under the KEK, or removes it; write-only.
 	SetSmtpPassword(context.Context, *connect.Request[v1.SetSmtpPasswordRequest]) (*connect.Response[v1.SetSmtpPasswordResponse], error)
+	// GetBootSettings returns the boot file of the controller that answers, as it was loaded at
+	// start, read-only and without any secret (docs/07-api.md, "Services").
+	GetBootSettings(context.Context, *connect.Request[v1.GetBootSettingsRequest]) (*connect.Response[v1.GetBootSettingsResponse], error)
 	// GetOrgSettings returns an org's settings, defaults filled in.
 	GetOrgSettings(context.Context, *connect.Request[v1.GetOrgSettingsRequest]) (*connect.Response[v1.GetOrgSettingsResponse], error)
 	// UpdateOrgSettings changes the fields the mask names; a change of require_mfa needs a step-up.
@@ -97,6 +103,13 @@ func NewSettingsServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(settingsServiceMethods.ByName("SetSmtpPassword")),
 			connect.WithClientOptions(opts...),
 		),
+		getBootSettings: connect.NewClient[v1.GetBootSettingsRequest, v1.GetBootSettingsResponse](
+			httpClient,
+			baseURL+SettingsServiceGetBootSettingsProcedure,
+			connect.WithSchema(settingsServiceMethods.ByName("GetBootSettings")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
 		getOrgSettings: connect.NewClient[v1.GetOrgSettingsRequest, v1.GetOrgSettingsResponse](
 			httpClient,
 			baseURL+SettingsServiceGetOrgSettingsProcedure,
@@ -118,6 +131,7 @@ type settingsServiceClient struct {
 	getInstanceSettings    *connect.Client[v1.GetInstanceSettingsRequest, v1.GetInstanceSettingsResponse]
 	updateInstanceSettings *connect.Client[v1.UpdateInstanceSettingsRequest, v1.UpdateInstanceSettingsResponse]
 	setSmtpPassword        *connect.Client[v1.SetSmtpPasswordRequest, v1.SetSmtpPasswordResponse]
+	getBootSettings        *connect.Client[v1.GetBootSettingsRequest, v1.GetBootSettingsResponse]
 	getOrgSettings         *connect.Client[v1.GetOrgSettingsRequest, v1.GetOrgSettingsResponse]
 	updateOrgSettings      *connect.Client[v1.UpdateOrgSettingsRequest, v1.UpdateOrgSettingsResponse]
 }
@@ -135,6 +149,11 @@ func (c *settingsServiceClient) UpdateInstanceSettings(ctx context.Context, req 
 // SetSmtpPassword calls rpmgr.v1.SettingsService.SetSmtpPassword.
 func (c *settingsServiceClient) SetSmtpPassword(ctx context.Context, req *connect.Request[v1.SetSmtpPasswordRequest]) (*connect.Response[v1.SetSmtpPasswordResponse], error) {
 	return c.setSmtpPassword.CallUnary(ctx, req)
+}
+
+// GetBootSettings calls rpmgr.v1.SettingsService.GetBootSettings.
+func (c *settingsServiceClient) GetBootSettings(ctx context.Context, req *connect.Request[v1.GetBootSettingsRequest]) (*connect.Response[v1.GetBootSettingsResponse], error) {
+	return c.getBootSettings.CallUnary(ctx, req)
 }
 
 // GetOrgSettings calls rpmgr.v1.SettingsService.GetOrgSettings.
@@ -156,6 +175,9 @@ type SettingsServiceHandler interface {
 	UpdateInstanceSettings(context.Context, *connect.Request[v1.UpdateInstanceSettingsRequest]) (*connect.Response[v1.UpdateInstanceSettingsResponse], error)
 	// SetSmtpPassword stores the mail relay's password under the KEK, or removes it; write-only.
 	SetSmtpPassword(context.Context, *connect.Request[v1.SetSmtpPasswordRequest]) (*connect.Response[v1.SetSmtpPasswordResponse], error)
+	// GetBootSettings returns the boot file of the controller that answers, as it was loaded at
+	// start, read-only and without any secret (docs/07-api.md, "Services").
+	GetBootSettings(context.Context, *connect.Request[v1.GetBootSettingsRequest]) (*connect.Response[v1.GetBootSettingsResponse], error)
 	// GetOrgSettings returns an org's settings, defaults filled in.
 	GetOrgSettings(context.Context, *connect.Request[v1.GetOrgSettingsRequest]) (*connect.Response[v1.GetOrgSettingsResponse], error)
 	// UpdateOrgSettings changes the fields the mask names; a change of require_mfa needs a step-up.
@@ -188,6 +210,13 @@ func NewSettingsServiceHandler(svc SettingsServiceHandler, opts ...connect.Handl
 		connect.WithSchema(settingsServiceMethods.ByName("SetSmtpPassword")),
 		connect.WithHandlerOptions(opts...),
 	)
+	settingsServiceGetBootSettingsHandler := connect.NewUnaryHandler(
+		SettingsServiceGetBootSettingsProcedure,
+		svc.GetBootSettings,
+		connect.WithSchema(settingsServiceMethods.ByName("GetBootSettings")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
 	settingsServiceGetOrgSettingsHandler := connect.NewUnaryHandler(
 		SettingsServiceGetOrgSettingsProcedure,
 		svc.GetOrgSettings,
@@ -209,6 +238,8 @@ func NewSettingsServiceHandler(svc SettingsServiceHandler, opts ...connect.Handl
 			settingsServiceUpdateInstanceSettingsHandler.ServeHTTP(w, r)
 		case SettingsServiceSetSmtpPasswordProcedure:
 			settingsServiceSetSmtpPasswordHandler.ServeHTTP(w, r)
+		case SettingsServiceGetBootSettingsProcedure:
+			settingsServiceGetBootSettingsHandler.ServeHTTP(w, r)
 		case SettingsServiceGetOrgSettingsProcedure:
 			settingsServiceGetOrgSettingsHandler.ServeHTTP(w, r)
 		case SettingsServiceUpdateOrgSettingsProcedure:
@@ -232,6 +263,10 @@ func (UnimplementedSettingsServiceHandler) UpdateInstanceSettings(context.Contex
 
 func (UnimplementedSettingsServiceHandler) SetSmtpPassword(context.Context, *connect.Request[v1.SetSmtpPasswordRequest]) (*connect.Response[v1.SetSmtpPasswordResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.SettingsService.SetSmtpPassword is not implemented"))
+}
+
+func (UnimplementedSettingsServiceHandler) GetBootSettings(context.Context, *connect.Request[v1.GetBootSettingsRequest]) (*connect.Response[v1.GetBootSettingsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.SettingsService.GetBootSettings is not implemented"))
 }
 
 func (UnimplementedSettingsServiceHandler) GetOrgSettings(context.Context, *connect.Request[v1.GetOrgSettingsRequest]) (*connect.Response[v1.GetOrgSettingsResponse], error) {
