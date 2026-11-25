@@ -31932,6 +31932,8 @@ type InstanceMutation struct {
 	db_epoch             *string
 	created_at           *time.Time
 	restore_review_since *time.Time
+	retired_at           *time.Time
+	retired_to           *string
 	clearedFields        map[string]struct{}
 	done                 bool
 	oldValue             func(context.Context) (*Instance, error)
@@ -32199,6 +32201,104 @@ func (m *InstanceMutation) ResetRestoreReviewSince() {
 	delete(m.clearedFields, instance.FieldRestoreReviewSince)
 }
 
+// SetRetiredAt sets the "retired_at" field.
+func (m *InstanceMutation) SetRetiredAt(t time.Time) {
+	m.retired_at = &t
+}
+
+// RetiredAt returns the value of the "retired_at" field in the mutation.
+func (m *InstanceMutation) RetiredAt() (r time.Time, exists bool) {
+	v := m.retired_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRetiredAt returns the old "retired_at" field's value of the Instance entity.
+// If the Instance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *InstanceMutation) OldRetiredAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRetiredAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRetiredAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRetiredAt: %w", err)
+	}
+	return oldValue.RetiredAt, nil
+}
+
+// ClearRetiredAt clears the value of the "retired_at" field.
+func (m *InstanceMutation) ClearRetiredAt() {
+	m.retired_at = nil
+	m.clearedFields[instance.FieldRetiredAt] = struct{}{}
+}
+
+// RetiredAtCleared returns if the "retired_at" field was cleared in this mutation.
+func (m *InstanceMutation) RetiredAtCleared() bool {
+	_, ok := m.clearedFields[instance.FieldRetiredAt]
+	return ok
+}
+
+// ResetRetiredAt resets all changes to the "retired_at" field.
+func (m *InstanceMutation) ResetRetiredAt() {
+	m.retired_at = nil
+	delete(m.clearedFields, instance.FieldRetiredAt)
+}
+
+// SetRetiredTo sets the "retired_to" field.
+func (m *InstanceMutation) SetRetiredTo(s string) {
+	m.retired_to = &s
+}
+
+// RetiredTo returns the value of the "retired_to" field in the mutation.
+func (m *InstanceMutation) RetiredTo() (r string, exists bool) {
+	v := m.retired_to
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRetiredTo returns the old "retired_to" field's value of the Instance entity.
+// If the Instance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *InstanceMutation) OldRetiredTo(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRetiredTo is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRetiredTo requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRetiredTo: %w", err)
+	}
+	return oldValue.RetiredTo, nil
+}
+
+// ClearRetiredTo clears the value of the "retired_to" field.
+func (m *InstanceMutation) ClearRetiredTo() {
+	m.retired_to = nil
+	m.clearedFields[instance.FieldRetiredTo] = struct{}{}
+}
+
+// RetiredToCleared returns if the "retired_to" field was cleared in this mutation.
+func (m *InstanceMutation) RetiredToCleared() bool {
+	_, ok := m.clearedFields[instance.FieldRetiredTo]
+	return ok
+}
+
+// ResetRetiredTo resets all changes to the "retired_to" field.
+func (m *InstanceMutation) ResetRetiredTo() {
+	m.retired_to = nil
+	delete(m.clearedFields, instance.FieldRetiredTo)
+}
+
 // Where appends a list predicates to the InstanceMutation builder.
 func (m *InstanceMutation) Where(ps ...predicate.Instance) {
 	m.predicates = append(m.predicates, ps...)
@@ -32233,7 +32333,7 @@ func (m *InstanceMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *InstanceMutation) Fields() []string {
-	fields := make([]string, 0, 4)
+	fields := make([]string, 0, 6)
 	if m.trust_domain != nil {
 		fields = append(fields, instance.FieldTrustDomain)
 	}
@@ -32245,6 +32345,12 @@ func (m *InstanceMutation) Fields() []string {
 	}
 	if m.restore_review_since != nil {
 		fields = append(fields, instance.FieldRestoreReviewSince)
+	}
+	if m.retired_at != nil {
+		fields = append(fields, instance.FieldRetiredAt)
+	}
+	if m.retired_to != nil {
+		fields = append(fields, instance.FieldRetiredTo)
 	}
 	return fields
 }
@@ -32262,6 +32368,10 @@ func (m *InstanceMutation) Field(name string) (ent.Value, bool) {
 		return m.CreatedAt()
 	case instance.FieldRestoreReviewSince:
 		return m.RestoreReviewSince()
+	case instance.FieldRetiredAt:
+		return m.RetiredAt()
+	case instance.FieldRetiredTo:
+		return m.RetiredTo()
 	}
 	return nil, false
 }
@@ -32279,6 +32389,10 @@ func (m *InstanceMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldCreatedAt(ctx)
 	case instance.FieldRestoreReviewSince:
 		return m.OldRestoreReviewSince(ctx)
+	case instance.FieldRetiredAt:
+		return m.OldRetiredAt(ctx)
+	case instance.FieldRetiredTo:
+		return m.OldRetiredTo(ctx)
 	}
 	return nil, fmt.Errorf("unknown Instance field %s", name)
 }
@@ -32316,6 +32430,20 @@ func (m *InstanceMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRestoreReviewSince(v)
 		return nil
+	case instance.FieldRetiredAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRetiredAt(v)
+		return nil
+	case instance.FieldRetiredTo:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRetiredTo(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Instance field %s", name)
 }
@@ -32349,6 +32477,12 @@ func (m *InstanceMutation) ClearedFields() []string {
 	if m.FieldCleared(instance.FieldRestoreReviewSince) {
 		fields = append(fields, instance.FieldRestoreReviewSince)
 	}
+	if m.FieldCleared(instance.FieldRetiredAt) {
+		fields = append(fields, instance.FieldRetiredAt)
+	}
+	if m.FieldCleared(instance.FieldRetiredTo) {
+		fields = append(fields, instance.FieldRetiredTo)
+	}
 	return fields
 }
 
@@ -32365,6 +32499,12 @@ func (m *InstanceMutation) ClearField(name string) error {
 	switch name {
 	case instance.FieldRestoreReviewSince:
 		m.ClearRestoreReviewSince()
+		return nil
+	case instance.FieldRetiredAt:
+		m.ClearRetiredAt()
+		return nil
+	case instance.FieldRetiredTo:
+		m.ClearRetiredTo()
 		return nil
 	}
 	return fmt.Errorf("unknown Instance nullable field %s", name)
@@ -32385,6 +32525,12 @@ func (m *InstanceMutation) ResetField(name string) error {
 		return nil
 	case instance.FieldRestoreReviewSince:
 		m.ResetRestoreReviewSince()
+		return nil
+	case instance.FieldRetiredAt:
+		m.ResetRetiredAt()
+		return nil
+	case instance.FieldRetiredTo:
+		m.ResetRetiredTo()
 		return nil
 	}
 	return fmt.Errorf("unknown Instance field %s", name)
