@@ -2033,7 +2033,7 @@ Checkpoints prove tampering but cannot restore content, so revocations get their
   record. Only the first load of an empty sink, a fresh sink or a restarted controller, ships from
   entry 1. A **break in the chain** (a missing tip, a rolled back sink, a chain that does not reach
   the verified prefix, an object whose previous hash is not the verified prefix's, or a key that is
-  missing) and stops that replica's shipping and raises the alert; enforcement and the local log go
+  missing) stops that replica's shipping and raises the alert; enforcement and the local log go
   on. After a share was unmounted, remount it and restart the controller. Otherwise shipping stays
   stopped until an operator points `revocation_log.sink` at a new directory (a restart finds the
   break again): the old directory is kept, and the replicas ship what the new one lacks from their
