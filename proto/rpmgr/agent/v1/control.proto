@@ -191,6 +191,9 @@ message Hello {
   // not report it, which the controller treats as unknown (docs/04-security.md, "Over-the-air
   // updates").
   UpdatePolicy update_policy = 9;
+  // SHA-256 over the self-signed roots the agent trusts (docs/03-connections.md, "Trust roots in
+  // Welcome and snapshots"); only from an agent with the capability "trust.roots", 32 bytes.
+  bytes roots_digest = 10;
 }
 
 // UpdatePolicy is the auto_update and update_channel of an agent's local policy file, as the root
@@ -217,6 +220,11 @@ message Welcome {
   // DER certificates of the config-signing keys and their intermediates, the next key included,
   // so the agent can verify snapshots before a key rotation takes effect.
   repeated bytes signing_certificates = 5;
+  // DER certificates of the controller's trust bundle: the self-signed roots, then the
+  // cross-certificates. Only to an agent with the capability "trust.roots" whose Hello digest
+  // differs from the bundle's or is missing; an agent keeps an offered root only when a
+  // cross-certificate from a root it trusts verifies (docs/04-security.md, "Root rotation").
+  repeated bytes trust_roots = 6;
 }
 
 // Applied reports a snapshot that was applied.

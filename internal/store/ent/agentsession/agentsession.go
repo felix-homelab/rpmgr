@@ -38,6 +38,8 @@ const (
 	FieldUpdateAuto = "update_auto"
 	// FieldUpdateChannel holds the string denoting the update_channel field in the database.
 	FieldUpdateChannel = "update_channel"
+	// FieldRootsDigest holds the string denoting the roots_digest field in the database.
+	FieldRootsDigest = "roots_digest"
 	// Table holds the table name of the agentsession in the database.
 	Table = "agent_sessions"
 )
@@ -57,6 +59,7 @@ var Columns = []string{
 	FieldLastGoodbye,
 	FieldUpdateAuto,
 	FieldUpdateChannel,
+	FieldRootsDigest,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -98,6 +101,8 @@ var (
 	DefaultUpdateAuto string
 	// DefaultUpdateChannel holds the default value on creation for the "update_channel" field.
 	DefaultUpdateChannel string
+	// DefaultRootsDigest holds the default value on creation for the "roots_digest" field.
+	DefaultRootsDigest string
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
 	IDValidator func(string) error
 )
@@ -163,4 +168,9 @@ func ByUpdateAuto(opts ...sql.OrderTermOption) OrderOption {
 // ByUpdateChannel orders the results by the update_channel field.
 func ByUpdateChannel(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUpdateChannel, opts...).ToFunc()
+}
+
+// ByRootsDigest orders the results by the roots_digest field.
+func ByRootsDigest(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRootsDigest, opts...).ToFunc()
 }

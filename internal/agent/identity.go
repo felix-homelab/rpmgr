@@ -163,6 +163,7 @@ type Loaded struct {
 	Certificate tls.Certificate
 	Roots       *x509.CertPool
 	Root        *x509.Certificate   // the pinned root, the first of roots.pem
+	RootCerts   []*x509.Certificate // every certificate of roots.pem
 	Signing     []*x509.Certificate // the config-signing certificates and their intermediates
 }
 
@@ -213,7 +214,7 @@ func Load(dir string) (Loaded, error) {
 	if err != nil {
 		return l, err
 	}
-	l.Roots, l.Root = x509.NewCertPool(), roots[0]
+	l.Roots, l.Root, l.RootCerts = x509.NewCertPool(), roots[0], roots
 	for _, r := range roots {
 		l.Roots.AddCert(r)
 	}
