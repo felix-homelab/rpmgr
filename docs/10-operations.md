@@ -190,11 +190,14 @@ RestartSec=2s
   - **Revocation-log sink:** when the boot file sets `revocation_log.sink`, the unit adds
     `ReadWritePaths=-<sink>`, which keeps the sink writable under `ProtectSystem=strict`
     [F systemd v257 `man/systemd.exec.xml:1691-1693`] ([Backup and restore](#backup-and-restore)).
-    With `-`, a missing directory is ignored [F systemd v257 `man/systemd.exec.xml:1715-1718`], so
-    a sink outage, such as a share not mounted yet, never keeps the controller from starting; the
-    backlog alert covers the entries that wait. A share mounted after the start is writable as on
-    the host [F systemd v257 `man/systemd.exec.xml:1726-1731`]; [R] after creating a plain
-    directory, restart the controller. `rpmgr systemd-unit` refuses a sink with whitespace, a
+    With `-`, a missing directory is ignored [F systemd v257 `man/systemd.exec.xml:1715-1718`]. The
+    unit also adds `RequiresMountsFor=<sink>`, so that the start waits for the mounts of the sink's
+    path and a controller started before a late network mount does not first read the empty
+    mountpoint, which it would take for an empty sink ([04](04-security.md#revocation-log)); a mount
+    that fails keeps the controller from starting. A sink that goes away after the start raises the
+    backlog alert. A share mounted after the start is writable as on the host
+    [F systemd v257 `man/systemd.exec.xml:1726-1731`]; [R] after creating a plain directory,
+    restart the controller. `rpmgr systemd-unit` refuses a sink with whitespace, a
     control character, `%`, `\`, a quote, or a `.` or `..` part, which systemd would split,
     expand or read differently, and the root, which would leave nothing read-only.
   - [R] A boot file that gains or changes its sink needs its unit written again with
