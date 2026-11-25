@@ -425,7 +425,9 @@ only on a host the operator chooses, in a ceremony.
   decryption version raised past the version that wrapped the key
   ([KEK in Vault or OpenBao Transit](#kek-in-vault-or-openbao-transit)). Until then `rpmgr ca
   status` and Settings → PKI warn that the root's key may still be recoverable, naming the KEK
-  recorded in the marker. Archives made before the rotation can no longer be opened, which is the
+  recorded in the `ca.root_offline` audit entry and in the marker, for as long as a stored secret
+  is still wrapped by that KEK; the warning is not shown when the audit log no longer holds the
+  entry. Archives made before the rotation can no longer be opened, which is the
   point.
 - **A restore does not bring the root back.** The marker is re-applied from the log as other
   entries are: the restore sets `key_enc` of that root to null. An archive that still holds the key

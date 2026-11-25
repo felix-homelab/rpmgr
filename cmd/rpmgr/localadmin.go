@@ -94,16 +94,33 @@ func migrateCommand() *cli.Command {
 
 // caCommand is `rpmgr ca …`.
 func caCommand() *cli.Command {
+	var csrOut string
 	return group("ca", "administer the internal CA on the controller host",
 		localCommand("status", "show the CA keys and their validity", nil, func(ctx context.Context, env *cli.Env, path string) error {
 			st, err := controller.CAStatus(ctx, path)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(env.Stdout, "Trust domain: %s\nRoot pin:     %s\n\n", st.GetTrustDomain(), st.GetRootPin())
+			fmt.Fprintf(env.Stdout, "Trust domain: %s\nRoot pin:     %s\nRoot key:     %s\n", st.GetTrustDomain(), st.GetRootPin(), rootKeyState(st))
+			if kek := st.GetRootKeyResidueKek(); kek != "" {
+				fmt.Fprintf(env.Stdout, "\nWARNING: the root's sealed key may still be recoverable from free pages, the write-ahead log and older backups,\n"+
+					"and KEK %s opens it. Rotate the KEK and destroy that one (docs/10-operations.md, \"Take the root offline\").\n", kek)
+			}
+			fmt.Fprintln(env.Stdout)
 			return writeCAKeys(env, st.GetKeys())
 		}),
-		localCommand("rotate-intermediate", "rotate the issuing intermediate now", nil, func(ctx context.Context, env *cli.Env, path string) error {
+		localCommand("rotate-intermediate", "rotate the issuing intermediate now, or with an offline root ask it for a signature", func(fs *flag.FlagSet) {
+			fs.StringVar(&csrOut, "csr-out", "", "with an offline root: write the request for its signature to this new file (never overwritten)")
+		}, func(ctx context.Context, env *cli.Env, path string) error {
+			if csrOut != "" {
+				hash, err := controller.RequestIntermediate(ctx, path, csrOut, env.Getenv, time.Now)
+				if err != nil {
+					return err
+				}
+				_, err = fmt.Fprintf(env.Stdout, "Wrote the request to %s. Key SHA-256: %s\nCarry it to the offline host and run rpmgr ca sign-intermediate; it shows the same hash.\n"+
+					"Bring the certificate back and run rpmgr ca import-intermediate.\n", csrOut, hash)
+				return err
+			}
 			k, err := controller.RotateIntermediate(ctx, path, env.Getenv)
 			if err != nil {
 				return err
@@ -112,7 +129,15 @@ func caCommand() *cli.Command {
 				"verifying the certificates it issued. Running controllers load it within a minute; agents\nreceive the new chain at their next renewal.\n",
 				k.GetSubject(), k.GetNotAfter().AsTime().UTC().Format(time.RFC3339))
 			return err
-		}))
+		}),
+		offlineRootCommand(), signIntermediateCommand(), importIntermediateCommand())
+}
+
+func rootKeyState(st *rpmgrv1.GetPkiStatusResponse) string {
+	if st.GetRootOffline() {
+		return "offline (the database holds its certificate and no key)"
+	}
+	return "online (sealed in the database)"
 }
 
 var caKinds = map[rpmgrv1.CAKeyKind]string{rpmgrv1.CAKeyKind_CA_KEY_KIND_ROOT: "root", rpmgrv1.CAKeyKind_CA_KEY_KIND_INTERMEDIATE: "intermediate",

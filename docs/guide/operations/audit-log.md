@@ -38,7 +38,7 @@ Each entry holds:
 | `authMethod` | **Authentication** | How it signed in: `session`, `token`, `pwd+otp` … |
 | `ip`, `userAgent` | **Address**, **User agent** | The client |
 | `requestId` | **Request ID** | The request's ID, as the API's `Rpmgr-Request-Id` header returns it |
-| `action` | | What was done: the API method, such as `rpmgr.v1.RouteService.UpdateRoute` or `rpmgr.v1.AuthService.Login`, or a named event, such as `token.create`, `token.use`, `identity.revoke`, `route.delete`, `connector.enroll`, `connector.reenroll`, `agent.enroll` (a failed enrollment), `ca.rotate_intermediate`, `audit.export` or `audit.prune` |
+| `action` | | What was done: the API method, such as `rpmgr.v1.RouteService.UpdateRoute` or `rpmgr.v1.AuthService.Login`, or a named event, such as `token.create`, `token.use`, `identity.revoke`, `route.delete`, `connector.enroll`, `connector.reenroll`, `agent.enroll` (a failed enrollment), `ca.rotate_intermediate`, `ca.root_offline`, `ca.request_intermediate`, `ca.import_intermediate`, `audit.export` or `audit.prune` |
 | `targetType`, `targetId` | | The kind and ID of what it was done to |
 | `result` | | `success`, `failure` or `denied` |
 | `diff` | | The request, with its secrets replaced |

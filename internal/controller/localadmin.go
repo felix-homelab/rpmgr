@@ -20,6 +20,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/config"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -114,6 +115,9 @@ func RotateIntermediate(ctx context.Context, path string, getenv func(string) st
 	}
 	defer func() { _ = db.Close() }()
 	resp, err := (&apisvc.Pki{DB: db, Sys: sys, Sealer: sealer}).RotateIntermediate(sys, connect.NewRequest(&rpmgrv1.RotateIntermediateRequest{}))
+	if ce := (*connect.Error)(nil); errors.As(err, &ce) && ce.Code() == connect.CodeFailedPrecondition {
+		return nil, fmt.Errorf("%w: ask it for a signature with --csr-out <file>", castore.ErrRootOffline)
+	}
 	if err != nil {
 		return nil, err
 	}

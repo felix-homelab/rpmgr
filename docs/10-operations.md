@@ -1456,7 +1456,7 @@ Each runbook: **symptoms → steps → done when**.
   another place.
 - **Done when**: `rpmgr ca status` shows the root as offline and no longer warns about the KEK,
   no database, backup or log on the controller host holds its key in the clear, and the file opens
-  on the offline host (run `rpmgr ca
+  on the offline host (with a request from `rpmgr ca rotate-intermediate --csr-out`, run `rpmgr ca
   sign-intermediate` once, and answer "no" at the confirmation).
 
 ### Rotate the root
