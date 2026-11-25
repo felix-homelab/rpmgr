@@ -58,6 +58,9 @@ type RuntimeOptions struct {
 	Logger      *slog.Logger
 	// OnOffer gets the release offer of every applied snapshot, nil for none; may be nil.
 	OnOffer func(*agentv1.ReleaseOffer)
+	// OnTrustRoots gets the trust roots of every snapshot that verified, before the revision is
+	// checked; may be nil.
+	OnTrustRoots func([][]byte)
 }
 
 // Runtime applies the agent's snapshots: it verifies each, ignores one that is not newer, lets the
@@ -228,6 +231,9 @@ func (r *Runtime) receive(ctx context.Context, signed *agentv1.Signed) {
 		r.o.Logger.Error("rejecting a snapshot that does not verify", "error", err)
 		r.reject(nil, hash, []*agentv1.SnapshotError{{Message: err.Error()}})
 		return
+	}
+	if r.o.OnTrustRoots != nil {
+		r.o.OnTrustRoots(snap.GetTrustRoots())
 	}
 	rev := snap.GetRevision()
 	r.mu.Lock()

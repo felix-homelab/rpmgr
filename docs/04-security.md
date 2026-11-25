@@ -512,7 +512,9 @@ another trust domain or no cross-certificate is ignored. The same rule holds for
 response, `Welcome` and snapshots, so appending a root in transit still gains an attacker nothing.
 The agent writes the new set to `roots.pem` atomically (a temporary file, `fsync`, rename, `fsync`
 of the directory), so a crash leaves the old file or the new one, then reloads its trust and
-**re-pins**: the set of SPKI hashes it trusts is the file's. It removes a root only when an
+**re-pins**: the set of SPKI hashes it trusts is the file's. A control session that starts after
+the change verifies the controller with the new set; the agent applies the roots it holds to its
+data sessions when it next starts (slice 8.13). It removes a root only when an
 authenticated bundle no longer lists it and another root it keeps verified the chain of the session
 that said so.
 

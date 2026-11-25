@@ -23,7 +23,6 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
-	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
 )
@@ -87,6 +86,7 @@ type Control struct {
 	rt     *Runtime
 	deny   *DenyList
 	stager *Stager // nil without ControlOptions.Update
+	trust  *trustSet
 	// draining is the old process of a hand-off, as SetDraining last reported it; it goes in the
 	// first Status of each session.
 	draining atomic.Pointer[agentv1.DrainingProcess]
@@ -121,9 +121,11 @@ func NewControl(o ControlOptions) (*Control, error) {
 	if o.Firewall {
 		caps = append(slices.Clone(caps), agentproto.CapFirewallRanges)
 	}
-	// The agent reports the digest of the roots it trusts in Hello, but does not announce
-	// "trust.roots" and takes no roots from Welcome or a snapshot: that comes with root rotation
-	// (slice 8.13), which the capability stands for.
+	// The agent takes new roots from Welcome and snapshots when a cross-certificate from a root it
+	// trusts verifies them, which is what "trust.roots" promises (docs/04-security.md, "Root
+	// rotation"), and reports the digest of the roots it trusts in every Hello.
+	c.trust = newTrustSet(id, o.Now, o.Logger)
+	caps = append(slices.Clone(caps), agentproto.CapTrustRoots)
 	var onOffer func(*agentv1.ReleaseOffer)
 	if o.Update != nil {
 		now := o.Now
@@ -140,13 +142,14 @@ func NewControl(o ControlOptions) (*Control, error) {
 		Signers: func() []*x509.Certificate { return c.rt.Signers() }})
 	c.rt = NewRuntime(RuntimeOptions{Identity: id, StateDir: o.StateDir, Applier: o.Applier, Now: o.Now, Logger: o.Logger,
 		Send:        func(m *agentv1.AgentMessage) bool { return c.client.Send(m) },
-		OnEndpoints: func(eps []string) { c.client.SetEndpoints(eps) }, OnOffer: onOffer})
+		OnEndpoints: func(eps []string) { c.client.SetEndpoints(eps) }, OnOffer: onOffer,
+		OnTrustRoots: func(der [][]byte) { c.trust.Offer("a snapshot", der) }})
 	c.client = NewClient(ClientOptions{Identity: id, Endpoints: id.Endpoints, Version: o.Version, Capabilities: caps,
-		BootID: hex.EncodeToString(boot), Now: o.Now, Logger: o.Logger, Backoff: o.Backoff, Dial: o.Dial, Fallback: o.Fallback,
+		BootID: hex.EncodeToString(boot), Roots: c.trust.Pool, Now: o.Now, Logger: o.Logger, Backoff: o.Backoff, Dial: o.Dial, Fallback: o.Fallback,
 		Hello: func(h *agentv1.Hello) {
 			c.rt.Hello(h)
 			h.DenyListDigest = c.deny.Digest()
-			h.RootsDigest = pki.RootsDigest(id.RootCerts)
+			h.RootsDigest = c.trust.Digest() // read again each time: roots.pem may have changed
 			if c.stager != nil {
 				h.UpdatePolicy = c.stager.UpdatePolicy()
 				c.reported.Store(h.UpdatePolicy)
@@ -154,6 +157,7 @@ func NewControl(o ControlOptions) (*Control, error) {
 		},
 		OnWelcome: func(w *agentv1.Welcome) {
 			c.rt.Welcome(w)
+			c.trust.Offer("a Welcome", w.GetTrustRoots())
 			var st *agentv1.Status
 			if o.SessionStatus != nil {
 				st = o.SessionStatus()
@@ -429,7 +433,11 @@ func (c *Control) Send(m *agentv1.AgentMessage) bool { return c.client.Send(m) }
 
 // Identity returns the agent's identity as it was loaded; the certificate in it is the one at
 // start, Certificate the current one.
-func (c *Control) Identity() Loaded { return c.id }
+func (c *Control) Identity() Loaded {
+	id := c.id
+	id.RootCerts, id.Roots = c.trust.Certs(), c.trust.Pool()
+	return id
+}
 
 // Certificate returns the agent's current certificate, which renewal replaces, for the role's
 // TLS configurations.

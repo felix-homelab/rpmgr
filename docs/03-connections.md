@@ -463,8 +463,8 @@ Rules:
   same bytes. **Certificates with identical raw DER count once**, in the list and in the digest.
   Outside a rotation the list is one certificate. The field goes only to an agent that announced
   `trust.roots`; one without it keeps the root it has and shows as a straggler of a rotation
-  ([04](04-security.md#root-rotation)). Agents announce `trust.roots` **from slice 8.13 (#696)
-  on**, because the capability promises that they can take part in a root rotation.
+  ([04](04-security.md#root-rotation)). Agents announce `trust.roots` because the capability
+  promises that they can take part in a root rotation.
 - **The digest.** `Hello.roots_digest` (field 10) is the SHA-256 over the agent's trusted
   self-signed roots in the order above, each contributing `uvarint(len(DER)) ‖ DER`.
   **Cross-certificates do not count toward the digest.** The controller computes the same digest of
@@ -477,7 +477,10 @@ Rules:
   stays the same.
 - **What an agent does with them** is in [04](04-security.md#root-rotation): it keeps an offered
   root only when a cross-certificate from a root it trusts verifies. A root that fails the rule is
-  ignored and logged, and never rejects the snapshot that carried it.
+  ignored and logged, and never rejects the snapshot that carried it. The agent checks the limits
+  below on the DER bytes **before** it parses anything and ignores an offer that exceeds them,
+  whole. It reads the digest it sends in `Hello` again from the roots it holds, so a session after
+  a change reports the new set.
 - **Limits** are in the table below. The roots count toward the control message limit of 4 MiB
   ([Framing](#framing)): a snapshot that with its roots exceeds it fails to compile as any
   oversized snapshot does.
