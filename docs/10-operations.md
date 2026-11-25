@@ -530,7 +530,7 @@ message that names the variable, not its value ([D93](14-open-decisions.md#engin
 | `api.cloudflare.com` | 443/TCP | DNS provider API, and Cloudflare's IP ranges for proxied routes ([15](15-dns.md#cloudflare-specifics)) | A Cloudflare provider is connected (Phase 2) |
 | The authoritative nameservers of claimed domains | 53/UDP and TCP | Reading `_rpmgr-challenge` TXT records ([04](04-security.md#route-and-hostname-ownership)) | Domains pending verification |
 | The PostgreSQL server | 5432/TCP, as the DSN says | The controller's database; mutual or server-verified TLS, `verify-full` except on loopback and a socket ([06](06-data-model.md#connecting-to-postgresql-phase-2)). Not through a proxy | `database.driver: postgres` (Phase 2) |
-| Vault or OpenBao Transit | as `kek.kms.address` says, usually 8200/TCP | Wrapping and unwrapping data keys ([04](04-security.md#kek-in-vault-or-openbao-transit)). Not through a proxy | `kek.source: kms` (Phase 2) |
+| Vault or OpenBao Transit | as `kek.kms.address` says, usually 8200/TCP | Wrapping and unwrapping data keys ([04](04-security.md#kek-in-vault-or-openbao-transit)). Not through a proxy | `kek.source: kms` |
 | Webhook receivers, the external audit sink, the revocation-log sink, OIDC providers, SMTP | as configured | Integrations configured by an admin | As configured |
 
 ## Configuration
@@ -565,7 +565,7 @@ database:
   # postgres: dsn: postgres://rpmgr@db.example.com/rpmgr?sslmode=verify-full&sslrootcert=/etc/rpmgr/pg-ca.pem
   # password_file: /etc/rpmgr/db-password       # or password_credential: <name>; never in the DSN
 kek:
-  source: systemd-credential  # systemd-credential | file | kms (Vault/OpenBao Transit, Phase 2); never env
+  source: systemd-credential  # systemd-credential | file | kms (Vault/OpenBao Transit); never env
   name: rpmgr-kek             # systemd-credential: the credential name
   # path: /etc/rpmgr/kek      # file: base64 of 32 random bytes, mode 0600 or 0400
   # kms:                      # source: kms (04)
@@ -671,9 +671,8 @@ Rules for every boot file:
   `host:port`; `hostnames` are lower-case DNS names (internationalised ones in their `xn--` form)
   and need an address ([03](03-connections.md#reaching-a-private-controller)).
 - URLs are `https://<host>[:<port>]` without user, path, query or fragment; listen addresses are
-  `[host]:port`; paths are absolute. `database.driver: postgres` and `kek.source: kms` are refused
-  before
-  Phase 2 (slices 8.6 and 8.9); from then on these rules hold as well:
+  `[host]:port`; paths are absolute. `database.driver: postgres` is refused before Phase 2 (slice
+  8.6); from then on these rules hold as well, and `kek.source: kms` has them from slice 8.9:
   - **PostgreSQL.** The `dsn` is a PostgreSQL URL or key-value string **without a password**: one
     that has one, or a `PGPASSWORD` in the environment or a `.pgpass` file that would supply one,
     stops the process. At most one of `password_file` and `password_credential` is set. The file
@@ -686,7 +685,11 @@ Rules for every boot file:
   - **Transit.** `kek.kms` takes `address` (an `https://` URL), `mount` (default `transit`), `key`,
     an optional `ca_file` of PEM certificates, and exactly one of `token_file` and `approle`
     (`role_id_file`, `secret_id_file`, optional `mount`, default `approle`). Every file is regular
-    and of mode 0600 or 0400. `name` and `path` are for the other sources and refused with `kms`.
+    and of mode 0600 or 0400. `name` and `path` are for the other sources and refused with `kms`,
+    and `kms` is refused with them. The controller reads the key at start and does not start when
+    Transit cannot be reached, the key is missing, of another type or not derived, or the
+    credential is refused; the message names the reason and no credential
+    ([04](04-security.md#kek-in-vault-or-openbao-transit)).
   - **Replicas.** `listen.internal` is `[host]:port`, for controllers only. With it,
     `listen.internal_address` (`host:port`, a name or an address the other replicas can dial) and
     `revocation_log.sink` are required, `database.driver` must be `postgres`, and the controller
@@ -1181,8 +1184,8 @@ gateway counts as `transport="h2"` ([03](03-connections.md#transport-selection))
 | `rpmgr_gateway_quic_bound` | gauge | gateway | 1 | 1 while the gateway listens for data sessions over QUIC; 0 while it does not, as in a process a hand-off started whose UDP port is still held. Suggested alert: 0 for more than 5 min |
 | `rpmgr_audit_checkpoint_age_seconds` | gauge | controller | 1 | Age of the oldest audit entry no checkpoint covers yet, 0 when every entry is covered ([04](04-security.md#audit-log)); with the external sink (Phase 2), no checkpoint that reached the sink |
 | `rpmgr_revocation_log_sink` | gauge | controller | 1 | 1 if a sink keeps the revocation log off the host, 0 for a single node without one ([Backup and restore](#backup-and-restore)) |
-| `rpmgr_kms_up` | gauge | controller | 2 | 1 while the last request to Transit succeeded, 0 after a failure; with `kek.source: kms` only |
-| `rpmgr_kms_requests_total{op,result}` | counter | controller | 2 | Transit requests by `encrypt`, `decrypt`, `rewrap` or `login` and `ok`, `denied`, `unavailable` or `error` |
+| `rpmgr_kms_up` | gauge | controller | 2 | 1 while the last request to Transit was answered, 0 after Transit could not be reached or refused the credential (the controller is then not ready, [04](04-security.md#kek-in-vault-or-openbao-transit)); with `kek.source: kms` only |
+| `rpmgr_kms_requests_total{op,result}` | counter | controller | 2 | Transit requests by `encrypt`, `decrypt`, `rewrap`, `check` (the read of the key) or `login` and `ok`, `denied`, `unavailable` or `error` |
 | `rpmgr_ca_root_offline` | gauge | controller | 2 | 1 when the root's key is offline ([04](04-security.md#offline-root-ca)) |
 | `rpmgr_ca_intermediate_signing_pending` | gauge | controller | 2 | 1 while the next intermediate waits for an offline root's signature |
 | `rpmgr_controller_nodes{state}` | gauge | controller | 2 | Replicas by `live` and `stale` ([06](06-data-model.md#system)) |
@@ -1510,12 +1513,17 @@ Each runbook: **symptoms → steps → done when**.
   after a successful backup and test restore.
 - **A Transit key** (`kek.source: kms`) rotates in Transit, and replicas keep running (a single
   controller is stopped for it: the command takes the controller lock shared, so it is refused
-  beside one): rotate the key there, run `rpmgr kek rotate` (it calls `rewrap` for every wrapped
-  key, in batches), wait for `rpmgr kek status` to show none on an older key version, and only then
-  raise the key's minimum decryption version in Transit
-  ([04](04-security.md#kek-in-vault-or-openbao-transit)). **Moving** the KEK between a file or
-  credential and Transit, in either direction, needs every controller stopped: write the new boot
-  file, then `rpmgr kek rotate --previous-config <the old boot file>`.
+  beside one): rotate the key there, run `rpmgr kek rotate` (it reads the key, then calls `rewrap`
+  for every value that is not on the key's latest version, in batches), wait for `rpmgr kek status`
+  to show none on an older key version, and only then raise the key's minimum decryption version
+  in Transit ([04](04-security.md#kek-in-vault-or-openbao-transit)). A command that cannot reach
+  Transit stops and changes nothing; `rpmgr kek status` then says why the key did not load and
+  still counts the values. **Moving** the KEK between a file or credential and Transit, in either
+  direction, needs every controller stopped: write the new boot file, then
+  `rpmgr kek rotate --config <the new boot file> --previous-config <the old boot file>`, which
+  opens each value with the KEK the old file names and seals it with the new one, in one
+  transaction. Keep the old KEK until the move is done and backed up: with Transit as the old KEK
+  that is the key and its credential, with a file the file.
 - **A systemd credential** is loaded only inside a unit: run a command that needs the KEK, such as
   `kek rotate` or `ca rotate-intermediate`, under `systemd-run --pipe --wait
   --property=LoadCredentialEncrypted=rpmgr-kek:/etc/rpmgr/credstore/rpmgr-kek`.

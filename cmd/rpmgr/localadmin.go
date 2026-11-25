@@ -7,10 +7,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -138,55 +136,40 @@ func writeCAKeys(env *cli.Env, keys []*rpmgrv1.CAKey) error {
 
 // kekCommand is `rpmgr kek …`.
 func kekCommand() *cli.Command {
-	var previous string
+	var previous controller.PreviousKEK
 	return group("kek", "administer the key-encryption key on the controller host",
 		localCommand("status", "show which KEK version wraps the stored secrets", nil, func(ctx context.Context, env *cli.Env, path string) error {
 			st, err := controller.StatusKEK(ctx, path, env.Getenv)
 			if err != nil {
 				return err
 			}
-			if st.CurrentErr != nil {
-				fmt.Fprintf(env.Stdout, "The boot file's KEK: not loaded (%v)\n\n", st.CurrentErr)
-			} else {
-				fmt.Fprintf(env.Stdout, "The boot file's KEK: version %s\n\n", st.Current)
-			}
-			tw := tabwriter.NewWriter(env.Stdout, 0, 4, 2, ' ', 0)
-			fmt.Fprintln(tw, "KEK VERSION\tSECRETS")
-			for _, v := range slices.Sorted(maps.Keys(st.Versions)) {
-				mark := ""
-				if v == st.Current {
-					mark = " (the boot file's)"
-				}
-				fmt.Fprintf(tw, "%s%s\t%d\n", v, mark, st.Versions[v])
-			}
-			if err := tw.Flush(); err != nil {
-				return err
-			}
-			if st.Mismatch() {
-				fmt.Fprintln(env.Stdout, "\nThe boot file's KEK wraps none of the secrets: it is not the KEK of this database, or a\nrotation is pending (rpmgr kek rotate --previous-file <the old KEK>).")
-			}
-			if len(st.Old) > 0 && st.CurrentErr == nil {
-				fmt.Fprintf(env.Stdout, "\nUnder another KEK than the boot file's (%d):\n", len(st.Old))
-				for _, r := range st.Old {
-					fmt.Fprintf(env.Stdout, "  %s  (%s)\n", r, r.KEKVersion)
-				}
-			}
-			return nil
+			return st.Write(env.Stdout)
 		}),
 		localCommand("rotate", "re-wrap every stored secret under a new KEK",
 			func(fs *flag.FlagSet) {
-				fs.StringVar(&previous, "previous-file", "", "the KEK before, in a file of the format of kek.source file, mode 0600 (required)")
+				fs.StringVar(&previous.File, "previous-file", "", "the KEK before, in a file of the format of kek.source file, mode 0600")
+				fs.StringVar(&previous.Config, "previous-config", "", "the boot file whose kek section names the KEK before, of any source, to move between a file or credential and Transit")
 			},
 			func(ctx context.Context, env *cli.Env, path string) error {
-				if previous == "" {
-					return cli.Usagef("kek rotate needs --previous-file")
+				if previous.File != "" && previous.Config != "" {
+					return cli.Usagef("kek rotate takes --previous-file or --previous-config, not both")
 				}
 				n, v, err := controller.RotateKEK(ctx, path, previous, env.Getenv)
+				if errors.Is(err, controller.ErrPreviousNeeded) {
+					return cli.Usagef("kek rotate needs --previous-file or --previous-config, unless kek.source is kms")
+				}
 				if err != nil {
 					return err
 				}
-				_, err = fmt.Fprintf(env.Stdout, "Re-wrapped %d secrets under KEK version %s; every stored secret is under it now.\n"+
-					"Back the new KEK up apart from the database, and retire the old one after a backup and a test restore.\n", n, v)
+				_, err = fmt.Fprintf(env.Stdout, "Re-wrapped %d secrets under KEK version %s; every stored secret is under it now.\n", n, v)
+				if err != nil {
+					return err
+				}
+				if strings.Contains(v, "@v") {
+					_, err = fmt.Fprintln(env.Stdout, "Raise the Transit key's minimum decryption version only after `rpmgr kek status` shows no secret on an older version\nand a fresh backup was taken under the latest one.")
+					return err
+				}
+				_, err = fmt.Fprintln(env.Stdout, "Back the new KEK up apart from the database, and retire the old one after a backup and a test restore.")
 				return err
 			}))
 }

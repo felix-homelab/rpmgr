@@ -92,6 +92,9 @@ func NewKEK(key []byte) (KEK, error) {
 	return k, nil
 }
 
+// IsZero reports whether k is the zero KEK, which holds no key.
+func (k KEK) IsZero() bool { return k.key.IsZero() }
+
 // Version returns the KEK version as 16 hexadecimal digits.
 func (k KEK) Version() string { return hex.EncodeToString(k.id[:]) }
 
@@ -278,6 +281,13 @@ func KEKVersion(sealed []byte) (string, error) {
 		}
 	}
 	return string(h.id), nil
+}
+
+// KEKIdentity is a KEK version without the key version: "<mount>/<key>" for "<mount>/<key>@v<n>",
+// and a local KEK's version as it is. Two versions of one Transit key share it.
+func KEKIdentity(version string) string {
+	id, _, _ := strings.Cut(version, "@v")
+	return id
 }
 
 // validKeyVersion is a decimal number from 1 to 9999999999 without a leading zero, the form

@@ -484,10 +484,11 @@ func TestCommandLineErrors(t *testing.T) {
 		{"systemd-unit"},             // no role
 		{"systemd-unit", "relay"},    // no such role
 		{"kek", "rotate"},            // no previous KEK
-		{"migrate", "extra"},         // a local command takes no arguments
-		{"status", "extra"},          // an agent command takes no arguments
-		{"restore"},                  // no archive
-		{"backup"},                   // no archive
+		{"kek", "rotate", "--previous-file", "a", "--previous-config", "b"}, // two previous KEKs
+		{"migrate", "extra"}, // a local command takes no arguments
+		{"status", "extra"},  // an agent command takes no arguments
+		{"restore"},          // no archive
+		{"backup"},           // no archive
 	} {
 		code, stdout, stderr := runRpmgr(args...)
 		if code != cli.ExitUsage || stdout != "" || !strings.Contains(stderr, "Usage:") {

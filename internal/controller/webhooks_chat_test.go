@@ -274,7 +274,7 @@ func TestKEK_RotateKeepsChatURLDeliverable(t *testing.T) {
 		t.Fatal(err)
 	}
 	k2 := writeKEK(t, h.kek, 0o600)
-	if _, _, err := controller.RotateKEK(ctx, h.cfg, prev, noEnv); err != nil {
+	if _, _, err := controller.RotateKEK(ctx, h.cfg, controller.PreviousKEK{File: prev}, noEnv); err != nil {
 		t.Fatal(err)
 	}
 	db, err = store.OpenSQLite(ctx, h.db, store.SQLiteOptions{})

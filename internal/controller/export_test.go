@@ -8,7 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/egress"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -91,4 +94,29 @@ func LoopbackWebhooks(o WebhookOptions) WebhookOptions {
 func OnRestoreStep(t testing.TB, f func(step string)) {
 	restoreHook = f
 	t.Cleanup(func() { restoreHook = nil })
+}
+
+// OpenKMSWithMetrics opens the Transit key of cfg as Run does, with its metrics registered in the
+// returned registry, which holds what the controller would expose after the request.
+func OpenKMSWithMetrics(ctx context.Context, cfg config.Controller) (*prometheus.Registry, error) {
+	h := newKMSHealth()
+	reg := prometheus.NewRegistry()
+	for _, c := range h.Collectors() {
+		if err := reg.Register(c); err != nil {
+			return nil, err
+		}
+	}
+	_, err := openKEK(ctx, cfg, nil, nil, h.observe)
+	return reg, err
+}
+
+// KMSReady is the readiness answer of the Transit health after observing results, as the client
+// reports them. While it is down, Ready reads the key again; that request has the result probe.
+func KMSReady(ctx context.Context, probe string, results ...string) error {
+	h := newKMSHealth()
+	h.probe = func(context.Context) error { h.observe("check", probe); return nil }
+	for _, r := range results {
+		h.observe("encrypt", r)
+	}
+	return h.Ready(ctx)
 }

@@ -22,6 +22,18 @@ Changes to the design documents are not recorded here: see the git history and t
   release cannot read a padded name, so upgrade every controller replica promptly and do not
   downgrade after the first new entry.
 
+### Added
+
+- The controller can keep its key-encryption key in a key of Vault or OpenBao Transit:
+  `kek.source: kms` with the new `kek.kms` section in the boot file
+  ([Boot files](docs/guide/reference/boot-files.md#controller)). The controller reads the key at
+  start and does not start when Transit cannot be reached, the key is missing, of another type or
+  not derived, or the credential is refused; `/readyz` and the new `rpmgr_kms_up` and
+  `rpmgr_kms_requests_total` metrics report Transit. `rpmgr kek rotate` re-wraps every value to the
+  latest version of a Transit key after you rotated it there, and `rpmgr kek rotate
+  --previous-config <boot file>` moves the KEK between a file or credential and Transit, in either
+  direction ([Rotate the KEK](docs/10-operations.md#rotate-the-kek)).
+
 ### Changed
 
 - The keys that authenticate the API's page tokens and the previews of gateway pages are random and
