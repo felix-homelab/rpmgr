@@ -121,6 +121,9 @@ would collide with it ([ADR-0001](adr/0001-name-rpmgr.md)).
 | **Trust domain** | The namespace of all rpmgr identities of one installation, e.g. `rpmgr-7f3k2q9m`. |
 | **SPIFFE ID** | An agent's identity URI, e.g. `spiffe://rpmgr-7f3k2q9m/org/org_01J…/connector/con_01J…`. |
 | **Enrollment token** | A short-lived, single-use secret that lets a new agent obtain its first certificate. |
+| **Offline root** | The root CA whose key is not on the controller: an age-passphrase file on offline media, used only to sign intermediates and cross-certificates ([04](04-security.md#offline-root-ca)). |
+| **Cross-certificate** | A certificate for a new root's key that the old root signed, so that agents that trust the old root can trust the new one ([04](04-security.md#root-rotation)). |
+| **Replica** | A controller that shares PostgreSQL with others: it sets `listen.internal`, registers in `controller_nodes` and needs the revocation-log sink ([10](10-operations.md#high-availability)). |
 | **KEK** | Key-encryption key. Protects the database's encrypted secrets; kept outside the database. |
 | **Org** | Organisation; the tenancy boundary. Every configuration record belongs to exactly one org. |
 | **Instance** | One rpmgr installation (one database, one trust domain). |

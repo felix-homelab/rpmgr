@@ -33,7 +33,7 @@ The documentation has two parts:
 | [15 — DNS automation](15-dns.md) | Cloudflare integration: managed zones, records for route hostnames, ownership and conflicts, plan approval, DNS-01, proxied routes |
 | [16 — Command line](16-cli.md) | Every `rpmgr` command, its flags and exit codes |
 | [17 — Gateway cache and WAF](17-cache-and-waf.md) | Phase 3 design: the response cache of http routes and the WAF in front of them, their request path, scopes, purge, hits and failure modes |
-| [ADRs](adr/) | One record per load-bearing decision (0001–0023) |
+| [ADRs](adr/) | One record per load-bearing decision (0001–0024) |
 | [Spikes](spikes/) | Phase 0 spike results, written from the [template](spikes/TEMPLATE.md) |
 | [Reviews](reviews/) | Reviews of the implementation against the documents, such as the [Phase 1 threat-model review](reviews/P1-threat-model.md) |
 

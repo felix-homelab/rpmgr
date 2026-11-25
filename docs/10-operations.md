@@ -187,6 +187,9 @@ RestartSec=2s
 - **Controller**: the same, without `CAP_NET_BIND_SERVICE` if it listens on high ports behind a
   gateway, plus `LoadCredentialEncrypted=rpmgr-kek:/etc/rpmgr/credstore/rpmgr-kek` for the KEK
   ([04](04-security.md#secrets-at-rest-and-in-logs)) [V VB-03].
+  - **PostgreSQL password:** when the boot file sets `database.password_credential`, the unit also
+    loads that credential with `LoadCredentialEncrypted=` from the same credential store as the
+    KEK; a `password_file` is the operator's to make readable to the service user.
   - **Revocation-log sink:** when the boot file sets `revocation_log.sink`, the unit adds
     `ReadWritePaths=-<sink>`, which keeps the sink writable under `ProtectSystem=strict`
     [F systemd v257 `man/systemd.exec.xml:1691-1693`] ([Backup and restore](#backup-and-restore)).
@@ -504,6 +507,7 @@ In Phase 1, CI only builds these targets; end-to-end tests on Windows and macOS 
 | Gateway | 80 | TCP | ACME HTTP-01 challenges; per `http` route a redirect to HTTPS (default), plain HTTP, or nothing (`port80`, [06](06-data-model.md#routing)) | Public |
 | Gateway | port pools (e.g. 20000–20999) | TCP and/or UDP | `tcp`, `udp` and `tcp_udp` routes (a `tcp_udp` route holds its port number in both); ranges are gateway-group settings, allocated per [04](04-security.md#route-and-hostname-ownership) | Public, only the configured ranges |
 | Controller | 443 | TCP | UI, public API, enrollment, agent control sessions (SNI `controller.<td>`), `Reauth` for expired agent certificates (SNI `reauth.controller.<td>`), `/install.sh`, `/dl/` mirror | Reachable by browsers and agents (directly or through a gateway's controller passthrough, [03](03-connections.md#reaching-a-private-controller)) |
+| Controller (replica) | 7384 (`listen.internal`) | TCP | HA, Phase 2: controller-to-controller mutual TLS 1.3 (HTTP/2, ALPN `rpmgr-controller/1`) for forwarded live logs and diagnostics ([High availability](#high-availability)). Set only on a replica; 7384, the next port after the connector's admin port, is the suggested one [D181](14-open-decisions.md#engineering) | Private network, the other replicas only: the host firewall admits no one else, and mutual TLS refuses every certificate that is not a controller's ([04](04-security.md#trust-domain-and-identities)) |
 | Controller | 80 | TCP | Optional: ACME HTTP-01 and redirect, if the controller obtains its own UI certificate | Public, optional |
 | Every role | 127.0.0.1:7381 (controller, all-in-one), 127.0.0.1:7382 (gateway), 127.0.0.1:7383 (connector) | TCP | Admin listener: `/metrics`, `/healthz`, `/readyz`, pprof (off unless enabled). One port per role, so roles on the same host never collide, and none is 9090, Prometheus's own port. If the default is taken, the installer picks the next free port and writes it to the boot file. The ports are registered in Prometheus's port registry once public code exists | Localhost by default; may be bound to a private interface for scrapers and load-balancer checks, **never** public: a boot file that binds it to all interfaces, a public address or a host name is refused |
 | Connector | — | — | No inbound ports. Outbound: 443/TCP+UDP to gateways, 443/TCP to the controller | — |
@@ -522,7 +526,9 @@ message that names the variable, not its value ([D93](14-open-decisions.md#engin
 | GitHub Releases of `felix-homelab/rpmgr` | 443/TCP | Daily release check: fetches the signed release manifest (a plain GET, no data sent); artifacts are mirrored to `/dl/` once a rollout is approved ([04](04-security.md#over-the-air-updates)); in Phase 1, the artifacts of the controller's own version ([D59](14-open-decisions.md#security-defaults)). Only controllers fetch releases; agents download from the controller's mirror | On by default ([D4](14-open-decisions.md#product-and-project)); off in Settings → Updates; air-gapped installs upload the manifest instead |
 | `api.cloudflare.com` | 443/TCP | DNS provider API, and Cloudflare's IP ranges for proxied routes ([15](15-dns.md#cloudflare-specifics)) | A Cloudflare provider is connected (Phase 2) |
 | The authoritative nameservers of claimed domains | 53/UDP and TCP | Reading `_rpmgr-challenge` TXT records ([04](04-security.md#route-and-hostname-ownership)) | Domains pending verification |
-| Webhook receivers, the external audit sink, the revocation-log sink, OIDC providers, SMTP, KMS | as configured | Integrations configured by an admin | As configured |
+| The PostgreSQL server | 5432/TCP, as the DSN says | The controller's database; mutual or server-verified TLS, `verify-full` except on loopback and a socket ([06](06-data-model.md#connecting-to-postgresql-phase-2)). Not through a proxy | `database.driver: postgres` (Phase 2) |
+| Vault or OpenBao Transit | as `kek.kms.address` says, usually 8200/TCP | Wrapping and unwrapping data keys ([04](04-security.md#kek-in-vault-or-openbao-transit)). Not through a proxy | `kek.source: kms` (Phase 2) |
+| Webhook receivers, the external audit sink, the revocation-log sink, OIDC providers, SMTP | as configured | Integrations configured by an admin | As configured |
 
 ## Configuration
 
@@ -548,13 +554,23 @@ listen:
   https: ":443"
   http: ":80"                 # ACME HTTP-01 + redirect; "" disables
   admin: "127.0.0.1:7381"
+  # internal: ":7384"                     # Phase 2, HA: the replicas' listener; "" = a single controller
+  # internal_address: "10.0.0.5:7384"     # HA: how the other replicas dial it; required with internal
 database:
-  driver: sqlite              # sqlite; postgres from Phase 2 (D57)
+  driver: sqlite              # sqlite | postgres (Phase 2, D174)
   dsn: /var/lib/rpmgr/controller.db
+  # postgres: dsn: postgres://rpmgr@db.example.com/rpmgr?sslmode=verify-full&sslrootcert=/etc/rpmgr/pg-ca.pem
+  # password_file: /etc/rpmgr/db-password       # or password_credential: <name>; never in the DSN
 kek:
-  source: systemd-credential  # systemd-credential | file; kms (Vault/OpenBao Transit) from Phase 2; never env
+  source: systemd-credential  # systemd-credential | file | kms (Vault/OpenBao Transit, Phase 2); never env
   name: rpmgr-kek             # systemd-credential: the credential name
   # path: /etc/rpmgr/kek      # file: base64 of 32 random bytes, mode 0600 or 0400
+  # kms:                      # source: kms (04)
+  #   address: https://vault.example.com:8200
+  #   mount: transit
+  #   key: rpmgr-kek
+  #   ca_file: /etc/rpmgr/vault-ca.pem
+  #   token_file: /etc/rpmgr/vault-token    # or approle: { role_id_file: …, secret_id_file: … }
 tls:                          # the certificate of public_url from files; without them, ACME
   cert_file: /etc/rpmgr/tls/panel.crt   # PEM chain; re-read within a minute after a change
   key_file: /etc/rpmgr/tls/panel.key
@@ -565,7 +581,9 @@ tracing:                      # every role's boot file takes this section
   otlp_endpoint: ""           # OTLP/HTTP traces URL, e.g. https://collector:4318/v1/traces; "" = off
   sample_ratio: 0.01          # share of new traces sampled; failed spans are exported regardless
 revocation_log:
-  sink: ""                    # a directory, usually a share, for a copy off the host; "" = none
+  sink: ""                    # a directory, usually a share, for a copy off the host; "" = none;
+                              # s3://<bucket>/<prefix> from Phase 2
+  # s3: { endpoint: https://s3.example.com, region: eu-central-1, credentials_file: /etc/rpmgr/s3-credentials }
 ```
 
 ```yaml
@@ -651,7 +669,28 @@ Rules for every boot file:
   and need an address ([03](03-connections.md#reaching-a-private-controller)).
 - URLs are `https://<host>[:<port>]` without user, path, query or fragment; listen addresses are
   `[host]:port`; paths are absolute. `database.driver: postgres` and `kek.source: kms` are refused
-  until Phase 2.
+  before
+  Phase 2 (slices 8.6 and 8.9); from then on these rules hold as well:
+  - **PostgreSQL.** The `dsn` is a PostgreSQL URL or key-value string **without a password**: one
+    that has one, or a `PGPASSWORD` in the environment or a `.pgpass` file that would supply one,
+    stops the process. At most one of `password_file` and `password_credential` is set. The file
+    is a regular file of mode 0600 or 0400, within the limit of
+    [03](03-connections.md#timeouts-keepalive-and-backoff), with one non-empty line; the
+    credential is the systemd credential of that name in `$CREDENTIALS_DIRECTORY`. A host that is
+    neither loopback nor a Unix socket needs `sslmode=verify-full`. The reasons are in
+    [06](06-data-model.md#connecting-to-postgresql-phase-2). All-in-one accepts PostgreSQL as well,
+    and never `listen.internal`.
+  - **Transit.** `kek.kms` takes `address` (an `https://` URL), `mount` (default `transit`), `key`,
+    an optional `ca_file` of PEM certificates, and exactly one of `token_file` and `approle`
+    (`role_id_file`, `secret_id_file`, optional `mount`, default `approle`). Every file is regular
+    and of mode 0600 or 0400. `name` and `path` are for the other sources and refused with `kms`.
+  - **Replicas.** `listen.internal` is `[host]:port`, for controllers only. With it,
+    `listen.internal_address` (`host:port`, a name or an address the other replicas can dial) and
+    `revocation_log.sink` are required, `database.driver` must be `postgres`, and the controller
+    runs as a replica ([High availability](#high-availability)).
+  - **The sink.** `revocation_log.sink` is a directory or `s3://<bucket>/<prefix>`; `s3` goes with
+    the second form only, with `endpoint` (an `https://` URL), `region` and `credentials_file`
+    (a regular file of mode 0600 or 0400 with two lines: the access key ID and the secret key).
 
 Port pools, routes, gateway groups and everything else an agent runs come from snapshots, not from
 the boot file.
@@ -770,11 +809,21 @@ service that still runs the previous binary, with the command that restarts it.
 
 - `rpmgr backup --out <file>` writes a **consistent** copy of the controller database: `VACUUM INTO`
   on SQLite, which runs while the controller keeps reading and writing
-  ([S8](spikes/S8.md)), `pg_dump` on PostgreSQL (or the operator's own PostgreSQL backups).
-  Secrets in the backup stay envelope-encrypted.
+  ([S8](spikes/S8.md)). On PostgreSQL (Phase 2) **rpmgr's own copier** copies the database into a
+  SQLite file inside one snapshot transaction, `REPEATABLE READ, READ ONLY`, so the copy holds one
+  revision under concurrent writes; the image has no `pg_dump`
+  ([06](06-data-model.md#copying-a-database), [D176](14-open-decisions.md#engineering)). Secrets
+  in the backup stay envelope-encrypted, and the copier never opens them.
   - **The archive:** one tar file, mode 0600, with `controller.db`, `revocations.log`,
     `audit-checkpoints.log` (both without a line still being written) and `backup.json` (format,
-    version, time, trust domain, `db_epoch`).
+    version, time, trust domain, `db_epoch` and, from Phase 2, `source_dialect`). `controller.db`
+    is a SQLite database also when the source is PostgreSQL, at the schema version of the source.
+    With replicas, `revocations.log` is the log of the host the command runs on, and
+    `audit-checkpoints.log` is written from the table ([04](04-security.md#audit-log)).
+  - **Other PostgreSQL backups** (a dump, a physical backup) are the operator's own and keep their
+    place next to this one, but a database restored from one skips the restore's steps below: the
+    new `db_epoch`, the invalidations and the revocations applied again. `rpmgr restore` takes
+    only the archive.
   - **Writing it:** it never overwrites a file, leaves nothing behind when it fails, and is
     audited as `local-cli`.
   - **Before an update over the air** ([D158](14-open-decisions.md#engineering)) the root updater
@@ -791,13 +840,25 @@ service that still runs the previous binary, with the command that restarts it.
     <binary>.backup`; after any other failure of the check it restores nothing and leaves the role
     stopped. If the restore fails, the role stays stopped, because the previous binary refuses the
     migrated schema, and you run the same command by hand.
-- **The KEK is backed up separately** and stored apart from database backups. A database backup
-  without its KEK cannot be used to recover CA keys, ACME keys or other secrets; a KEK stored next
-  to the backup defeats the encryption.
+- **The KEK is backed up separately** and stored apart from database backups. With Transit the KEK
+  is the Transit key, so its backup is the key service's own, and raising the key's minimum
+  decryption version makes older archives unreadable
+  ([04](04-security.md#kek-in-vault-or-openbao-transit)). And: A database backup without its KEK
+  cannot be used to recover CA keys, ACME keys or other secrets; a KEK stored next to the backup
+  defeats the encryption.
 - `rpmgr restore --in <file>` restores the database and **assigns a new `db_epoch`** — a fresh
   random UUIDv7, as at init, so restoring the same backup twice never reuses an epoch. Agents accept
   the restored, lower revisions only together with the new epoch
-  ([03](03-connections.md#revisions-and-ordering)).
+  ([03](03-connections.md#revisions-and-ordering)). The boot file decides the dialect of the
+  result: a SQLite file, or, on PostgreSQL, an **empty** database that was made for it, which the
+  copier fills and the restore's steps change in **one transaction**; the restore never drops or
+  empties a database, and the old one stays the operator's to retire. **The controller lock is per
+  database**, so a restore into a new database would not stop replicas still running on the old
+  one: `--replaces <boot file>` names the old database, and the restore refuses while its
+  controller lock is held or `controller_nodes` there has a live row; without it the restore
+  cannot tell, so **stop every replica yourself first**. Before it commits, the restore compares
+  the KEK identifiers in the archive's `secrets_meta` with the boot file's `kek` section and
+  refuses when that KEK cannot open them, naming both.
 - **Relying parties never shrink their deny-list across epochs**: agents merge deny-list updates by
   union and drop an entry only after its own expiry, never because of a version number or a new
   `db_epoch`, so certificates revoked after the backup stay denied on every gateway, connector and
@@ -862,12 +923,20 @@ service that still runs the previous binary, with the command that restarts it.
     production DNS; DNS-01 refuses a disabled zone as well, so the copy orders no certificate
     through production's provider ([D166](14-open-decisions.md#engineering)).
 - **Fail closed** only when the sink's hash chain is broken, or a replica that reported an unshipped
-  backlog has an unreachable local log. Without a sink, a single node's whole log is not off the
+  backlog has an unreachable local log. With replicas the reports are the `revlog_backlog` and
+  `revlog_local_seq` of `controller_nodes` ([06](06-data-model.md#system)) in the backup, and a node
+  that the sink names but the backup does not know, because it was added after the backup, counts as
+  a replica that may have a backlog [D181](14-open-decisions.md#engineering): the restore needs a
+  log of it among the `--revocation-log` it was given, reaching what the sink holds of it, or fails
+  closed. The backlog columns are up to one heartbeat old, so a node whose row lacks `stopped_clean`
+  counts the same way. A restore also **refuses** an archive in which an active CA key is named by
+  an issuer revocation ([04](04-security.md#root-compromise)), and restores a root's `root_offline`
+  marker by setting its `key_enc` to null. Without a sink, a single node's whole log is not off the
   host, so a restore without that log fails closed too; so does a log entry of a kind the restoring
-  version does not know. The entries of every reachable log are merged and re-applied all the
-  same. Then all API tokens and service accounts are suspended, all sessions invalidated, every
-  user must reset their password and set up their second factor again (re-verify MFA), and the
-  instance enters **restore review** mode (read-only):
+  version does not know. The entries of every reachable log are merged and re-applied all the same.
+  Then all API tokens and service accounts are suspended, all sessions invalidated, every user must
+  reset their password and set up their second factor again (re-verify MFA), and the instance enters
+  **restore review** mode (read-only):
   - **Read-only:** every API method that changes something is refused with `RESTORE_REVIEW`
     ([07](07-api.md#errors)) while its org, or for an instance setting the instance, is in review.
     Revocations stay available (revoking API and enrollment tokens, member changes and removals),
@@ -885,9 +954,11 @@ service that still runs the previous binary, with the command that restarts it.
     controller host, `rpmgr restore confirm`. An org Owner cannot end it, because restored Owner
     memberships are exactly what is in doubt, and no API method ends it.
 - **Running the restore:** every controller must be stopped; the restore takes the controller lock
-  and refuses while a controller holds it. It prepares the restored database and logs next to the
+  (on PostgreSQL its exclusive advisory lock, which a replica's shared one also blocks) and refuses
+  while a controller holds it. It prepares the restored database and logs next to the
   live ones (`*.restoring`) and renames them into place only when every step succeeded, so a failed
-  restore changes nothing. The replaced database and logs stay in the state directory with the
+  restore changes nothing; on PostgreSQL the single transaction is what leaves the empty database
+  empty after a failure. The replaced database and logs stay in the state directory with the
   suffix `.before-restore-<time>`; delete them once the restored controller runs.
 - [R] Back up daily and before every controller upgrade; test a restore at least quarterly.
 
@@ -895,30 +966,51 @@ service that still runs the previous binary, with the command that restarts it.
 
 - **Two or more controllers on PostgreSQL** ([02](02-architecture.md#high-availability)). SQLite is
   single-node only. Making PostgreSQL itself highly available is the operator's responsibility.
-- **Moving from SQLite to PostgreSQL** (Phase 2): stop the controller, then run
-  `rpmgr migrate-db --from <sqlite path> --to <postgres DSN>`, which copies every table offline
-  into a PostgreSQL database migrated to the same schema version. Secrets stay envelope-encrypted
-  under the same KEK. Then point the boot file at PostgreSQL and start the controllers.
+  A **replica** is a controller whose boot file sets `listen.internal`: it takes the controller
+  lock shared, so replicas coexist, requires the revocation-log sink and registers in
+  `controller_nodes`. A controller without it, on SQLite or on PostgreSQL, holds the lock
+  exclusively and is refused when another controller runs
+  ([06](06-data-model.md#connecting-to-postgresql-phase-2)). Replicas need PostgreSQL.
+- **Moving between SQLite and PostgreSQL**, in either direction, is `rpmgr migrate-db`
+  ([Moving between SQLite and PostgreSQL](#moving-between-sqlite-and-postgresql)).
+- **Migrations and versions.** Replicas never migrate at start: `rpmgr migrate` runs first, on the
+  upgrade host, under the migration lock, and the replicas are then rolled one by one ([Upgrades and
+  version skew](#upgrades-and-version-skew)). A replica refuses to start against a schema that has a
+  migration it does not know. Replicas of two adjacent releases may run together during a roll;
+  `controller_nodes.version` records each, the singleton jobs' leases are taken only by a replica
+  whose version is the highest of the live nodes, so a job never runs on code older than a replica
+  that already runs [D181](14-open-decisions.md#engineering), and the UI lists the versions. The
+  alert "singleton job stalled" fires when a lease is unheld for 2 minutes, which is what a roll
+  that leaves only older replicas would cause [D181](14-open-decisions.md#engineering). **Expand
+  before contract**: every migration must be safe for the release before it (a column is added
+  before code uses it and dropped a release later), because `rpmgr migrate` takes the controller
+  lock shared and runs under replicas of the previous release; CI runs the previous release's store
+  tests against the new schema [D181](14-open-decisions.md#engineering).
 - **Any replica serves any request.** Revisions come from the database, compilation is
   deterministic, and each agent has one control session tracked by `session_epoch`
   ([03](03-connections.md#revisions-and-ordering)).
-- **Session registry.** A row per control session records which replica holds it. Registration
-  takes the agent's next `session_epoch` under the row's lock and, in the same transaction, signals
-  the replica that held the agent before, which ends that session; a replica that gets the signal
-  before it has added the session ends it as it adds it. Pushes for an agent are signalled to the
-  replica that holds it via PostgreSQL `LISTEN/NOTIFY`, a revision to every replica at once; a
-  signal for one agent reads its registry row `FOR SHARE`, so it reaches the replica that is
-  registering the agent at that moment. `LISTEN/NOTIFY` carries only small signals, never
-  operation data: a payload must be shorter than 8000 bytes
-  [F PostgreSQL 18.6 `src/backend/commands/async.c:163,619-622`]
-  ([S9](spikes/S9.md)).
+- **Session registry.** A row per control session records which replica holds it. Registration takes
+  the agent's next `session_epoch` under the row's lock and, in the same transaction, signals the
+  replica that held the agent before, which ends that session; a replica that gets the signal before
+  it has added the session ends it as it adds it. Pushes for an agent are signalled to the replica
+  that holds it via PostgreSQL `LISTEN/NOTIFY`, a revision to every replica at once; a signal for
+  one agent reads its registry row `FOR SHARE`, so it reaches the replica that is registering the
+  agent at that moment. The channels are `rpmgr_revision` (the new `seq`, one signal per
+  configuration transaction), `rpmgr_agent` (an agent ID and what to do, such as end the session or
+  compile) and `rpmgr_dns` (no payload, for the DNS job below)
+  [D181](14-open-decisions.md#engineering), each payload far below the limit that follows.
+  `LISTEN/NOTIFY` carries only small signals, never operation data: a payload must be shorter than
+  8000 bytes [F PostgreSQL 18.6 `src/backend/commands/async.c:163,619-622`] ([S9](spikes/S9.md)).
 - **Lost notifications.** PostgreSQL delivers a notification only to sessions that were listening
   when it committed [F PostgreSQL 18.6 `async.c:1066-1121`]. Each replica therefore listens on a
   dedicated connection that never runs a transaction, and after every (re)connect it first
   `LISTEN`s, then resyncs every session it holds: the revision, each agent's snapshot and the
-  registry's epochs. The revision check of 03 stays as the safety net
-  ([03](03-connections.md#timeouts-keepalive-and-backoff)); it also ends a session whose registry
-  epoch has moved on ([D112](14-open-decisions.md#project-and-process)).
+  registry's epochs. **The 1 s check** of 03 stays: each replica runs it once a second as one
+  query, not one per session. A notification makes an agent current within milliseconds; the
+  check bounds how late it can be when a notification was lost, never sent, or reached a replica
+  that was reconnecting. It also ends a session whose registry epoch has moved on
+  ([03](03-connections.md#timeouts-keepalive-and-backoff),
+  [D112](14-open-decisions.md#project-and-process)).
 - **Notifying transactions commit one at a time** across the database: PostgreSQL holds a lock from
   queueing the notifications to the end of the commit [F PostgreSQL 18.6 `async.c:907-922`]. A
   transaction sends its signals as its last statements and stays short, and one configuration
@@ -926,14 +1018,22 @@ service that still runs the previous binary, with the command that restarts it.
 - **Connection poolers.** PgBouncer in transaction mode is unsupported: `LISTEN` never works
   there [F PgBouncer 1.26 docs, features, retrieved 2026-10-19]. Session pooling or direct
   connections work ([D112](14-open-decisions.md#project-and-process)).
-- **Imperative operations** (live logs, diagnostics, later the shell): the replica holding the
-  agent's control session serves the operation; the replica serving the user's stream proxies to it
-  over an internal controller-to-controller mutual-TLS connection: HTTP/2 over TLS 1.3, where each
-  side accepts only a controller SPIFFE ID, and the caller only the node the registry names. In S9
-  this added about 1.5 ms to a forwarded `ProbeTarget` at p99 ([S9](spikes/S9.md)).
-  Controller node certificates therefore carry **clientAuth as well as serverAuth**, and a
-  `controller_nodes` table records each replica's `node_id`, `internal_address` and `last_seen`
-  ([04](04-security.md#leaf-certificates)).
+- **Imperative operations** (live logs, diagnostics, `ProbeTarget`, later the shell): the replica
+  holding the agent's control session serves the operation; the replica serving the user's stream
+  proxies to it over an internal controller-to-controller mutual-TLS connection: HTTP/2 over
+  TLS 1.3, ALPN `rpmgr-controller/1`, on the **`listen.internal`** address of the holder, which
+  the registry gives as `controller_nodes.internal_address` (port 7384 by default,
+  [Ports](#ports)). Each side accepts only a controller SPIFFE ID, the server only one whose
+  `<node-id>` is in `controller_nodes`, and the caller only the node the registry names
+  ([04](04-security.md#trust-domain-and-identities)). In S9 this added about 1.5 ms to a forwarded
+  `ProbeTarget` at p99 ([S9](spikes/S9.md)). Controller node certificates therefore carry
+  **clientAuth as well as serverAuth**, and `controller_nodes` records each replica
+  ([06](06-data-model.md#system), [04](04-security.md#leaf-certificates)). **A holder that dies
+  mid-operation** ends the forwarded operation, and so the user's stream, with `UNAVAILABLE` and
+  the reason; nothing is retried on another replica, because the agent reconnects to whichever
+  replica the balancer gives it, and the user starts the operation again. The caller's deadline and
+  its authorization (the same checks as on the holder, [04](04-security.md#roles)) travel with
+  the operation, so the holder never serves more than the user could ask of it.
 - **Revocation log**: every replica appends each entry to its durable local log first and enforces
   it immediately, then ships it asynchronously to the shared sink, where sequence numbers are
   allocated by conditional create of the object `<seq>` (no gaps) and entries form a hash chain
@@ -944,12 +1044,17 @@ service that still runs the previous binary, with the command that restarts it.
   shippers free of gaps and duplicates in S9, the S3 sink on MinIO ([S9](spikes/S9.md)).
 - **Singleton jobs** (ACME orders, CA rotation, ephemeral purge, metric rollups, audit
   checkpoints, the DNS job, rollouts) run under a database **lease with a fencing token**: a replica that lost
-  its lease cannot commit work started under it. Each time a replica takes a job's lease it is
+  its lease cannot commit work started under it. **The database's clock decides every expiry**, so
+  replicas whose clocks differ by seconds never hold a lease together; the holder's own deadline
+  is counted on its monotonic clock from before the statement was sent
+  ([06](06-data-model.md#system)). Each time a replica takes a job's lease it is
   granted the job's system scope, which the audit log records; lease timing is in
   [03](03-connections.md#timeouts-keepalive-and-backoff).
-- **DNS job** (Phase 2): the replica holding the `dns` lease reads the configuration revisions each
-  second and runs a pass for the zones whose sources a revision changed, so it needs no
-  `LISTEN/NOTIFY` of its own; a replica that takes over the lease starts with a full pass. The fencing token cannot stop a call to the provider, so the job
+- **DNS job** (Phase 2): the replica holding the `dns` lease runs a pass for the zones whose
+  sources a revision changed. A transaction that changes a DNS source signals `rpmgr_dns`, which
+  wakes the holder at once; the holder also reads the configuration revisions each second, so a
+  lost signal costs a second and never a change. A replica that takes over the lease starts with a
+  full pass. The fencing token cannot stop a call to the provider, so the job
   checks its lease before every batch, against the expiry its lease handle carries. DNS-01 writes
   come from the ACME lease holder and share the provider's rate budget with the DNS job: one
   database row per provider, so the sum over replicas stays within it
@@ -960,6 +1065,51 @@ service that still runs the previous binary, with the command that restarts it.
   admin interface.
 - Per-replica admission limits from [03](03-connections.md#timeouts-keepalive-and-backoff) prevent
   reconnect storms after a replica fails.
+
+### Moving between SQLite and PostgreSQL
+
+Phase 2, [D175](14-open-decisions.md#engineering). `rpmgr migrate-db` copies a stopped controller's
+database into an empty one, in either direction, with the secrets still sealed and the `db_epoch`
+kept ([06](06-data-model.md#copying-a-database)). It reads two files, never a DSN on its command
+line: `--from` is a SQLite database or a boot file, `--to-file` a boot file, and only the
+`database` section of each is read ([16](16-cli.md#commands)).
+
+**To PostgreSQL**
+
+1. Make an empty PostgreSQL database and a role that owns it, with TLS the controller can verify
+   and the password in a file or a credential
+   ([06](06-data-model.md#connecting-to-postgresql-phase-2)).
+2. Back up (`rpmgr backup`), then stop the controller.
+3. Copy the boot file and change its `database` section to `driver: postgres`, the DSN and the
+   password source; keep the `kek` section.
+4. `rpmgr migrate-db --from /etc/rpmgr/controller.yaml --to-file <the new boot file>`. It
+   refuses a source that a controller holds and a target that is not empty; it migrates an empty
+   target to the source's schema, copies, checks the counts and the hashes of every table, and
+   records `database.migrate` as `local-cli` in the target's audit log. It prints the report.
+5. Put the new boot file in place and start the controller. The revocation log on this host
+   stays what it was.
+6. **The source is retired by the command**: once the target committed it sets `retired_at` on the
+   source, and a controller refuses to start on it, because it has the same `db_epoch` and the same
+   revisions as the target and two controllers would hand agents two histories. Keep it until the
+   target has run for a while; `--no-retire` is for a test copy.
+
+**Back to one SQLite controller**
+
+1. Every replica must have shipped its revocation-log backlog (`rpmgr_revocation_log_unshipped` is 0
+   on each); the command refuses a source whose `controller_nodes` shows an unshipped entry or a
+   node that did not stop clean. A replica that is stopped with a backlog is started again until it
+   has shipped, and then stopped cleanly.
+2. Stop every replica, then run the same command the other way: `--from` the PostgreSQL boot
+   file, `--to-file` a boot file with `driver: sqlite` and no `listen.internal`. A replica whose
+   disk, and so whose log, is gone is named with `--accept-lost-backlog <node-id>`: the target's
+   copy of that node's row is cleared and the loss is recorded in the audit entry. An archive made
+   before the migration still holds the row, so a restore of one still counts that node as
+   possibly having a backlog [D181](14-open-decisions.md#engineering).
+3. Start one controller on that boot file. The sink may stay; it is optional again ([Backup and
+   restore](#backup-and-restore)). The PostgreSQL database is retired by the command as in step 6.
+
+**Done when** the controller starts on the target, `rpmgr status` shows the same revision as
+before, and the agents have not reconnected with a new epoch.
 
 ## Observability
 
@@ -1014,6 +1164,11 @@ gateway counts as `transport="h2"` ([03](03-connections.md#transport-selection))
 | `rpmgr_gateway_quic_bound` | gauge | gateway | 1 | 1 while the gateway listens for data sessions over QUIC; 0 while it does not, as in a process a hand-off started whose UDP port is still held. Suggested alert: 0 for more than 5 min |
 | `rpmgr_audit_checkpoint_age_seconds` | gauge | controller | 1 | Age of the oldest audit entry no checkpoint covers yet, 0 when every entry is covered ([04](04-security.md#audit-log)); with the external sink (Phase 2), no checkpoint that reached the sink |
 | `rpmgr_revocation_log_sink` | gauge | controller | 1 | 1 if a sink keeps the revocation log off the host, 0 for a single node without one ([Backup and restore](#backup-and-restore)) |
+| `rpmgr_kms_up` | gauge | controller | 2 | 1 while the last request to Transit succeeded, 0 after a failure; with `kek.source: kms` only |
+| `rpmgr_kms_requests_total{op,result}` | counter | controller | 2 | Transit requests by `encrypt`, `decrypt`, `rewrap` or `login` and `ok`, `denied`, `unavailable` or `error` |
+| `rpmgr_ca_root_offline` | gauge | controller | 2 | 1 when the root's key is offline ([04](04-security.md#offline-root-ca)) |
+| `rpmgr_ca_intermediate_signing_pending` | gauge | controller | 2 | 1 while the next intermediate waits for an offline root's signature |
+| `rpmgr_controller_nodes{state}` | gauge | controller | 2 | Replicas by `live` and `stale` ([06](06-data-model.md#system)) |
 | `rpmgr_revocation_log_unshipped` | gauge | controller | 1 | Revocation log entries the sink does not hold yet |
 | `rpmgr_revocation_log_oldest_unshipped_timestamp_seconds` | gauge | controller | 1 | When the oldest unshipped entry was logged, 0 when none; the alert "revocation log not yet off-host" fires 5 min after it |
 | `rpmgr_audit_sink_backlog{sink}` | gauge | controller | 2 | Audit entries and checkpoints a sink has not acknowledged ([04](04-security.md#audit-log)) |
@@ -1086,6 +1241,11 @@ followed gateway → connector → service. [R] Head sampling at 1 % by default,
 | Alert | Condition |
 |---|---|
 | Agent offline | No control session for 5 min |
+| Intermediate needs signing | `rpmgr_ca_intermediate_signing_pending` is 1 and the active intermediate expires within the lead time of [04](04-security.md#offline-root-ca) |
+| Root rotation stalled | The old root's overlap has ended and `rpmgr ca status` lists an enabled agent that does not hold the new root ([04](04-security.md#root-rotation)) |
+| Singleton job stalled | A job's lease is unheld for 2 min |
+| Key service unreachable | `rpmgr_kms_up` is 0 for 2 min |
+| Controller replica not live | `rpmgr_controller_nodes{state="stale"}` is above 0 for 5 min |
 | Configuration not applied | `apply_status` is `rejected` or `apply_timeout` |
 | Certificate renewal failing | Agent certificate expires in < 2 days (renewal normally happens at half-life) |
 | Public certificate expiring | ACME certificate expires in < 14 days |
@@ -1250,16 +1410,77 @@ Each runbook: **symptoms → steps → done when**.
   controller host (authorised by host access, audited as `local-cli`), or Settings → PKI in the UI
   (Instance Admin, step-up). Agents receive the new chain at their next renewal
   ([04](04-security.md#ca-rotation)).
-- **Done when**: every agent's certificate is issued by the new intermediate (Settings → PKI).
+- **With an offline root** the job does not issue at half-life; Settings → PKI says "intermediate
+  needs signing", and the alert is critical at the lead time of
+  [04](04-security.md#offline-root-ca):
+  1. `rpmgr ca rotate-intermediate --csr-out <request>` on the controller host (or take the request
+     the job made from `rpmgr ca status`). Note the key hash it prints.
+  2. Carry the request to the offline host and run `rpmgr ca sign-intermediate --root-file <file>
+     --csr <request> --out <certificate>`. It shows the key's hash: it must equal the one in step 1.
+     Confirm, and enter the passphrase.
+  3. Carry the certificate back and run `rpmgr ca import-intermediate --in <certificate>`. It
+     refuses a certificate that does not chain to the root, is not name-constrained to the trust
+     domain or has the wrong path length, and changes nothing then.
+- **Done when**: every agent's certificate is issued by the new intermediate (Settings → PKI), and
+  the notice is gone.
+
+### Take the root offline
+
+- **Steps** ([04](04-security.md#offline-root-ca)): choose offline media; `rpmgr ca offline-root
+  --out <file>` on the controller host, which generates the passphrase and shows it once (or
+  takes one you supply that passes the strength check): write it down and keep it apart from the
+  media; move the file to the media and **delete every other copy**, also on the controller host.
+  Then **rotate the KEK**, because the sealed key survives in free pages, dead tuples, the
+  write-ahead log and older backups: with a local KEK, provision a new one and run `rpmgr kek
+  rotate --previous-file <old KEK>`, then destroy the old KEK; with Transit, rotate the key, run
+  `rpmgr kek rotate` and raise the minimum decryption version. **Archives made before cannot be
+  opened afterwards, which is the point**: take a new backup. Keep a second copy of the media in
+  another place.
+- **Done when**: `rpmgr ca status` shows the root as offline and no longer warns about the KEK,
+  no database, backup or log on the controller host holds its key in the clear, and the file opens
+  on the offline host (run `rpmgr ca
+  sign-intermediate` once, and answer "no" at the confirmation).
+
+### Rotate the root
+
+- **Steps** ([04](04-security.md#root-rotation)): `rpmgr ca new-root` (with an offline root,
+  `--csr-out`, then sign the cross-certificate offline with `rpmgr ca sign-intermediate --kind
+  cross-root`, the new intermediate's key with the same command, and import both with `rpmgr ca
+  import-intermediate`). Issuing moves to the new root at once and every chain carries both
+  intermediates, so agents that know only the old root keep verifying. Watch Settings → PKI and
+  `rpmgr ca status` until no agent is a straggler; leave the old root in the bundle for the overlap
+  (the longest leaf lifetime plus the Reauth grace period). `rpmgr ca drop-root` before then is
+  refused with the date it is allowed. If the alert "root rotation stalled" fires, an enabled
+  agent cannot or did not take the new root, most often because it has no `trust.roots`: update,
+  re-enroll or decommission it, or `rpmgr ca drop-root --strand-stragglers` to drop the old root
+  and leave it to re-enroll. After the drop, agents that never saw the new root have to
+  re-enroll.
+- **Done when**: the bundle is the new root alone and every agent reports its digest.
 
 ### Root compromise
 
-- **Steps**: treat every certificate as untrusted. Generate a new trust bundle with a new root
-  (`rpmgr ca new-root --compromised`, Phase 2; in Phase 1, initialise a new controller), which
-  publishes a new pin. Re-enroll **every** agent with the
-  new `--ca-pin` (in-band rotation is not possible, [04](04-security.md#ca-rotation)). Investigate
-  how the KEK and database were exposed; rotate the KEK.
-- **Done when**: no agent presents a certificate from the old root.
+- **Steps**: treat every certificate as untrusted. This is a **hard cut of the data plane**
+  ([D179](14-open-decisions.md#engineering)): agents trust the old root until they re-enroll, so
+  they get no snapshot from the new controller, and the old key can mint identities they accept.
+  In Phase 1, initialise a new controller instead. From Phase 2:
+  1. Stop the gateways and connectors that you can reach, to end the exposure now rather than
+     when their certificates expire ([04](04-security.md#root-compromise)). Public traffic stops
+     with the gateways; that is the cost.
+  2. Stop every controller, then run `rpmgr ca new-root --compromised --tokens-out <file>` on the
+     controller host. It makes a new root in the **same trust domain**, new intermediate and
+     signing keys, marks every older CA key compromised and every certificate revoked, and writes
+     one re-enrollment token per connector and gateway to the file (mode 0600, never overwriting).
+     It prints the new `--ca-pin`.
+  3. Start the controller. It trusts the new root alone.
+  4. Re-enroll **every** agent with `rpmgr enroll --controller <url> --ca-pin <new pin>
+     --token-file <its token> --replace`, gateways first. An agent given the old pin finds no
+     matching root and stops. Identities and routes are kept.
+  5. Investigate how the KEK and database were exposed, and rotate the KEK.
+  Backups from before the command trust the old root: a restore of one **refuses**, because the
+  issuer revocation names a key that is active in it; use a later backup, or restore it and run the
+  command again before anything connects ([04](04-security.md#root-compromise)).
+- **Done when**: no agent presents a certificate from the old root, and every agent has re-enrolled
+  (`rpmgr ca status` lists none).
 
 ### Rotate the KEK
 
@@ -1269,6 +1490,14 @@ Each runbook: **symptoms → steps → done when**.
   re-wraps every data key in one transaction ([04](04-security.md#secrets-at-rest-and-in-logs));
   start the controllers; back up the new KEK separately; delete the old KEK's file and retire it
   after a successful backup and test restore.
+- **A Transit key** (`kek.source: kms`) rotates in Transit, and replicas keep running (a single
+  controller is stopped for it: the command takes the controller lock shared, so it is refused
+  beside one): rotate the key there, run `rpmgr kek rotate` (it calls `rewrap` for every wrapped
+  key, in batches), wait for `rpmgr kek status` to show none on an older key version, and only then
+  raise the key's minimum decryption version in Transit
+  ([04](04-security.md#kek-in-vault-or-openbao-transit)). **Moving** the KEK between a file or
+  credential and Transit, in either direction, needs every controller stopped: write the new boot
+  file, then `rpmgr kek rotate --previous-config <the old boot file>`.
 - **A systemd credential** is loaded only inside a unit: run a command that needs the KEK, such as
   `kek rotate` or `ca rotate-intermediate`, under `systemd-run --pipe --wait
   --property=LoadCredentialEncrypted=rpmgr-kek:/etc/rpmgr/credstore/rpmgr-kek`.
