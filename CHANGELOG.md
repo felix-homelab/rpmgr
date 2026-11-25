@@ -65,6 +65,11 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- `rpmgr migrate-db` copies a stopped controller's database into an empty one, from SQLite to
+  PostgreSQL or back, with the secrets still sealed and the database epoch kept. It retires the
+  source, which no controller then starts on, unless you pass `--no-retire`
+  ([guide](docs/guide/operations/sqlite-and-postgresql.md)). (#687)
+
 - The zone page now changes the zone's settings: whether it publishes route hostnames, allows
   proxied names and wildcards, and its delete threshold. Before, that took `rpmgr update zone` or
   the API. (#1156)

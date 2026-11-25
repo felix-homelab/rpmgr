@@ -370,6 +370,40 @@ func TestLocalAdmin(t *testing.T) {
 	}
 }
 
+// TestMigrateDB runs `rpmgr migrate-db` between two SQLite databases; the PostgreSQL directions and
+// the refusals are tested in internal/controller. A database address as an argument is refused
+// without echoing its password.
+func TestMigrateDB(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "controller.yaml")
+	boot := "version: 1\npublic_url: https://panel.example.com\n" +
+		"database: {dsn: " + filepath.Join(dir, "controller.db") + "}\n" +
+		"kek: {source: file, path: " + filepath.Join(dir, "kek") + "}\n"
+	if err := os.WriteFile(cfg, []byte(boot), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, stderr := runRpmgr("controller", "init", "--config", cfg); code != cli.ExitOK {
+		t.Fatalf("init: %q", stderr)
+	}
+	dst := filepath.Join(dir, "to.yaml")
+	if err := os.WriteFile(dst, []byte("version: 1\ndatabase: {driver: sqlite, dsn: "+filepath.Join(dir, "to.db")+"}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runRpmgr("migrate-db", "--from", cfg, "--to-file", dst)
+	for _, w := range []string{"TABLE", "instance", "the counts and content hashes agree", "no KEK was read", "The source is retired"} {
+		if code != cli.ExitOK || !strings.Contains(stdout, w) {
+			t.Errorf("migrate-db: exit %d, no %q in %q (stderr %q)", code, w, stdout, stderr)
+		}
+	}
+	if code, _, stderr := runRpmgr("migrate-db", "--from", dst, "--to-file", dst); code != cli.ExitError || !strings.Contains(stderr, "same database") {
+		t.Errorf("one database twice: exit %d, %q", code, stderr)
+	}
+	code, stdout, stderr = runRpmgr("migrate-db", "--from", "postgres://rpmgr:hunter2@db.example.com/rpmgr", "--to-file", dst)
+	if code != cli.ExitError || stdout != "" || strings.Contains(stderr, "hunter2") || !strings.Contains(stderr, "database address") {
+		t.Errorf("a DSN as an argument: exit %d, %q %q", code, stdout, stderr)
+	}
+}
+
 // TestControllerBootDefault (docs/16-cli.md): without --config and $RPMGR_CONFIG, the commands of
 // the controller host read /etc/rpmgr/controller.yaml, else, on an all-in-one host,
 // /etc/rpmgr/all-in-one.yaml. The test's boot files are not valid, so each command names the one
@@ -472,22 +506,26 @@ func TestEnrollCommand(t *testing.T) {
 
 func TestCommandLineErrors(t *testing.T) {
 	for _, args := range [][]string{
-		nil,                          // no command
-		{"bogus"},                    // unknown command
-		{"ca"},                       // group without command
-		{"ca", "bogus"},              // unknown sub-command
-		{"gateway", "--bogus"},       // unknown flag
-		{"gateway", "--config"},      // flag without value
-		{"version", "extra"},         // unexpected argument
-		{"controller", "positional"}, // a role takes no arguments
-		{"release", "import"},        // no directory
-		{"systemd-unit"},             // no role
-		{"systemd-unit", "relay"},    // no such role
-		{"kek", "rotate"},            // no previous KEK
-		{"migrate", "extra"},         // a local command takes no arguments
-		{"status", "extra"},          // an agent command takes no arguments
-		{"restore"},                  // no archive
-		{"backup"},                   // no archive
+		nil,                              // no command
+		{"bogus"},                        // unknown command
+		{"ca"},                           // group without command
+		{"ca", "bogus"},                  // unknown sub-command
+		{"gateway", "--bogus"},           // unknown flag
+		{"gateway", "--config"},          // flag without value
+		{"version", "extra"},             // unexpected argument
+		{"controller", "positional"},     // a role takes no arguments
+		{"release", "import"},            // no directory
+		{"systemd-unit"},                 // no role
+		{"systemd-unit", "relay"},        // no such role
+		{"kek", "rotate"},                // no previous KEK
+		{"migrate", "extra"},             // a local command takes no arguments
+		{"migrate-db"},                   // neither source nor target
+		{"migrate-db", "--from", "a"},    // no target
+		{"migrate-db", "--to-file", "b"}, // no source
+		{"migrate-db", "--from", "a", "--to-file", "b", "extra"}, // no arguments
+		{"status", "extra"}, // an agent command takes no arguments
+		{"restore"},         // no archive
+		{"backup"},          // no archive
 	} {
 		code, stdout, stderr := runRpmgr(args...)
 		if code != cli.ExitUsage || stdout != "" || !strings.Contains(stderr, "Usage:") {

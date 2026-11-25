@@ -4,6 +4,7 @@ package controller
 
 import (
 	"context"
+	"github.com/felix-homelab/rpmgr/internal/config"
 	"log/slog"
 	"testing"
 	"time"
@@ -91,4 +92,22 @@ func LoopbackWebhooks(o WebhookOptions) WebhookOptions {
 func OnRestoreStep(t testing.TB, f func(step string)) {
 	restoreHook = f
 	t.Cleanup(func() { restoreHook = nil })
+}
+
+// SetMigrateHook sets the hook MigrateDB calls at "before copy" and "after copy".
+func SetMigrateHook(t testing.TB, f func(stage string)) {
+	migrateHook = f
+	t.Cleanup(func() { migrateHook = nil })
+}
+
+// GiveFiles is giveFiles.
+var GiveFiles = giveFiles
+
+// PlanTarget notes the files of a SQLite target that do not exist yet; Finish(true) removes those.
+func PlanTarget(path string) (finish func(remove bool), err error) {
+	p, err := planTarget(config.Database{Driver: "sqlite", DSN: path})
+	if err != nil {
+		return nil, err
+	}
+	return p.finish, nil
 }

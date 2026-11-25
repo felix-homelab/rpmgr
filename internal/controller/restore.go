@@ -150,7 +150,7 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 	}
 	dsn := cfg.Database.DSN
 	state := filepath.Dir(dsn)
-	unlock, err := store.HoldLock(dsn)
+	unlock, err := store.HoldLockNoFollow(dsn)
 	if errors.Is(err, store.ErrLocked) {
 		return RestoreResult{}, ErrControllerRunning
 	}
