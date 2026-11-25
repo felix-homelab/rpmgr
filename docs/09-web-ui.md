@@ -877,8 +877,15 @@ one page, with a section list beside them that jumps to each section
 - **Saving** sends the settings as read with the page's fields changed, the mask of those fields and
   the etag (U1); a page never saves another page's fields. If the settings changed since they were
   read, the page says so and shows them as they are now.
-- [R] The boot settings of the information architecture are not shown in Phase 1: no API method
-  returns them. Showing them needs a method that returns the boot file without its secrets.
+- **Boot settings** (Phase 2, slice 8.17). Phase 1 shows none, because no API method returned them.
+  The instance settings page now ends with a read-only **Boot settings** section for the Instance
+  Admin, from `GetBootSettings` ([07](07-api.md#services)): the public URL, the listen addresses,
+  the database driver (for PostgreSQL its host, port, database, user and TLS mode), the KEK source
+  (for Transit its address, mount, key and login method), the revocation-log sink and the **path**
+  of the controller's boot file with the time it was loaded. It has no control that changes anything
+  and says that the file is edited on the host and read at the next restart. Secrets are not shown,
+  nor the path of a secret file: only the kind of source, such as "password: file". With replicas
+  the section names the replica that answered. Org settings and other roles never see it.
 - **The revocation log** ([10](10-operations.md#backup-and-restore)) is shown to the Instance Admin
   above the settings:
   - **No sink:** the standing warning that the log has no copy off the host.
