@@ -43,4 +43,16 @@ func TestPkiStatusWithPendingIntermediate(t *testing.T) {
 	if len(r.Msg.Keys) != 4 || r.Msg.RootPin == "" {
 		t.Fatalf("status shows %d keys and pin %q, want the 4 active keys and the root's pin", len(r.Msg.Keys), r.Msg.RootPin)
 	}
+	if !r.Msg.RootOffline {
+		t.Error("the status does not say that the root is offline")
+	}
+	// The Settings button rotates with the online root only: with an offline one it is refused, and
+	// says so.
+	if err := ada.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	_, err = ada.pki.RotateIntermediate(context.Background(), connect.NewRequest(&rpmgrv1.RotateIntermediateRequest{}))
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Errorf("RotateIntermediate with an offline root: %v", err)
+	}
 }

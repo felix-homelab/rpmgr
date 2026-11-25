@@ -308,6 +308,10 @@ func restoreCommand() *cli.Command {
 				"The replaced files are kept with the suffix %s. Start one controller, check /readyz, then the others;\n"+
 				"re-enroll agents enrolled after the backup.\n",
 				r.TrustDomain, r.Backup.UTC().Format(time.RFC3339), r.NewEpoch, r.OldEpoch, r.Reapplied, r.Unknown, dnsNote(r, dnsDisabled), r.Previous)
+			if err == nil && len(r.RootKeysDropped) > 0 {
+				_, err = fmt.Fprintf(env.Stdout, "\nThe backup still held the key of the root %s. It is restored without it, as the revocation log's\n"+
+					"root_offline marker says; the root signs only from its offline file.\n", strings.Join(r.RootKeysDropped, ", "))
+			}
 			if err == nil && len(r.Kept) > 0 {
 				_, err = fmt.Fprintf(env.Stdout, "\nNot applied again, check these on the Users page:\n  - %s\n", strings.Join(r.Kept, "\n  - "))
 			}
