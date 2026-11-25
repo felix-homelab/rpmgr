@@ -330,7 +330,7 @@ func TestDotSegmentsAndVersionSpellings(t *testing.T) {
 		if _, err := New(Config{Address: f.srv.URL, Key: "k", Mount: m, TokenFile: writeCred(t, "t", testToken)}); err == nil {
 			t.Errorf("mount %q accepted", m)
 		}
-		if _, err := New(Config{Address: f.srv.URL, Key: "k", AppRole: &AppRole{Mount: m, RoleIDFile: "a", SecretIDFile: "b"}}); err == nil && m != "./a" && m != "a/." {
+		if _, err := New(Config{Address: f.srv.URL, Key: "k", AppRole: &AppRole{Mount: m, RoleIDFile: "a", SecretIDFile: "b"}}); err == nil {
 			t.Errorf("AppRole mount %q accepted", m)
 		}
 	}

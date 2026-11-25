@@ -380,12 +380,23 @@ func (c *Client) acquire(ctx context.Context) error {
 	return nil
 }
 
-// probe asks a token from a file about its lease by renewing it once. A token that cannot be
-// renewed, as a root token or a non-renewable one, is used as it is until it fails.
+// probe asks a token from a file about its lease by renewing it once. A token that Transit says
+// cannot be renewed, as a root token or a non-renewable one, is used as it is until it fails; when
+// Transit cannot be asked, the token stays renewable and the next try is loginInterval away.
 func (c *Client) probe(ctx context.Context, tok secret.Value) (bool, time.Time) {
 	a, err := c.authCall(ctx, "auth/token/renew-self", nil, tok, maxRetries)
-	if err != nil || !a.Renewable || a.LeaseDuration <= 0 {
-		c.log.Debug("kms: token is not renewable", "renewed", err == nil)
+	if err != nil {
+		var te *Error
+		if errors.As(err, &te) && te.Status >= 400 && te.Status < 500 && te.Status != http.StatusTooManyRequests {
+			c.log.Debug("kms: token is not renewable", "status", te.Status)
+			return false, time.Time{}
+		}
+		// Transit could not be asked, which says nothing about the token: ask again later.
+		c.log.Warn("kms: token lease not known, asking again later", "error", errText(err))
+		return true, c.now().Add(loginInterval)
+	}
+	if !a.Renewable || a.LeaseDuration <= 0 {
+		c.log.Debug("kms: token is not renewable")
 		return false, time.Time{}
 	}
 	return true, c.now().Add(time.Duration(a.LeaseDuration) * time.Second / 2)
@@ -409,12 +420,20 @@ func (c *Client) refresh(ctx context.Context) error {
 		}
 		c.log.Warn("kms: token renewal failed", "error", errText(err))
 	}
-	if err := c.acquire(ctx); err != nil {
+	c.mu.Lock()
+	before := c.gen
+	c.mu.Unlock()
+	err := c.acquire(ctx)
+	if err != nil {
 		c.log.Warn("kms: new token not obtained", "error", errText(err))
-		c.mu.Lock()
-		c.renewAt = c.now().Add(loginInterval) // try again later, not at every request
-		c.mu.Unlock()
 	}
+	c.mu.Lock()
+	if c.gen == before {
+		// No new token, as with a failed login or a token file that has not changed: try again later,
+		// not at every request.
+		c.renewAt = c.now().Add(loginInterval)
+	}
+	c.mu.Unlock()
 	return nil
 }
 

@@ -486,7 +486,7 @@ func TestTokenRenewalFromFile(t *testing.T) {
 	if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(50 * time.Millisecond)
+	waitIdle(t, c)
 	if n := f.count("POST /v1/auth/token/renew-self"); n != probe+1 {
 		t.Errorf("renewed again too early: %d", n)
 	}
