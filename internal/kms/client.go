@@ -8,9 +8,11 @@ package kms
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -37,6 +39,8 @@ const (
 	maxRetries     = 3
 	maxRetryAfter  = 5 * time.Second
 	maxFile        = 64 << 10
+	loginInterval  = 30 * time.Second
+	authTimeout    = 60 * time.Second
 	maxErrMessage  = 200
 	defaultMount   = "transit"
 	defaultAppRole = "approle"
@@ -94,11 +98,17 @@ type Client struct {
 	sleep  func(context.Context, time.Duration) error
 	reqTTL time.Duration
 
+	latest    atomic.Int64                   // highest key version seen
 	creds     atomic.Pointer[[]secret.Value] // role and secret ID of the last login, to redact
 	mu        sync.Mutex
 	token     secret.Value
 	renewable bool
-	renewAt   time.Time // zero: the token is never renewed
+	renewAt   time.Time         // zero: the token is never renewed
+	sum       [sha256.Size]byte // of a token read from a file, to tell a replaced one
+	gen       uint64            // changes with every new token
+	flight    *flight
+	nextLogin time.Time
+	lastLogin error
 }
 
 // New returns a Client. It reads the CA file and checks the configuration but makes no call; Check
@@ -118,7 +128,7 @@ func New(cfg Config) (*Client, error) {
 	if mount == "" {
 		mount = defaultMount
 	}
-	if !mountRe.MatchString(mount) || strings.Contains(mount, "..") {
+	if !validMount(mount) {
 		return nil, errors.New("kms: the mount is not a valid Transit mount path")
 	}
 	if !keyRe.MatchString(cfg.Key) || cfg.Key == "." || cfg.Key == ".." {
@@ -134,7 +144,7 @@ func New(cfg Config) (*Client, error) {
 	}
 	if cfg.AppRole != nil && cfg.AppRole.Mount != "" {
 		m := strings.Trim(cfg.AppRole.Mount, "/")
-		if !mountRe.MatchString(m) || strings.Contains(m, "..") {
+		if !validMount(m) {
 			return nil, errors.New("kms: the AppRole mount is not a valid path")
 		}
 		a := *cfg.AppRole
@@ -170,26 +180,49 @@ func New(cfg Config) (*Client, error) {
 	}, nil
 }
 
-// loadCA reads a PEM bundle that holds certificates and nothing else.
+// validMount accepts a path of segments of letters, digits, underscore, dot and hyphen, none of
+// which is "." or "..".
+func validMount(m string) bool {
+	if !mountRe.MatchString(m) {
+		return false
+	}
+	for seg := range strings.SplitSeq(m, "/") {
+		if seg == "." || seg == ".." {
+			return false
+		}
+	}
+	return true
+}
+
+// loadCA reads a PEM bundle that holds certificates and nothing else: every block must be a
+// certificate that parses, and nothing may stand between or after the blocks.
 func loadCA(path string) (*x509.CertPool, error) {
 	data, err := readFile(path, "CA file", false)
 	if err != nil {
 		return nil, err
 	}
 	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM(data) {
-		return nil, fmt.Errorf("kms: CA file %s holds no certificate in PEM form", path)
-	}
+	n := 0
 	rest := bytes.TrimSpace(data)
 	for len(rest) > 0 {
-		if !bytes.HasPrefix(rest, []byte("-----BEGIN CERTIFICATE-----")) {
-			return nil, fmt.Errorf("kms: CA file %s holds something other than certificates", path)
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			return nil, fmt.Errorf("kms: CA file %s holds something other than PEM blocks", path)
 		}
-		end := bytes.Index(rest, []byte("-----END CERTIFICATE-----"))
-		if end < 0 {
-			return nil, fmt.Errorf("kms: CA file %s holds a certificate that does not end", path)
+		if block.Type != "CERTIFICATE" || len(block.Headers) != 0 {
+			return nil, fmt.Errorf("kms: CA file %s holds a PEM block that is not a plain certificate", path)
 		}
-		rest = bytes.TrimSpace(rest[end+len("-----END CERTIFICATE-----"):])
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("kms: CA file %s holds a certificate that does not parse", path)
+		}
+		pool.AddCert(cert)
+		n++
+		rest = bytes.TrimSpace(rest)
+	}
+	if n == 0 {
+		return nil, fmt.Errorf("kms: CA file %s holds no certificate in PEM form", path)
 	}
 	return pool, nil
 }
@@ -197,6 +230,12 @@ func loadCA(path string) (*x509.CertPool, error) {
 // readFile reads a regular file of at most maxFile bytes; a credential file must not be readable
 // by group or others.
 func readFile(path, what string, private bool) ([]byte, error) {
+	// A FIFO or a device would block the open; a symbolic link to a file is followed.
+	if pre, err := os.Stat(path); err != nil {
+		return nil, fmt.Errorf("kms: %s: %w", what, err)
+	} else if !pre.Mode().IsRegular() {
+		return nil, fmt.Errorf("kms: %s %s: not a regular file", what, path)
+	}
 	f, err := os.Open(path) //nolint:gosec // G304: the path is the operator's boot configuration
 	if err != nil {
 		return nil, fmt.Errorf("kms: %s: %w", what, err)
@@ -222,17 +261,18 @@ func readFile(path, what string, private bool) ([]byte, error) {
 	return data, nil
 }
 
-// readCredential reads a credential file and returns its content without surrounding white space.
-func readCredential(path, what string) (secret.Value, error) {
+// readCredential reads a credential file and returns its content without surrounding white space,
+// and a digest of it to tell a replaced credential.
+func readCredential(path, what string) (secret.Value, [sha256.Size]byte, error) {
 	data, err := readFile(path, what, true)
 	if err != nil {
-		return secret.Value{}, err
+		return secret.Value{}, [sha256.Size]byte{}, err
 	}
 	v := bytes.TrimSpace(data)
 	if len(v) == 0 {
-		return secret.Value{}, fmt.Errorf("kms: %s %s is empty", what, path)
+		return secret.Value{}, [sha256.Size]byte{}, fmt.Errorf("kms: %s %s is empty", what, path)
 	}
-	return secret.FromBytes(v), nil
+	return secret.FromBytes(v), sha256.Sum256(v), nil
 }
 
 func sleepCtx(ctx context.Context, d time.Duration) error {
@@ -255,75 +295,159 @@ type authInfo struct {
 	Renewable     bool   `json:"renewable"`
 }
 
-// currentToken returns a token that is valid now: it loads one at first use and renews or
-// replaces one that has reached half its lease.
-func (c *Client) currentToken(ctx context.Context) (secret.Value, error) {
+// flight is one login, token read or renewal that every caller who needs it waits for. It runs
+// outside c.mu, on a context of its own, so that a caller's deadline ends that caller's wait and
+// nothing else.
+type flight struct {
+	done chan struct{}
+	err  error
+}
+
+// flightLocked starts fn unless an authentication step is already running, and returns the step
+// that runs. The caller holds c.mu.
+func (c *Client) flightLocked(fn func(context.Context) error) *flight {
+	if c.flight != nil {
+		return c.flight
+	}
+	f := &flight{done: make(chan struct{})}
+	c.flight = f
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), authTimeout)
+		defer cancel()
+		err := fn(ctx)
+		c.mu.Lock()
+		f.err, c.flight = err, nil
+		c.mu.Unlock()
+		close(f.done)
+	}()
+	return f
+}
+
+// wait returns the result of f, or when ctx ends first, an error for this caller alone.
+func (c *Client) wait(ctx context.Context, f *flight) error {
+	select {
+	case <-f.done:
+		return f.err
+	case <-ctx.Done():
+		return fmt.Errorf("%w: waiting for the credential: %s", ErrUnavailable, transportText(ctx.Err()))
+	}
+}
+
+// currentToken returns a token to use and its generation. The first call loads one and waits for
+// it; a renewal that is due runs in the background while the current token stays in use.
+func (c *Client) currentToken(ctx context.Context) (secret.Value, uint64, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.token.IsZero() {
-		if err := c.acquireLocked(ctx); err != nil {
-			return secret.Value{}, err
+		f := c.flightLocked(c.acquire)
+		c.mu.Unlock()
+		if err := c.wait(ctx, f); err != nil {
+			return secret.Value{}, 0, err
 		}
+		c.mu.Lock()
 	}
 	if !c.renewAt.IsZero() && !c.now().Before(c.renewAt) {
-		c.refreshLocked(ctx)
+		c.flightLocked(c.refresh)
 	}
-	return c.token, nil
+	tok, gen := c.token, c.gen
+	c.mu.Unlock()
+	return tok, gen, nil
 }
 
-// acquireLocked reads the token file or logs in.
-func (c *Client) acquireLocked(ctx context.Context) error {
-	if c.cfg.TokenFile != "" {
-		tok, err := readCredential(c.cfg.TokenFile, "token file")
-		if err != nil {
-			return err
-		}
-		c.token, c.renewable, c.renewAt = tok, false, time.Time{}
-		c.probeLocked(ctx)
-		return nil
-	}
-	return c.loginLocked(ctx)
+// setToken installs a token and starts a new generation.
+func (c *Client) setToken(tok secret.Value, sum [sha256.Size]byte, renewable bool, renewAt time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.token, c.sum, c.renewable, c.renewAt = tok, sum, renewable, renewAt
+	c.gen++
 }
 
-// probeLocked asks a token from a file about its lease by renewing it once. A token that cannot be
-// renewed, as a root token or a non-renewable one, is used as it is until it fails.
-func (c *Client) probeLocked(ctx context.Context) {
-	a, err := c.authCall(ctx, "auth/token/renew-self", nil, c.token)
-	if err != nil || !a.Renewable || a.LeaseDuration <= 0 {
-		c.log.Debug("kms: token is not renewable", "renewed", err == nil)
-		return
+// acquire reads the token file or logs in. A token file that holds the token already in use
+// changes nothing.
+func (c *Client) acquire(ctx context.Context) error {
+	if c.cfg.TokenFile == "" {
+		return c.login(ctx)
 	}
-	c.renewable = true
-	c.renewAt = c.now().Add(time.Duration(a.LeaseDuration) * time.Second / 2)
-}
-
-// refreshLocked renews the token at half its lease; when it cannot, or when it is not renewable,
-// it logs in again or reads the file again. A failure keeps the old token for the next request,
-// which fails with the answer of Transit if the token is no longer valid.
-func (c *Client) refreshLocked(ctx context.Context) {
-	if c.renewable {
-		a, err := c.authCall(ctx, "auth/token/renew-self", nil, c.token)
-		if err == nil && a.LeaseDuration > 0 {
-			c.renewAt = c.now().Add(time.Duration(a.LeaseDuration) * time.Second / 2)
-			c.log.Debug("kms: token renewed", "lease_s", a.LeaseDuration)
-			return
-		}
-		c.log.Warn("kms: token renewal failed", "error", errText(err))
-	}
-	if err := c.acquireLocked(ctx); err != nil {
-		c.log.Warn("kms: new token not obtained", "error", errText(err))
-		c.renewAt = c.now().Add(30 * time.Second) // try again later, not at every request
-	}
-}
-
-// loginLocked logs in with AppRole. The secret ID file is read again each time.
-func (c *Client) loginLocked(ctx context.Context) error {
-	ar := c.cfg.AppRole
-	roleID, err := readCredential(ar.RoleIDFile, "role ID file")
+	tok, sum, err := readCredential(c.cfg.TokenFile, "token file")
 	if err != nil {
 		return err
 	}
-	secretID, err := readCredential(ar.SecretIDFile, "secret ID file")
+	c.mu.Lock()
+	same := !c.token.IsZero() && c.sum == sum
+	c.mu.Unlock()
+	if same {
+		return nil
+	}
+	renewable, renewAt := c.probe(ctx, tok)
+	c.setToken(tok, sum, renewable, renewAt)
+	return nil
+}
+
+// probe asks a token from a file about its lease by renewing it once. A token that cannot be
+// renewed, as a root token or a non-renewable one, is used as it is until it fails.
+func (c *Client) probe(ctx context.Context, tok secret.Value) (bool, time.Time) {
+	a, err := c.authCall(ctx, "auth/token/renew-self", nil, tok, maxRetries)
+	if err != nil || !a.Renewable || a.LeaseDuration <= 0 {
+		c.log.Debug("kms: token is not renewable", "renewed", err == nil)
+		return false, time.Time{}
+	}
+	return true, c.now().Add(time.Duration(a.LeaseDuration) * time.Second / 2)
+}
+
+// refresh renews the token at half its lease; when it cannot, or when the token is not renewable,
+// it logs in again or reads the file again. A failure keeps the old token, which fails with the
+// answer of Transit if it is no longer valid, and the next try is 30 s away.
+func (c *Client) refresh(ctx context.Context) error {
+	c.mu.Lock()
+	tok, renewable := c.token, c.renewable
+	c.mu.Unlock()
+	if renewable {
+		a, err := c.authCall(ctx, "auth/token/renew-self", nil, tok, maxRetries)
+		if err == nil && a.LeaseDuration > 0 {
+			c.mu.Lock()
+			c.renewAt = c.now().Add(time.Duration(a.LeaseDuration) * time.Second / 2)
+			c.mu.Unlock()
+			c.log.Debug("kms: token renewed", "lease_s", a.LeaseDuration)
+			return nil
+		}
+		c.log.Warn("kms: token renewal failed", "error", errText(err))
+	}
+	if err := c.acquire(ctx); err != nil {
+		c.log.Warn("kms: new token not obtained", "error", errText(err))
+		c.mu.Lock()
+		c.renewAt = c.now().Add(loginInterval) // try again later, not at every request
+		c.mu.Unlock()
+	}
+	return nil
+}
+
+// login logs in with AppRole, at most once in loginInterval. The secret ID file is read again each
+// time, and a login is not repeated on a 5xx: each one uses a secret ID and starts a lease.
+func (c *Client) login(ctx context.Context) error {
+	c.mu.Lock()
+	if c.now().Before(c.nextLogin) {
+		last := c.lastLogin
+		c.mu.Unlock()
+		if last != nil {
+			return fmt.Errorf("kms: AppRole login is tried at most once in %s; the last one failed: %w", loginInterval, last)
+		}
+		return fmt.Errorf("kms: AppRole login is tried at most once in %s", loginInterval)
+	}
+	c.nextLogin = c.now().Add(loginInterval)
+	c.mu.Unlock()
+	err := c.loginOnce(ctx)
+	c.mu.Lock()
+	c.lastLogin = err
+	c.mu.Unlock()
+	return err
+}
+
+func (c *Client) loginOnce(ctx context.Context) error {
+	ar := c.cfg.AppRole
+	roleID, _, err := readCredential(ar.RoleIDFile, "role ID file")
+	if err != nil {
+		return err
+	}
+	secretID, _, err := readCredential(ar.SecretIDFile, "secret ID file")
 	if err != nil {
 		return err
 	}
@@ -336,48 +460,71 @@ func (c *Client) loginLocked(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	a, err := c.authCall(ctx, "auth/"+mount+"/login", body, secret.Value{}, roleID, secretID)
+	a, err := c.authCall(ctx, "auth/"+mount+"/login", body, secret.Value{}, 0, roleID, secretID)
 	if err != nil {
 		return fmt.Errorf("kms: AppRole login: %w", err)
 	}
 	if a.ClientToken == "" {
 		return errors.New("kms: AppRole login: the answer holds no token")
 	}
-	c.token, c.renewable = secret.New(a.ClientToken), a.Renewable
-	c.renewAt = time.Time{}
+	var renewAt time.Time
 	if a.LeaseDuration > 0 {
-		c.renewAt = c.now().Add(time.Duration(a.LeaseDuration) * time.Second / 2)
+		renewAt = c.now().Add(time.Duration(a.LeaseDuration) * time.Second / 2)
 	}
+	c.setToken(secret.New(a.ClientToken), [sha256.Size]byte{}, a.Renewable, renewAt)
 	c.log.Debug("kms: logged in with AppRole", "lease_s", a.LeaseDuration, "renewable", a.Renewable)
 	return nil
 }
 
 // authCall posts to an auth path and returns its auth block. A nil body is an empty object.
-func (c *Client) authCall(ctx context.Context, path string, body []byte, token secret.Value, extra ...secret.Value) (authInfo, error) {
+func (c *Client) authCall(ctx context.Context, path string, body []byte, token secret.Value, retries int, extra ...secret.Value) (authInfo, error) {
 	if body == nil {
 		body = []byte("{}")
 	}
 	var out struct {
 		Auth authInfo `json:"auth"`
 	}
-	if err := c.send(ctx, http.MethodPost, path, body, token, &out, extra...); err != nil {
+	if err := c.send(ctx, http.MethodPost, path, body, token, &out, retries, extra...); err != nil {
 		return authInfo{}, err
 	}
 	return out.Auth, nil
 }
 
-// reauth is called at the first 403 of a request: it reads the token file again or logs in again.
-// It reports whether the token changed.
-func (c *Client) reauth(ctx context.Context, old secret.Value) (bool, error) {
+// reauth is called at the first 403 of a request made with the token of generation gen. It reports
+// whether a different token is now in use. With a token file it reads the file again. With AppRole
+// it first asks Transit whether the token is still valid, since then the 403 is a policy denial
+// that a new login would not change; only a token that is no longer valid gets a new login.
+func (c *Client) reauth(ctx context.Context, gen uint64) (bool, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.token.Reveal() != old.Reveal() {
+	if c.gen != gen {
+		c.mu.Unlock()
 		return true, nil // another request has already replaced it
 	}
-	if err := c.acquireLocked(ctx); err != nil {
+	tok := c.token
+	c.mu.Unlock()
+	if c.cfg.AppRole != nil {
+		err := c.send(ctx, http.MethodGet, "auth/token/lookup-self", nil, tok, nil, 0)
+		if err == nil {
+			return false, nil // valid: the policy denies this call
+		}
+		var te *Error
+		if !errors.As(err, &te) || te.Status != http.StatusForbidden {
+			return false, err
+		}
+	}
+	c.mu.Lock()
+	if c.gen != gen {
+		c.mu.Unlock()
+		return true, nil
+	}
+	f := c.flightLocked(c.acquire)
+	c.mu.Unlock()
+	if err := c.wait(ctx, f); err != nil {
 		return false, err
 	}
-	return c.token.Reveal() != old.Reveal() || c.cfg.AppRole != nil, nil
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.gen != gen, nil
 }
 
 // ---- requests ----
@@ -408,25 +555,26 @@ type reply struct {
 }
 
 // do runs an authenticated request with the token of the client. At the first 403 it takes a new
-// token and repeats once.
-func (c *Client) do(ctx context.Context, method, path string, body []byte, out any) error {
-	tok, err := c.currentToken(ctx)
+// token, if there is one, and repeats once. redact are values, such as a data key, that must not
+// appear in any message.
+func (c *Client) do(ctx context.Context, method, path string, body []byte, out any, redact ...secret.Value) error {
+	tok, gen, err := c.currentToken(ctx)
 	if err != nil {
 		return err
 	}
-	err = c.send(ctx, method, path, body, tok, out)
+	err = c.send(ctx, method, path, body, tok, out, maxRetries, redact...)
 	var te *Error
 	if errors.As(err, &te) && te.Status == http.StatusForbidden {
-		c.log.Debug("kms: 403, taking the credential again")
-		changed, rerr := c.reauth(ctx, tok)
+		c.log.Debug("kms: 403, checking the credential")
+		changed, rerr := c.reauth(ctx, gen)
 		if rerr != nil {
-			return fmt.Errorf("%w (and the credential could not be read again: %s)", err, errText(rerr))
+			return fmt.Errorf("%w (and the credential could not be renewed: %s)", err, errText(rerr))
 		}
 		if changed {
 			c.mu.Lock()
 			tok = c.token
 			c.mu.Unlock()
-			err = c.send(ctx, method, path, body, tok, out)
+			err = c.send(ctx, method, path, body, tok, out, maxRetries, redact...)
 		}
 	}
 	return err
@@ -434,7 +582,7 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte, out a
 
 // send makes one request with the retries of docs/03: a connection error, a 429 or a 5xx is tried
 // again at most three times. secrets are values to redact from any message.
-func (c *Client) send(ctx context.Context, method, path string, body []byte, token secret.Value, out any, secrets ...secret.Value) error {
+func (c *Client) send(ctx context.Context, method, path string, body []byte, token secret.Value, out any, retries int, secrets ...secret.Value) error {
 	redact := append([]secret.Value{token}, secrets...)
 	if known := c.creds.Load(); known != nil {
 		redact = append(redact, *known...)
@@ -456,7 +604,7 @@ func (c *Client) send(ctx context.Context, method, path string, body []byte, tok
 		var tr *transportError
 		retry := errors.As(err, &tr) && tr.retry && ctx.Err() == nil ||
 			errors.As(err, &te) && (te.Status == http.StatusTooManyRequests || te.Status >= 500)
-		if !retry || attempt >= maxRetries {
+		if !retry || attempt >= retries {
 			return last
 		}
 		d := retryBackoff[attempt]
@@ -495,7 +643,7 @@ func (c *Client) once(ctx context.Context, method, path string, body []byte, tok
 		return reply{}, 0, newTransportError(err)
 	}
 	if len(data) > maxResponse {
-		return reply{}, 0, fmt.Errorf("kms: the answer is longer than %d bytes", maxResponse)
+		return reply{}, 0, fmt.Errorf("%w: the answer is longer than %d bytes", ErrUnavailable, maxResponse)
 	}
 	c.log.Debug("kms: transit answered", "method", method, "path", path, "status", resp.StatusCode)
 	if resp.StatusCode/100 == 2 {

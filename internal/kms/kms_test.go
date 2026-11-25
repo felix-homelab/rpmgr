@@ -56,7 +56,7 @@ func TestSealerOverTransit(t *testing.T) {
 		t.Fatal(err)
 	}
 	v, err := s.Open(sc, sealed)
-	if err != nil || v.Reveal() != "low-entropy-value" {
+	if err != nil || !v.EqualString("low-entropy-value") {
 		t.Fatalf("Open = %v", err)
 	}
 	if ver, err := secret.KEKVersion(sealed); err != nil || ver != "transit/rpmgr@v1" {
@@ -343,7 +343,7 @@ func TestResponseLargerThanLimit(t *testing.T) {
 		return false
 	}
 	_, err := c.Wrap(ctxA, dk, aadA)
-	if err == nil || !strings.Contains(err.Error(), "longer than") {
+	if !errors.Is(err, ErrUnavailable) || !strings.Contains(err.Error(), "longer than") {
 		t.Fatalf("Wrap = %v, want a size error", err)
 	}
 	if len(*sleeps) != 0 {
@@ -479,14 +479,14 @@ func TestTokenRenewalFromFile(t *testing.T) {
 	if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
 		t.Fatal(err)
 	}
-	if n := f.count("POST /v1/auth/token/renew-self"); n != probe+1 {
-		t.Errorf("%d renew-self calls at half the lease, want %d", n, probe+1)
-	}
+	// The renewal runs in the background while the current token stays in use.
+	waitCount(t, f, "POST /v1/auth/token/renew-self", probe+1)
 	// The next renewal is half a lease after this one.
 	clk.advance(49 * time.Second)
 	if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
 		t.Fatal(err)
 	}
+	time.Sleep(50 * time.Millisecond)
 	if n := f.count("POST /v1/auth/token/renew-self"); n != probe+1 {
 		t.Errorf("renewed again too early: %d", n)
 	}
@@ -521,9 +521,7 @@ func TestAppRoleLoginRenewalAndRelogin(t *testing.T) {
 	if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
 		t.Fatal(err)
 	}
-	if n := f.count("POST /v1/auth/token/renew-self"); n != 1 {
-		t.Errorf("%d renewals at half the lease, want 1", n)
-	}
+	waitCount(t, f, "POST /v1/auth/token/renew-self", 1)
 	if n := f.count("POST /v1/auth/approle/login"); n != 1 {
 		t.Errorf("logged in again though the renewal worked: %d", n)
 	}
@@ -557,9 +555,7 @@ func TestAppRoleNonRenewableLogsInAtHalfLease(t *testing.T) {
 	if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
 		t.Fatal(err)
 	}
-	if n := f.count("POST /v1/auth/approle/login"); n != 2 {
-		t.Errorf("%d logins, want 2", n)
-	}
+	waitCount(t, f, "POST /v1/auth/approle/login", 2)
 	if n := f.count("POST /v1/auth/token/renew-self"); n != 0 {
 		t.Errorf("%d renewals of a non-renewable token", n)
 	}
@@ -682,5 +678,19 @@ func TestTLSMinimumVersion(t *testing.T) {
 	}
 	if tr.Proxy != nil {
 		t.Error("a proxy is set")
+	}
+}
+
+// waitCount waits until the fake has seen n requests of a kind; a background step makes them.
+func waitCount(t *testing.T, f *fakeTransit, key string, n int) {
+	t.Helper()
+	for range 200 {
+		if f.count(key) >= n {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := f.count(key); got != n {
+		t.Fatalf("%d requests of %s, want %d", got, key, n)
 	}
 }

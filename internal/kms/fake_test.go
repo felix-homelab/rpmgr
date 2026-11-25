@@ -108,6 +108,8 @@ type fakeTransit struct {
 	lease    int64 // seconds, of logins and renewals
 	renew    bool
 	issued   int
+	minDec   int      // minimum decryption version; 0 is none
+	deny     []string // path prefixes (after the mount) that the policy denies
 	// override handles a request before the fake does, when it returns true.
 	override func(w http.ResponseWriter, r *http.Request) bool
 	// release ends handlers that wait, when the test is over.
@@ -179,6 +181,13 @@ func (f *fakeTransit) handle(w http.ResponseWriter, r *http.Request) {
 		f.reply(w, 200, map[string]any{"auth": map[string]any{
 			"client_token": tok, "lease_duration": f.lease, "renewable": f.renew}})
 		return
+	case "auth/token/lookup-self":
+		if !f.tokens[r.Header.Get("X-Vault-Token")] {
+			f.fail(w, http.StatusForbidden, "permission denied")
+			return
+		}
+		f.reply(w, 200, map[string]any{"data": map[string]any{"ttl": f.lease}})
+		return
 	case "auth/token/renew-self":
 		if !f.tokens[r.Header.Get("X-Vault-Token")] {
 			f.fail(w, http.StatusForbidden, "permission denied")
@@ -198,6 +207,12 @@ func (f *fakeTransit) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	op, name, _ := strings.Cut(strings.TrimPrefix(path, prefix), "/")
+	for _, d := range f.deny {
+		if op == d {
+			f.fail(w, http.StatusForbidden, "1 error occurred: permission denied")
+			return
+		}
+	}
 	if name != f.key {
 		f.fail(w, http.StatusBadRequest, "encryption key not found")
 		return
@@ -223,16 +238,16 @@ func (f *fakeTransit) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		f.reply(w, 200, map[string]any{"data": map[string]any{"ciphertext": f.seal(f.latest, ctxBytes, pt)}})
 	case "decrypt":
-		pt, ok := f.open(in["ciphertext"], ctxBytes)
-		if !ok {
-			f.fail(w, http.StatusBadRequest, "cipher: message authentication failed")
+		pt, msg := f.open(in["ciphertext"], ctxBytes)
+		if msg != "" {
+			f.fail(w, http.StatusBadRequest, msg)
 			return
 		}
 		f.reply(w, 200, map[string]any{"data": map[string]any{"plaintext": base64.StdEncoding.EncodeToString(pt)}})
 	case "rewrap":
-		pt, ok := f.open(in["ciphertext"], ctxBytes)
-		if !ok {
-			f.fail(w, http.StatusBadRequest, "cipher: message authentication failed")
+		pt, msg := f.open(in["ciphertext"], ctxBytes)
+		if msg != "" {
+			f.fail(w, http.StatusBadRequest, msg)
 			return
 		}
 		f.reply(w, 200, map[string]any{"data": map[string]any{"ciphertext": f.seal(f.latest, ctxBytes, pt)}})
@@ -263,23 +278,32 @@ func (f *fakeTransit) seal(version int, ctx, pt []byte) string {
 	return fmt.Sprintf("vault:v%d:%s", version, base64.StdEncoding.EncodeToString(g.Seal(nonce, nonce, pt, nil)))
 }
 
-func (f *fakeTransit) open(ct string, ctx []byte) ([]byte, bool) {
+// open returns the plaintext of a ciphertext, or the message Transit gives for why it does not open.
+func (f *fakeTransit) open(ct string, ctx []byte) ([]byte, string) {
 	rest, ok := strings.CutPrefix(ct, "vault:v")
 	if !ok {
-		return nil, false
+		return nil, "invalid ciphertext: no prefix"
 	}
 	vs, b64, ok := strings.Cut(rest, ":")
 	v, err := strconv.Atoi(vs)
 	raw, err2 := base64.StdEncoding.DecodeString(b64)
-	if !ok || err != nil || err2 != nil || v < 1 || v > f.latest {
-		return nil, false
+	switch {
+	case !ok || err != nil || err2 != nil || v < 1:
+		return nil, "invalid ciphertext: unable to decode"
+	case v > f.latest:
+		return nil, "invalid ciphertext: version is too new"
+	case v < f.minDec:
+		return nil, "ciphertext or signature version is disallowed by policy (too old)"
 	}
 	g := f.versionKey(v, ctx)
 	if len(raw) < g.NonceSize() {
-		return nil, false
+		return nil, "invalid ciphertext: unable to decode"
 	}
 	pt, err := g.Open(nil, raw[:g.NonceSize()], raw[g.NonceSize():], nil)
-	return pt, err == nil
+	if err != nil {
+		return nil, "cipher: message authentication failed"
+	}
+	return pt, ""
 }
 
 // writeCred writes a credential file with mode 0600 and returns its path.

@@ -237,12 +237,18 @@ func KEKVersion(sealed []byte) (string, error) {
 	if h.kind == KindTransit {
 		// "vault:v<n>:<base64>" gives the key version: "<mount>/<key>@v<n>".
 		if v, ok := strings.CutPrefix(string(h.wrapped), "vault:v"); ok {
-			if n, _, ok := strings.Cut(v, ":"); ok && n != "" && strings.Trim(n, "0123456789") == "" {
+			if n, _, ok := strings.Cut(v, ":"); ok && validKeyVersion(n) {
 				return string(h.id) + "@v" + n, nil
 			}
 		}
 	}
 	return string(h.id), nil
+}
+
+// validKeyVersion is a decimal number from 1 to 9999999999 without a leading zero, the form
+// Transit writes, so that one key version has one spelling in secrets_meta.
+func validKeyVersion(n string) bool {
+	return n != "" && len(n) <= 10 && n[0] != '0' && strings.Trim(n, "0123456789") == ""
 }
 
 // parsed is a sealed value taken apart and its data key unwrapped.

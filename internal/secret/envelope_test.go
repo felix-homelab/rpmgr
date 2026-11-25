@@ -620,12 +620,15 @@ func TestKEKVersionOfTransit(t *testing.T) {
 		return append(b, make([]byte, nonceLen+tagLen)...)
 	}
 	for wrapped, want := range map[string]string{
-		"vault:v1:AAAA":  "transit/rpmgr@v1",
-		"vault:v12:AAAA": "transit/rpmgr@v12",
-		"vault:v:AAAA":   "transit/rpmgr",
-		"vault:vx1:AAAA": "transit/rpmgr",
-		"vault:v1":       "transit/rpmgr",
-		"other":          "transit/rpmgr",
+		"vault:v1:AAAA":           "transit/rpmgr@v1",
+		"vault:v12:AAAA":          "transit/rpmgr@v12",
+		"vault:v:AAAA":            "transit/rpmgr",
+		"vault:vx1:AAAA":          "transit/rpmgr",
+		"vault:v01:AAAA":          "transit/rpmgr",
+		"vault:v0:AAAA":           "transit/rpmgr",
+		"vault:v12345678901:AAAA": "transit/rpmgr",
+		"vault:v1":                "transit/rpmgr",
+		"other":                   "transit/rpmgr",
 	} {
 		if got, err := KEKVersion(hdr(wrapped)); err != nil || got != want {
 			t.Errorf("KEKVersion(%q) = %q, %v; want %q", wrapped, got, err, want)
