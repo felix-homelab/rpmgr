@@ -430,7 +430,7 @@ func readSource(path string) ([]revlog.Entry, error) {
 	if !st.IsDir() {
 		return revlog.Read(path)
 	}
-	sink, err := revlog.Sink{Dir: path}.Read()
+	sink, err := revlog.NewSink(revlog.DirBackend{Dir: path}).Read()
 	if err != nil {
 		return nil, err
 	}

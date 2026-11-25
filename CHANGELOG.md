@@ -17,6 +17,10 @@ Changes to the design documents are not recorded here: see the git history and t
   way back to the older release.
 - A page-token or gateway-page-preview link issued before the upgrade stops working once, as an
   expired one does; the client starts its list again.
+- The revocation-log sink directory names new entries with 20 digits (`00000000000000000004`).
+  Files of earlier releases (`1`, `2`, ...) are read as they are and never renamed. An earlier
+  release cannot read a padded name, so upgrade every controller replica promptly and do not
+  downgrade after the first new entry.
 
 ### Changed
 
