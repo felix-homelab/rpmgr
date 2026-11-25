@@ -108,7 +108,11 @@ func OpenSQLite(ctx context.Context, path string, o SQLiteOptions) (*DB, error) 
 	if path == "" || strings.ContainsAny(path, "?#%") {
 		return nil, fmt.Errorf("store: SQLite path %q: must not be empty or contain '?', '#' or '%%'", path)
 	}
-	path = ResolvePath(path)
+	if o.Create { // the file itself is never resolved: a link there is refused below
+		path = filepath.Join(ResolvePath(filepath.Dir(path)), filepath.Base(path))
+	} else {
+		path = ResolvePath(path)
+	}
 	db := &DB{Dialect: SQLite, Path: path, unlock: func() error { return nil }}
 	if o.Lock {
 		unlock, err := lockFile(path + ".lock")
@@ -127,6 +131,11 @@ func OpenSQLite(ctx context.Context, path string, o SQLiteOptions) (*DB, error) 
 		case !errors.Is(err, os.ErrExist):
 			_ = db.Close()
 			return nil, fmt.Errorf("store: create %s: %w", path, err)
+		default: // it exists: anything but a regular file, a link included, is refused
+			if fi, err := os.Lstat(path); err != nil || !fi.Mode().IsRegular() {
+				_ = db.Close()
+				return nil, fmt.Errorf("store: create %s: it exists and is not a regular file: %v", path, err)
+			}
 		}
 	}
 	var err error

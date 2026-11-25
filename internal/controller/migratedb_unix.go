@@ -25,6 +25,3 @@ func dirOwner(dir string) (uid, gid int, ok bool) {
 	}
 	return int(st.Uid), int(st.Gid), true
 }
-
-// openNoFollow makes an open fail on a link and not block on a special file.
-const openNoFollow = syscall.O_NOFOLLOW | syscall.O_NONBLOCK

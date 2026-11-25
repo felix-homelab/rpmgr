@@ -596,9 +596,10 @@ and so do `rpmgr backup` and `rpmgr restore` for PostgreSQL
   retired database**. Every command that opens the database without the controller lock refuses a
   retired one too, naming `retired_to`, and checks again inside each write transaction (a share lock
   on the instance row on PostgreSQL), so a write that waited for the retirement never lands in the
-  retired database. A lock, journal or shared-memory file that is a link is refused, and no lock
-  file is opened through a link. `--no-retire` leaves the source usable, for a test copy, and says
-  so. A restore creates a new database, which is not retired; it keeps the database it replaces,
-  retired or not, under the suffix of the replaced files, and `restore --replaces` warns when it
-  names a retired one (slice 8.5). Backup and restore never retire anything
-  ([10](10-operations.md#moving-between-sqlite-and-postgresql)).
+  retired database. A database, lock, journal or shared-memory file that is a link, a special file
+  or has a second name is refused, no lock file is opened through a link, and `migrate-db` runs as
+  the owner of the directories it works in and never changes an owner. `--no-retire` leaves the
+  source usable, for a test copy, and says so. A restore creates a new database, which is not
+  retired; it keeps the database it replaces, retired or not, under the suffix of the replaced
+  files, and `restore --replaces` warns when it names a retired one (slice 8.5). Backup and restore
+  never retire anything ([10](10-operations.md#moving-between-sqlite-and-postgresql)).

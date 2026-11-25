@@ -12,6 +12,10 @@ Changes to the design documents are not recorded here: see the git history and t
 
 **Upgrade notes** ([Upgrades](docs/guide/install/upgrades.md)):
 
+- A SQLite database whose path is a symbolic link is now locked under the name of the file it points
+  to (`<file>.lock`), not under the link's. A controller of an earlier release that is still
+  running locks the old name, so stop it before you upgrade or run `rpmgr restore`, `rpmgr migrate`
+  or `rpmgr migrate-db` against such a database.
 - After the first start of this release, secrets are written in a new format that an older release
   cannot read. Take a backup of the database and the KEK before you upgrade; without it there is no
   way back to the older release.

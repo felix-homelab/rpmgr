@@ -275,6 +275,15 @@ func BeginSource(ctx context.Context, db *DB) (*SourceTx, error) {
 			return errors.Join(err, conn.Close())
 		}
 	}
+	if db.Dialect == Postgres {
+		// First, before any statement takes a snapshot: it waits for the writers that hold a share
+		// lock on the instance row (lock-free commands that have checked for a retirement), so what
+		// they commit is in the copy, and none starts until the retirement commits.
+		if _, err := t.ExecContext(ctx, "LOCK TABLE instance IN EXCLUSIVE MODE"); err != nil {
+			_ = t.done(false)
+			return nil, fmt.Errorf("store: begin source: %w", err)
+		}
+	}
 	if _, err := t.ExecContext(ctx, "UPDATE instance SET retired_at = retired_at"); err != nil {
 		_ = t.done(false)
 		return nil, fmt.Errorf("store: begin source: the database cannot be written: %w", err)

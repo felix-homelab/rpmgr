@@ -696,11 +696,10 @@ func TestMigrateDB_ReadOnlySource(t *testing.T) {
 }
 
 // TestMigrateDB_TargetFile (S5): a SQLite target the command creates has mode 0600, as a restore
-// makes it, and, when root runs the command, the owner of its directory.
+// makes it.
 func TestMigrateDB_TargetFile(t *testing.T) {
 	src := newMigrateHost(t)
-	dir := t.TempDir()
-	target := filepath.Join(dir, "to.db")
+	target := filepath.Join(t.TempDir(), "to.db")
 	if _, err := migrateDB(src.cfg, sqliteBoot(t, target), true); err != nil {
 		t.Fatal(err)
 	}
@@ -708,13 +707,6 @@ func TestMigrateDB_TargetFile(t *testing.T) {
 		fi, err := os.Stat(name)
 		if err != nil || fi.Mode().Perm() != 0o600 {
 			t.Errorf("%s: %v, %v; want mode 0600", name, fi, err)
-		}
-	}
-	if os.Geteuid() == 0 {
-		di, _ := os.Stat(dir)
-		fi, _ := os.Stat(target)
-		if !sameOwner(di, fi) {
-			t.Error("the target is not owned like its directory")
 		}
 	}
 }
@@ -842,32 +834,6 @@ func TestMigrateDB_LinkedSidecars(t *testing.T) {
 	check("lock")
 }
 
-// TestMigrateDB_GiveFilesRefusesLinks (N1): the owner of a file is changed through its descriptor,
-// so a link, or anything but a regular file, is refused and its destination is not touched.
-func TestMigrateDB_GiveFilesRefusesLinks(t *testing.T) {
-	dir := t.TempDir()
-	regular := filepath.Join(dir, "a")
-	victim := filepath.Join(dir, "victim")
-	link := filepath.Join(dir, "link")
-	for _, f := range []string{regular, victim} {
-		if err := os.WriteFile(f, nil, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.Symlink(victim, link); err != nil {
-		t.Fatal(err)
-	}
-	if err := controller.GiveFiles([]string{regular, filepath.Join(dir, "missing")}, os.Getuid(), os.Getgid()); err != nil {
-		t.Errorf("a regular file and a missing one: %v", err)
-	}
-	if err := controller.GiveFiles([]string{link}, os.Getuid(), os.Getgid()); err == nil {
-		t.Error("a link was followed")
-	}
-	if err := controller.GiveFiles([]string{dir}, os.Getuid(), os.Getgid()); err == nil {
-		t.Error("a directory was accepted")
-	}
-}
-
 // TestMigrateDB_LockFreeWriteAfterCheck (N2): a lock-free writer that checked before the retirement
 // and waits for the write lock while the copy holds it finds the source retired, or fails; its
 // write never lands in the retired source.
@@ -962,14 +928,19 @@ func TestMigrateDB_FailedCopyRemovesOnlyItsOwnFiles(t *testing.T) {
 	if err := os.WriteFile(other+"-wal", []byte("mine"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	finish, err := controller.PlanTarget(other)
+	remove, err := controller.PlanTarget(other)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(other, nil, 0o600); err != nil {
-		t.Fatal(err)
+	for _, name := range []string{other, other + ".lock"} { // made by the command, the lock too
+		if err := os.WriteFile(name, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
-	finish(true)
+	remove()
+	if _, err := os.Stat(other + ".lock"); err != nil {
+		t.Errorf("the lock file, which a controller may hold, was removed: %v", err)
+	}
 	if _, err := os.Stat(other); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("a file the command made was not removed: %v", err)
 	}
@@ -1028,5 +999,179 @@ func TestMigrateDB_SnapshotOfTheSource(t *testing.T) {
 	var after int64
 	if err := openBoot(t, to).Reader.QueryRow("SELECT seq FROM config_seq").Scan(&after); err != nil || after != before {
 		t.Errorf("config_seq in the target %d (%v), want the %d of the source's snapshot", after, err, before)
+	}
+}
+
+// TestMigrateDB_OtherUser: migrate-db refuses to run as a user other than the owner of the
+// directory of the source or of the target, so that nothing it creates crosses users.
+func TestMigrateDB_OtherUser(t *testing.T) {
+	src := newMigrateHost(t)
+	target := filepath.Join(t.TempDir(), "to.db")
+	pg, _ := pgDatabase(t)
+	if _, err := migrateDB(src.cfg, pg, true); err != nil {
+		t.Fatal(err)
+	}
+	controller.SetEffectiveUID(t, os.Geteuid()+1)
+	if _, err := migrateDB(src.cfg, sqliteBoot(t, target), false); !errors.Is(err, controller.ErrOtherUser) || !strings.Contains(err.Error(), "sudo -u") {
+		t.Errorf("another user, a SQLite source: %v", err)
+	}
+	if _, err := os.Stat(target); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the target file exists: %v", err)
+	}
+	if _, err := migrateDB(pg, sqliteBoot(t, target), false); !errors.Is(err, controller.ErrOtherUser) {
+		t.Errorf("another user, a SQLite target only: %v", err)
+	}
+	assertNotRetired(t, src.cfg)
+}
+
+// TestMigrateDB_LinkedTargetName (B1): a target whose own name is a dangling link, a link to a
+// file, a hard-linked file or a directory is refused, and nothing is created or changed behind it.
+func TestMigrateDB_LinkedTargetName(t *testing.T) {
+	src := newMigrateHost(t)
+	victim := filepath.Join(t.TempDir(), "victim")
+	if err := os.WriteFile(victim, []byte("VICTIM"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, plant := range map[string]func(target string) error{
+		"dangling link":    func(target string) error { return os.Symlink(filepath.Join(filepath.Dir(target), "nowhere"), target) },
+		"link to a file":   func(target string) error { return os.Symlink(victim, target) },
+		"hard link":        func(target string) error { return os.Link(victim, target) },
+		"directory":        func(target string) error { return os.Mkdir(target, 0o700) },
+		"hard-linked lock": func(target string) error { return os.Link(victim, target+".lock") },
+	} {
+		target := filepath.Join(t.TempDir(), "to.db")
+		if err := plant(target); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if _, err := migrateDB(src.cfg, sqliteBoot(t, target), false); !errors.Is(err, controller.ErrLinkedState) {
+			t.Errorf("%s: %v", name, err)
+		}
+		if b, _ := os.ReadFile(victim); string(b) != "VICTIM" {
+			t.Errorf("%s: the destination changed: %q", name, b)
+		}
+		if _, err := os.Stat(filepath.Join(filepath.Dir(target), "nowhere")); err == nil {
+			t.Errorf("%s: a file was created behind the link", name)
+		}
+	}
+	assertNotRetired(t, src.cfg)
+}
+
+// TestOpenSQLite_CreateNeverFollowsLinks (B1): Create makes the file exclusively and refuses
+// anything that exists but a regular file, whatever the migrate-db checks before it say.
+func TestOpenSQLite_CreateNeverFollowsLinks(t *testing.T) {
+	dir := t.TempDir()
+	dangling := filepath.Join(dir, "dangling.db")
+	behind := filepath.Join(dir, "behind.db")
+	if err := os.Symlink(behind, dangling); err != nil {
+		t.Fatal(err)
+	}
+	if db, err := store.OpenSQLite(context.Background(), dangling, store.SQLiteOptions{Create: true}); err == nil {
+		_ = db.Close()
+		t.Error("a dangling link was accepted")
+	}
+	if _, err := os.Lstat(behind); err == nil {
+		t.Error("the file behind the dangling link was created")
+	}
+	existing := filepath.Join(dir, "existing")
+	if err := os.WriteFile(existing, []byte("VICTIM"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link.db")
+	if err := os.Symlink(existing, link); err != nil {
+		t.Fatal(err)
+	}
+	if db, err := store.OpenSQLite(context.Background(), link, store.SQLiteOptions{Create: true}); err == nil {
+		_ = db.Close()
+		t.Error("a link to a file was accepted")
+	}
+	if b, _ := os.ReadFile(existing); string(b) != "VICTIM" {
+		t.Errorf("the destination changed: %q", b)
+	}
+	fresh := filepath.Join(dir, "fresh.db")
+	db, err := store.OpenSQLite(context.Background(), fresh, store.SQLiteOptions{Create: true})
+	if err != nil || !db.Created {
+		t.Fatalf("a new file: %v", err)
+	}
+	_ = db.Close()
+	if db, err = store.OpenSQLite(context.Background(), fresh, store.SQLiteOptions{Create: true}); err != nil || db.Created {
+		t.Errorf("an existing regular file: created %v, %v", db != nil && db.Created, err)
+	}
+	if db != nil {
+		_ = db.Close()
+	}
+}
+
+// TestMigrateDB_LockedTargetKeepsItsFiles (N6): a target another process holds, and has just
+// created, is refused and none of its files is removed.
+func TestMigrateDB_LockedTargetKeepsItsFiles(t *testing.T) {
+	src := newMigrateHost(t)
+	target := filepath.Join(t.TempDir(), "to.db")
+	var holder *store.DB
+	controller.SetMigrateHook(t, func(stage string) {
+		if stage != "before target" {
+			return
+		}
+		var err error
+		if holder, err = store.OpenSQLite(context.Background(), target, store.SQLiteOptions{Lock: true, Create: true}); err != nil {
+			t.Error(err)
+		}
+	})
+	_, err := migrateDB(src.cfg, sqliteBoot(t, target), false)
+	if holder == nil {
+		t.Fatal("no holder")
+	}
+	defer func() { _ = holder.Close() }()
+	if !errors.Is(err, controller.ErrStopController) {
+		t.Fatalf("a target another process holds: %v", err)
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Errorf("the holder's database was removed: %v", err)
+	}
+	if _, err := store.HoldLock(target); !errors.Is(err, store.ErrLocked) {
+		t.Errorf("the holder's lock is gone: %v", err)
+	}
+}
+
+// TestMigrateDB_PostgresWriterBeforeCopy (S1): a writer that holds the share lock of the retired
+// check, writes and commits, is in the copy, or the copy waits for it; it is never lost.
+func TestMigrateDB_PostgresWriterBeforeCopy(t *testing.T) {
+	src := newMigrateHost(t)
+	pg, dsn := pgDatabase(t)
+	if _, err := migrateDB(src.cfg, pg, true); err != nil {
+		t.Fatal(err)
+	}
+	var before int64
+	if err := openBoot(t, pg).Reader.QueryRow("SELECT seq FROM config_seq").Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	guarded, err := storetest.OpenPostgres(t, dsn, store.PostgresOptions{RefuseRetired: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = guarded.Close() }()
+	inside, release, written := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	go func() {
+		written <- store.WriteTx(storetest.SystemCtx(t), guarded, func(tx *ent.Tx) error {
+			close(inside)
+			<-release
+			_, err := tx.ExecContext(context.Background(), "UPDATE config_seq SET seq = seq + 1000")
+			return err
+		})
+	}()
+	<-inside
+	to := sqliteBoot(t, filepath.Join(t.TempDir(), "to.db"))
+	migrated := make(chan error, 1)
+	go func() { _, err := migrateDB(pg, to, true); migrated <- err }()
+	time.Sleep(700 * time.Millisecond) // the copy waits for the writer, or has copied without it
+	close(release)
+	if err := <-written; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-migrated; err != nil {
+		t.Fatal(err)
+	}
+	var after int64
+	if err := openBoot(t, to).Reader.QueryRow("SELECT seq FROM config_seq").Scan(&after); err != nil || after != before+1000 {
+		t.Errorf("config_seq in the target %d (%v), want %d: the writer's commit is lost", after, err, before+1000)
 	}
 }

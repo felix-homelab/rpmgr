@@ -108,10 +108,13 @@ func MigrateDB(ctx context.Context, o MigrateDBOptions) (res MigrateDBResult, er
 	if err != nil {
 		return MigrateDBResult{}, fmt.Errorf("target: %w", err)
 	}
-	committed := false
-	defer func() { // what this command made and that holds no copy is not left behind
-		if plan != nil {
-			plan.finish(!committed && err != nil)
+	if migrateHook != nil {
+		migrateHook("before target")
+	}
+	committed, opened := false, false
+	defer func() { // what this command made and that holds no copy is not left behind; after a failed
+		if plan != nil && opened && !committed && err != nil { // open nothing is, the lock is not ours
+			plan.remove()
 		}
 	}()
 	dst, err := openMigrateEnd(ctx, to, o.Getenv, true)
@@ -123,6 +126,7 @@ func MigrateDB(ctx context.Context, o MigrateDBOptions) (res MigrateDBResult, er
 	if err != nil {
 		return MigrateDBResult{}, fmt.Errorf("target: %w", err)
 	}
+	opened = true
 	defer func() { _ = dst.Close() }()
 	if err := migrateEmptyTarget(ctx, dst); err != nil {
 		return MigrateDBResult{}, fmt.Errorf("target: %w", err)
@@ -326,15 +330,31 @@ func retire(ctx context.Context, src *store.DB, stx *store.SourceTx, to string, 
 	return nil
 }
 
-// ErrLinkedState is returned when a lock, journal or shared-memory file of a SQLite database is a
-// link: a service user can plant one, and root must not follow it.
-var ErrLinkedState = errors.New("controller: a lock or journal file of the database is a link")
+// ErrLinkedState is returned for a file of a SQLite database that is a link, a special file or has
+// more than one name: a lock or journal name is derived from the path, so another name bypasses it.
+var ErrLinkedState = errors.New("controller: a file of the database is a link, a special file or has several names")
 
 // ErrHardLinked is returned for a SQLite source with another name: the controller lock and the
 // write-ahead log are named after the path, so a second name would bypass both.
 var ErrHardLinked = errors.New("controller: the source database has more than one hard link; name its only path")
 
-// checkSourceFile refuses a missing source and one with more than one name.
+// ErrOtherUser is returned when migrate-db would cross users: it creates files, so it runs as the
+// owner of the directories it works in and never changes an owner.
+var ErrOtherUser = errors.New("controller: run migrate-db as the owner of the database's directory, for example sudo -u rpmgr rpmgr migrate-db")
+
+// effectiveUID is os.Geteuid; a test replaces it.
+var effectiveUID = os.Geteuid
+
+// checkOwner refuses a SQLite database in a directory that another user owns.
+func checkOwner(path string) error {
+	if uid, _, ok := dirOwner(filepath.Dir(path)); ok && uid != effectiveUID() {
+		return fmt.Errorf("%w (%s is owned by user %d, this is user %d)", ErrOtherUser, filepath.Dir(path), uid, effectiveUID())
+	}
+	return nil
+}
+
+// checkSourceFile refuses a missing source, one with more than one name, one with a linked lock or
+// journal name, and one in another user's directory.
 func checkSourceFile(path string) error {
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -343,15 +363,24 @@ func checkSourceFile(path string) error {
 	if hardLinks(fi) {
 		return ErrHardLinked
 	}
-	return refuseLinkedSidecars(store.ResolvePath(path))
+	path = store.ResolvePath(path)
+	if err := checkOwner(path); err != nil {
+		return err
+	}
+	return refuseLinked(path, false)
 }
 
 var sidecars = []string{".lock", "-wal", "-shm"}
 
-// refuseLinkedSidecars refuses a SQLite database whose lock, journal or shared-memory name is a link.
-func refuseLinkedSidecars(path string) error {
-	for _, s := range sidecars {
-		if fi, err := os.Lstat(path + s); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+// refuseLinked refuses a lock, journal or shared-memory name, and with main the file itself, that
+// exists as anything but a regular file with one name. It uses lstat, so a link is seen.
+func refuseLinked(path string, main bool) error {
+	names := sidecars
+	if main {
+		names = append([]string{""}, sidecars...)
+	}
+	for _, s := range names {
+		if fi, err := os.Lstat(path + s); err == nil && (!fi.Mode().IsRegular() || hardLinks(fi)) {
 			return fmt.Errorf("%w: %s", ErrLinkedState, path+s)
 		}
 	}
@@ -361,14 +390,18 @@ func refuseLinkedSidecars(path string) error {
 // targetPlan remembers which files of a SQLite target did not exist before this command.
 type targetPlan struct{ fresh []string }
 
-// planTarget refuses a target with linked sidecar files and notes the files it will create. It
+// planTarget refuses a SQLite target in another user's directory or with a linked name, and notes
+// the files it will create. The target's own path is not resolved: a link there is refused. It
 // returns nil for a PostgreSQL target.
 func planTarget(to config.Database) (*targetPlan, error) {
 	if to.Driver != "sqlite" {
 		return nil, nil
 	}
+	if err := refuseLinked(to.DSN, true); err != nil {
+		return nil, err
+	}
 	path := store.ResolvePath(to.DSN)
-	if err := refuseLinkedSidecars(path); err != nil {
+	if err := errors.Join(checkOwner(path), refuseLinked(path, false)); err != nil {
 		return nil, err
 	}
 	p := &targetPlan{}
@@ -380,47 +413,11 @@ func planTarget(to config.Database) (*targetPlan, error) {
 	return p, nil
 }
 
-// finish runs when the target is closed. Files this command made that hold no copy are removed,
-// except the lock file, which a controller may hold; those of a copy are given to the owner of the
-// directory when root made them, so that the service user can open them.
-func (p *targetPlan) finish(remove bool) {
-	if remove {
-		for _, name := range p.fresh {
-			if !strings.HasSuffix(name, ".lock") {
-				_ = os.Remove(name)
-			}
-		}
-		return
-	}
-	if os.Geteuid() != 0 || len(p.fresh) == 0 {
-		return
-	}
-	if uid, gid, ok := dirOwner(filepath.Dir(p.fresh[0])); ok {
-		_ = giveFiles(p.fresh, uid, gid)
-	}
-}
-
-// giveFiles changes the owner of the regular files among names that exist, each opened without
-// following a link and changed through its descriptor: a link is refused, its destination untouched.
-func giveFiles(names []string, uid, gid int) error {
-	var errs []error
-	for _, name := range names {
-		f, err := os.OpenFile(name, os.O_RDONLY|openNoFollow, 0) //nolint:gosec // G304: next to the operator's database
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
-		if err == nil {
-			var fi os.FileInfo
-			if fi, err = f.Stat(); err == nil && !fi.Mode().IsRegular() {
-				err = errors.New("not a regular file")
-			} else if err == nil {
-				err = f.Chown(uid, gid)
-			}
-			_ = f.Close()
-		}
-		if err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", name, err))
+// remove removes the files this command made, except the lock file, which a controller may hold.
+func (p *targetPlan) remove() {
+	for _, name := range p.fresh {
+		if !strings.HasSuffix(name, ".lock") {
+			_ = os.Remove(name)
 		}
 	}
-	return errors.Join(errs...)
 }

@@ -24,9 +24,11 @@ for preparing the move and for copying a database to a test host; its target, a 
 - Once the target has committed, it **retires the source**: a controller refuses to start on it,
   because two controllers on the same history would give agents two versions of the truth.
   `--no-retire` leaves the source usable, for a test copy; you then never run a controller on both.
-- A SQLite target that the command creates has mode 0600, as a restore makes it, and belongs to the
-  owner of its directory when `root` runs the command, so the service user can open it. A target
-  that fails to fill is removed again.
+- It runs as the owner of the directory of each SQLite database it works in, and refuses to run as
+  another user, so that nothing it creates changes hands: use `sudo -u rpmgr rpmgr migrate-db …`.
+  A SQLite target that it creates has mode 0600, as a restore makes it, and is removed again if it
+  fails to fill. A database file or its lock, journal or shared-memory file that is a link, a
+  directory or has a second name is refused.
 - It records the migration in the target's audit log, as the actor `local-cli`
   ([Audit log](audit-log.md)).
 
@@ -48,7 +50,7 @@ for preparing the move and for copying a database to a test host; its target, a 
 4. Run the command with the boot file you have and the one you made:
 
    ```sh
-   sudo rpmgr migrate-db --from /etc/rpmgr/controller.yaml --to-file /etc/rpmgr/controller-pg.yaml
+   sudo -u rpmgr rpmgr migrate-db --from /etc/rpmgr/controller.yaml --to-file /etc/rpmgr/controller-pg.yaml
    ```
 
    It prints each table with its row count, then one line that says the counts and hashes agree.
@@ -74,7 +76,8 @@ PostgreSQL database is retired the same way.
 | The source is retired already | It was moved before; use its target |
 | A database address as an argument | Name the boot file instead |
 | Source and target are the same database, even under two host names | Name two different databases |
-| The source file has a second hard link, or cannot be written | Name its only path; make it writable |
+| The source file has a second hard link, or cannot be written; a lock or journal name is a link | Name its only path; make it writable; remove the link |
+| You are not the owner of the database directory | Run it as that user, for example `sudo -u rpmgr` |
 
 The commands that run beside a controller, such as `rpmgr ca status`, refuse a retired database
 too. A restore over a retired SQLite database keeps it under the suffix of the replaced files.
