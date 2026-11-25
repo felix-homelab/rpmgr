@@ -50,7 +50,11 @@ func acceptRoots(trusted []*x509.Certificate, td string, offered []*x509.Certifi
 	for changed := true; changed; {
 		changed = false
 		for _, r := range offered {
-			if len(out) >= pki.MaxTrustRoots || slices.ContainsFunc(out, r.Equal) {
+			// One root per public key, the first one held: a later certificate for a key does not
+			// replace it, and variants of one root cannot fill the slots.
+			if len(out) >= pki.MaxTrustRoots || slices.ContainsFunc(out, func(h *x509.Certificate) bool {
+				return bytes.Equal(h.RawSubjectPublicKeyInfo, r.RawSubjectPublicKeyInfo)
+			}) {
 				continue
 			}
 			if !validRoot(r, td, now) {
@@ -67,14 +71,15 @@ func acceptRoots(trusted []*x509.Certificate, td string, offered []*x509.Certifi
 }
 
 // validRoot reports whether r is a CA certificate that signed itself, is valid at now and has the
-// URI SAN spiffe://td and no other.
+// URI SAN spiffe://td and no other name.
 func validRoot(r *x509.Certificate, td string, now time.Time) bool {
 	return r.BasicConstraintsValid && r.IsCA && bytes.Equal(r.RawSubject, r.RawIssuer) && r.CheckSignatureFrom(r) == nil &&
 		!now.Before(r.NotBefore) && !now.After(r.NotAfter) &&
-		len(r.URIs) == 1 && r.URIs[0].String() == "spiffe://"+td
+		len(r.URIs) == 1 && r.URIs[0].String() == "spiffe://"+td &&
+		len(r.DNSNames) == 0 && len(r.EmailAddresses) == 0 && len(r.IPAddresses) == 0
 }
 
-// vouches reports whether x is a cross-certificate for the root r that a root of trusted signed:
+// vouches reports whether x is a cross-certificate for the root r that a root of trusted, valid at now, signed:
 // the same public key, Subject and SubjectKeyId byte for byte, a CA with a path length of at least
 // 1, valid at now.
 func vouches(trusted []*x509.Certificate, x, r *x509.Certificate, now time.Time) bool {
@@ -87,7 +92,8 @@ func vouches(trusted []*x509.Certificate, x, r *x509.Certificate, now time.Time)
 		return false
 	}
 	return slices.ContainsFunc(trusted, func(t *x509.Certificate) bool {
-		return bytes.Equal(x.RawIssuer, t.RawSubject) && x.CheckSignatureFrom(t) == nil
+		return !now.Before(t.NotBefore) && !now.After(t.NotAfter) && bytes.Equal(x.RawIssuer, t.RawSubject) &&
+			x.CheckSignatureFrom(t) == nil
 	})
 }
 
@@ -143,17 +149,23 @@ func (t *trustSet) Offer(source string, der [][]byte) bool {
 	defer t.mu.Unlock()
 	next := acceptRoots(t.certs, t.td, offered, t.now())
 	if len(next) == len(t.certs) {
+		// Warn only of a certificate that signed itself and is not held: a cross-certificate and a
+		// root held are the steady state of a rotation.
 		for _, c := range offered {
-			if !slices.ContainsFunc(t.certs, c.Equal) && bytes.Equal(c.RawSubject, c.RawIssuer) {
+			if !holdsKey(t.certs, c) && bytes.Equal(c.RawSubject, c.RawIssuer) && c.CheckSignatureFrom(c) == nil {
 				t.log.Warn("ignoring a root without a valid cross-certificate from a trusted root", "source", source)
 				break
 			}
 		}
 		return false
 	}
-	if err := writeRoots(t.dir, next); err != nil {
+	renamed, err := writeRoots(t.dir, next)
+	switch {
+	case err != nil && !renamed:
 		t.log.Error("cannot store the trust roots; keeping the old ones", "error", err)
 		return false
+	case err != nil: // the file is the new one; the agent uses it now rather than disagree with it
+		t.log.Warn("the new trust roots are stored but may not survive a power loss", "error", err)
 	}
 	pool := x509.NewCertPool()
 	for _, c := range next {
@@ -164,18 +176,25 @@ func (t *trustSet) Offer(source string, der [][]byte) bool {
 	return true
 }
 
+func holdsKey(held []*x509.Certificate, c *x509.Certificate) bool {
+	return slices.ContainsFunc(held, func(h *x509.Certificate) bool {
+		return bytes.Equal(h.RawSubjectPublicKeyInfo, c.RawSubjectPublicKeyInfo)
+	})
+}
+
 // writeRoots replaces roots.pem: a temporary file, fsync, rename, fsync of the directory, so that a
-// crash leaves the old file or the new one.
-func writeRoots(dir string, certs []*x509.Certificate) error {
+// crash leaves the old file or the new one. renamed reports whether the new file is in place, also
+// when the final fsync failed.
+func writeRoots(dir string, certs []*x509.Certificate) (renamed bool, err error) {
 	if dir == "" {
-		return errors.New("agent: no identity directory")
+		return false, errors.New("agent: no identity directory")
 	}
 	path := filepath.Join(dir, RootsFile)
 	if err := writeAtomic(path, certsPEM(certs), 0o644, func() error { return rootsFault("before-rename") }); err != nil {
-		return err
+		return false, err
 	}
 	if err := rootsFault("after-rename"); err != nil {
-		return err
+		return true, err
 	}
-	return syncDir(dir)
+	return true, syncDir(dir)
 }

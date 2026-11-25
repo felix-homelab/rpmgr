@@ -138,12 +138,19 @@ func NewControl(o ControlOptions) (*Control, error) {
 		caps = append(slices.Clone(caps), agentproto.CapOTA)
 		onOffer = c.stager.Offer
 	}
-	c.deny = NewDenyList(DenyListOptions{StateDir: o.StateDir, Root: id.Root, Now: o.Now,
+	c.deny = NewDenyList(DenyListOptions{StateDir: o.StateDir, Roots: c.trust.Certs, Now: o.Now,
 		Signers: func() []*x509.Certificate { return c.rt.Signers() }})
 	c.rt = NewRuntime(RuntimeOptions{Identity: id, StateDir: o.StateDir, Applier: o.Applier, Now: o.Now, Logger: o.Logger,
 		Send:        func(m *agentv1.AgentMessage) bool { return c.client.Send(m) },
 		OnEndpoints: func(eps []string) { c.client.SetEndpoints(eps) }, OnOffer: onOffer,
-		OnTrustRoots: func(der [][]byte) { c.trust.Offer("a snapshot", der) }})
+		Roots:        c.trust.Certs,
+		OnTrustRoots: func(der [][]byte) bool { return c.trust.Offer("a snapshot", der) },
+		// The Hello of the next session reports the roots the agent holds now; this happens once per
+		// rotation.
+		OnRootsChanged: func() {
+			o.Logger.Info("ending the control session to report the new trust roots")
+			c.client.Reconnect()
+		}})
 	c.client = NewClient(ClientOptions{Identity: id, Endpoints: id.Endpoints, Version: o.Version, Capabilities: caps,
 		BootID: hex.EncodeToString(boot), Roots: c.trust.Pool, Now: o.Now, Logger: o.Logger, Backoff: o.Backoff, Dial: o.Dial, Fallback: o.Fallback,
 		Hello: func(h *agentv1.Hello) {

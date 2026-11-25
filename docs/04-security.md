@@ -503,20 +503,29 @@ same trust domain as R1 (the URI SAN `spiffe://<td>`).
    The bundle becomes {R2}, R1, its intermediates and Y are `retired`.
 
 **What an agent keeps.** The pinned root, and an offered certificate only as a root when all of
-these hold: it is a CA certificate whose own signature verifies and that is valid now; its URI SAN
-is the `spiffe://<td>` of the pinned root; and the offered set holds a cross-certificate with the
-**same public key, Subject and SubjectKeyId, byte for byte,** whose signature verifies under a root
-the agent already trusts, is valid, and is a CA with `pathlen` of at least 1. The agent then trusts
-the self-signed certificate, not the cross-certificate. A certificate with another public key,
-another trust domain or no cross-certificate is ignored. The same rule holds for `Enroll`'s
-response, `Welcome` and snapshots, so appending a root in transit still gains an attacker nothing.
-The agent writes the new set to `roots.pem` atomically (a temporary file, `fsync`, rename, `fsync`
-of the directory), so a crash leaves the old file or the new one, then reloads its trust and
-**re-pins**: the set of SPKI hashes it trusts is the file's. A control session that starts after
-the change verifies the controller with the new set; the agent applies the roots it holds to its
-data sessions when it next starts (slice 8.13). It removes a root only when an
-authenticated bundle no longer lists it and another root it keeps verified the chain of the session
-that said so.
+these hold: it is a CA certificate whose own signature verifies and that is valid now; its only
+name is the URI SAN `spiffe://<td>` of the pinned root; and the offered set holds a
+cross-certificate with the **same public key, Subject and SubjectKeyId, byte for byte,** whose
+signature verifies under a root the agent already trusts and that is valid now, is valid itself,
+and is a CA with `pathlen` of at least 1. A root that such a cross-certificate admitted may vouch
+for the next one in the same offer (R1 to R2 to R3). The agent then trusts the self-signed
+certificate, not the cross-certificate. A certificate with another public key, another trust domain
+or no cross-certificate is ignored. **It keeps one root per public key**: the first certificate it
+accepts for a key stays, and a later one for the same key, with another validity or serial, does
+not replace it and does not take a slot of the limit ([03](03-connections.md#trust-roots-in-welcome-and-snapshots)),
+so re-issuing a root under the same key changes nothing for an agent that holds it. The same rule
+holds for `Enroll`'s response, `Welcome` and snapshots, so appending a root in transit still gains
+an attacker nothing. The agent writes the new set to `roots.pem` atomically (a temporary file,
+`fsync`, rename, `fsync` of the directory), so a crash leaves the old file or the new one, then
+reloads its trust and **re-pins**: the set of SPKI hashes it trusts is the file's. The signatures
+of snapshots and deny-lists are checked against **every root it holds**, so once R1 is dropped
+they still verify under R2. The control session and the connector's dial to a gateway use the new
+set at once; a gateway's listener keeps the roots it started with until it restarts. A root learned from a snapshot ends the control session once, so that the
+reconnect's `Hello` reports the new digest. It removes a root only when an authenticated bundle no
+longer lists it and another root it keeps verified the chain of the session that said so. **That
+removal is not built yet; when it is, a replayed older snapshot or a stale replica must not add a
+dropped root again while its cross-certificate is still valid**, for instance by taking roots only
+from a snapshot that is newer than the one that dropped it.
 
 ### Root compromise
 

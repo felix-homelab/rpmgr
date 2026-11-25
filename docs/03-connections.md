@@ -479,8 +479,9 @@ Rules:
   root only when a cross-certificate from a root it trusts verifies. A root that fails the rule is
   ignored and logged, and never rejects the snapshot that carried it. The agent checks the limits
   below on the DER bytes **before** it parses anything and ignores an offer that exceeds them,
-  whole. It reads the digest it sends in `Hello` again from the roots it holds, so a session after
-  a change reports the new set.
+  whole. It keeps one root per public key, so the limit counts keys. It reads the digest it sends
+  in `Hello` again from the roots it holds; a root learned from a snapshot ends the control
+  session once, so that the reconnect's `Hello` reports the new set.
 - **Limits** are in the table below. The roots count toward the control message limit of 4 MiB
   ([Framing](#framing)): a snapshot that with its roots exceeds it fails to compile as any
   oversized snapshot does.

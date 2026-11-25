@@ -93,7 +93,26 @@ func Verify(s *agentv1.Signed, certs []*x509.Certificate, root *x509.Certificate
 
 // VerifySnapshot verifies s and decodes the snapshot, which must be for agent.
 func VerifySnapshot(s *agentv1.Signed, certs []*x509.Certificate, root *x509.Certificate, agent string, at time.Time) (*agentv1.Snapshot, error) {
-	payload, err := Verify(s, certs, root, at)
+	return VerifySnapshotRoots(s, certs, []*x509.Certificate{root}, agent, at)
+}
+
+// VerifyRoots is Verify with several roots: the signer may chain to any of them, as during a root
+// rotation.
+func VerifyRoots(s *agentv1.Signed, certs, roots []*x509.Certificate, at time.Time) ([]byte, error) {
+	last := fmt.Errorf("%w: no root to verify with", ErrSignature)
+	for _, r := range roots {
+		payload, err := Verify(s, certs, r, at)
+		if err == nil {
+			return payload, nil
+		}
+		last = err
+	}
+	return nil, last
+}
+
+// VerifySnapshotRoots is VerifySnapshot with several roots (VerifyRoots).
+func VerifySnapshotRoots(s *agentv1.Signed, certs, roots []*x509.Certificate, agent string, at time.Time) (*agentv1.Snapshot, error) {
+	payload, err := VerifyRoots(s, certs, roots, at)
 	if err != nil {
 		return nil, err
 	}

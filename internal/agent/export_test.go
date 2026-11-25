@@ -41,3 +41,13 @@ func OfferRoots(c *Control, source string, der [][]byte) bool { return c.trust.O
 
 // RootsOf returns the roots the control plane holds in memory.
 func RootsOf(c *Control) []*x509.Certificate { return c.trust.Certs() }
+
+// SetSessionEnd makes f what ends the control session, as a session would set it.
+func SetSessionEnd(c *Control, f func()) {
+	c.client.sendMu.Lock()
+	defer c.client.sendMu.Unlock()
+	c.client.end = f
+}
+
+// DenyOf returns the deny-list of c.
+func DenyOf(c *Control) *DenyList { return c.deny }

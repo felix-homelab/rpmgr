@@ -391,3 +391,196 @@ func TestControl_RootsOverTheLimitsIgnored(t *testing.T) {
 		t.Error("a valid offer within the limits was refused")
 	}
 }
+
+// variant is a second self-signed certificate for r's key: another serial, a long validity and no
+// path length limit, as the holder of r's key can make it.
+func variant(t *testing.T, r pki.KeyPair, serial int64, edit func(*x509.Certificate)) *x509.Certificate {
+	t.Helper()
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(serial), RawSubject: r.Cert.RawSubject, SubjectKeyId: r.Cert.SubjectKeyId,
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(50 * 365 * 24 * time.Hour), IsCA: true,
+		BasicConstraintsValid: true, MaxPathLen: -1, KeyUsage: x509.KeyUsageCertSign, URIs: r.Cert.URIs}
+	if edit != nil {
+		edit(tmpl)
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &r.Key.PublicKey, r.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+// TestAcceptRoots_OneRootPerKey: variants of R2 that its key holder made cannot fill the slots; the
+// first certificate for a key stays and a later one does not replace it.
+func TestAcceptRoots_OneRootPerKey(t *testing.T) {
+	const td = "rpmgr-7f3k2q6m"
+	now := time.Now()
+	r1, r2 := newRoot(t, td, now), newRoot(t, td, now)
+	x := crossCert(t, r1, r2, &r2.Key.PublicKey, nil)
+	v1, v2, v3 := variant(t, r2, 11, nil), variant(t, r2, 12, nil), variant(t, r2, 13, nil)
+	got := agent.AcceptRoots(certs(r1), td, []*x509.Certificate{v1, v2, v3, r2.Cert, x}, now)
+	if len(got) != 2 || !got[1].Equal(v1) {
+		t.Fatalf("kept %d roots, want the pinned root and the first R2 only", len(got))
+	}
+	r3 := newRoot(t, td, now)
+	got = agent.AcceptRoots(got, td, []*x509.Certificate{v2, r2.Cert, v3, r3.Cert, crossCert(t, r1, r3, &r3.Key.PublicKey, nil)}, now)
+	if len(got) != 3 || !got[1].Equal(v1) || !got[2].Equal(r3.Cert) {
+		t.Errorf("kept %d roots; a later R2 certificate replaced the first, or the slots were taken", len(got))
+	}
+}
+
+func TestAcceptRoots_VouchingRootAndNames(t *testing.T) {
+	const td = "rpmgr-7f3k2q6m"
+	now := time.Now()
+	old := newRoot(t, td, now.Add(-11*365*24*time.Hour)) // expired
+	r2 := newRoot(t, td, now)
+	x := crossCert(t, old, r2, &r2.Key.PublicKey, nil)
+	if got := agent.AcceptRoots(certs(old), td, []*x509.Certificate{r2.Cert, x}, now); len(got) != 1 {
+		t.Error("an expired root vouched for a new one")
+	}
+	r1 := newRoot(t, td, now)
+	named := variant(t, r2, 21, func(c *x509.Certificate) { c.DNSNames = []string{"example.org"} })
+	if got := agent.AcceptRoots(certs(r1), td, []*x509.Certificate{named, crossCert(t, r1, r2, &r2.Key.PublicKey, nil)}, now); len(got) != 1 {
+		t.Error("a root with a DNS name besides its URI was kept")
+	}
+}
+
+// signerUnder is a config-signing key under a new intermediate of root, with the intermediate.
+func signerUnder(t *testing.T, root pki.KeyPair) (pki.KeyPair, *x509.Certificate) {
+	t.Helper()
+	inter, err := pki.NewIntermediate(root, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	is, err := pki.NewIssuer(root.Cert, inter, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := pki.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err := is.IssueSigner(&key.PublicKey, pki.PurposeConfigSigning)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pki.KeyPair{Cert: cert, Key: key}, inter.Cert
+}
+
+func signList(t *testing.T, kp pki.KeyPair, seq uint64) *agentv1.Signed {
+	t.Helper()
+	d := &denyEnv{}
+	return d.signedList(t, kp, epoch1, seq, serial("a1", time.Now().Add(time.Hour)))
+}
+
+// TestAgent_SignersChainToAnyHeldRoot: snapshots and deny-lists signed under an accepted root are
+// accepted at once and after a restart; one under a root that was not accepted is refused.
+func TestAgent_SignersChainToAnyHeldRoot(t *testing.T) {
+	e := newRTEnv(t)
+	f := &fakeApplier{}
+	c, _ := e.control(t, f, []*x509.Certificate{e.root.Cert})
+	td := e.ident.TrustDomain
+	r2, r3 := newRoot(t, td, time.Now()), newRoot(t, td, time.Now())
+	s2, i2 := signerUnder(t, r2)
+	s3, i3 := signerUnder(t, r3)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	rt := agent.RuntimeOf(c)
+	go func() { rt.Run(ctx); close(done) }()
+	t.Cleanup(func() { cancel(); <-done })
+	deny := agent.DenyOf(c)
+
+	rt.Welcome(&agentv1.Welcome{DbEpoch: epoch1, SigningCertificates: ders(s3.Cert, i3)})
+	if err := deny.Apply(signList(t, s3, 1)); err == nil {
+		t.Error("a deny-list under an unaccepted root was accepted")
+	}
+	rt.Message(&agentv1.ControllerMessage{Msg: &agentv1.ControllerMessage_Snapshot{Snapshot: e.withRoots(t, s3, 1, nil)}})
+	time.Sleep(200 * time.Millisecond)
+	if len(f.appliedSeqs()) != 0 {
+		t.Fatal("a snapshot under an unaccepted root was applied")
+	}
+
+	x := crossCert(t, e.root, r2, &r2.Key.PublicKey, nil)
+	if !agent.OfferRoots(c, "a Welcome", ders(r2.Cert, x)) {
+		t.Fatal("R2 was refused")
+	}
+	rt.Welcome(&agentv1.Welcome{DbEpoch: epoch1, SigningCertificates: ders(s2.Cert, i2)})
+	if err := deny.Apply(signList(t, s2, 2)); err != nil {
+		t.Errorf("a deny-list under R2: %v", err)
+	}
+	rt.Message(&agentv1.ControllerMessage{Msg: &agentv1.ControllerMessage_Snapshot{Snapshot: e.withRoots(t, s2, 2, nil)}})
+	waitSeq(t, f, 2)
+
+	// After a restart, from roots.pem and the stored signing certificates.
+	f2 := &fakeApplier{}
+	c2, _ := e.control(t, f2, agent.RootsOf(c))
+	if len(agent.RootsOf(c2)) != 2 {
+		t.Fatal("the restarted agent lost R2")
+	}
+	agent.RuntimeOf(c2).Welcome(&agentv1.Welcome{DbEpoch: epoch1, SigningCertificates: ders(s2.Cert, i2)})
+	if err := agent.DenyOf(c2).Apply(signList(t, s2, 3)); err != nil {
+		t.Errorf("after a restart, a deny-list under R2: %v", err)
+	}
+	agent.RuntimeOf(c2).Welcome(&agentv1.Welcome{DbEpoch: epoch1, SigningCertificates: ders(s3.Cert, i3)})
+	if err := agent.DenyOf(c2).Apply(signList(t, s3, 4)); err == nil {
+		t.Error("after a restart, a deny-list under an unaccepted root was accepted")
+	}
+}
+
+// TestControl_SteadyStateBundleIsQuiet: the bundle {R1, R2, X} of a rotation, offered again and
+// again, is accepted without a warning; a self-signed root without a cross-certificate warns.
+func TestControl_SteadyStateBundleIsQuiet(t *testing.T) {
+	e := newRTEnv(t)
+	c, logs := e.control(t, &fakeApplier{}, []*x509.Certificate{e.root.Cert})
+	r2 := newRoot(t, e.ident.TrustDomain, time.Now())
+	bundle := ders(e.root.Cert, r2.Cert, crossCert(t, e.root, r2, &r2.Key.PublicKey, nil), variant(t, r2, 31, nil))
+	if !agent.OfferRoots(c, "a Welcome", bundle) {
+		t.Fatal("R2 was refused")
+	}
+	for range 3 {
+		if agent.OfferRoots(c, "a snapshot", bundle) {
+			t.Error("the same bundle changed the set")
+		}
+	}
+	if strings.Contains(logs.String(), "ignoring") {
+		t.Errorf("the steady-state bundle was logged as ignored:\n%s", logs.String())
+	}
+	agent.OfferRoots(c, "a snapshot", ders(newRoot(t, e.ident.TrustDomain, time.Now()).Cert))
+	if !strings.Contains(logs.String(), "ignoring") {
+		t.Error("a root without a cross-certificate was not logged")
+	}
+}
+
+// TestControl_NewRootEndsTheSessionOnce: a root learned from a snapshot ends the control session
+// once, so that the next Hello reports the new digest.
+func TestControl_NewRootEndsTheSessionOnce(t *testing.T) {
+	e := newRTEnv(t)
+	f := &fakeApplier{}
+	c, _ := e.control(t, f, []*x509.Certificate{e.root.Cert})
+	var mu sync.Mutex
+	ended := 0
+	agent.SetSessionEnd(c, func() { mu.Lock(); ended++; mu.Unlock() })
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	rt := agent.RuntimeOf(c)
+	go func() { rt.Run(ctx); close(done) }()
+	t.Cleanup(func() { cancel(); <-done })
+	rt.Welcome(&agentv1.Welcome{DbEpoch: epoch1})
+	r2 := newRoot(t, e.ident.TrustDomain, time.Now())
+	roots := ders(r2.Cert, crossCert(t, e.root, r2, &r2.Key.PublicKey, nil))
+	for seq := uint64(1); seq <= 2; seq++ {
+		rt.Message(&agentv1.ControllerMessage{Msg: &agentv1.ControllerMessage_Snapshot{Snapshot: e.withRoots(t, e.config, seq, roots)}})
+		waitSeq(t, f, seq)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if ended != 1 {
+		t.Errorf("the session ended %d times, want once", ended)
+	}
+	if !bytes.Equal(agent.HelloOf(c).GetRootsDigest(), pki.RootsDigest(certs(e.root, r2))) {
+		t.Error("the next Hello does not carry the new digest")
+	}
+}

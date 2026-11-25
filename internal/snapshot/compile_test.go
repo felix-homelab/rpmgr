@@ -7,8 +7,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand/v2"
 	"slices"
+	"strings"
 	"testing"
 
 	"google.golang.org/protobuf/proto"
@@ -242,7 +244,7 @@ func encode(t *testing.T, s *agentv1.Snapshot) []byte {
 
 // TestCompile_TrustRoots: the trust roots go into the snapshot of an agent with "trust.roots" and
 // of no other; an agent without the capability gets the same snapshot as before; a failure to
-// read the roots fails the compile.
+// read the roots compiles the snapshot without them, as Welcome is sent.
 func TestCompile_TrustRoots(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		storetest.Init(t, db)
@@ -273,8 +275,10 @@ func TestCompile_TrustRoots(t *testing.T) {
 			t.Error("the roots do not change the snapshot")
 		}
 		c.Roots = func() ([][]byte, error) { return nil, errors.New("no roots") }
-		if _, err := c.Compile(sys, db, withCap); err == nil {
-			t.Error("a failure to read the roots did not fail the compile")
+		var logged bytes.Buffer
+		c.Log = slog.New(slog.NewTextHandler(&logged, nil))
+		if got, err := c.Compile(sys, db, withCap); err != nil || len(got.GetTrustRoots()) != 0 || !strings.Contains(logged.String(), "no roots") {
+			t.Errorf("a failure to read the roots: %v, %d roots; want a snapshot without roots", err, len(got.GetTrustRoots()))
 		}
 		if _, err := c.Compile(sys, db, testAgent); err != nil {
 			t.Errorf("the roots are not read for an agent without the capability: %v", err)
