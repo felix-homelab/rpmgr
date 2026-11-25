@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 )
@@ -24,6 +25,8 @@ type memBackend struct {
 	failList, failGet, failC error
 	hideKey                  string // an object that exists but is not listed
 	beforeCreate             func() // runs once, before the next create: another replica gets in
+	failGetAt                int    // the nth get from now fails once (1 = the next); 0 = none
+	lostReply                bool   // the next create stores the object and still answers ErrExists
 }
 
 func newMem() *memBackend { return &memBackend{objs: map[string][]byte{}} }
@@ -50,6 +53,11 @@ func (m *memBackend) Get(key string) ([]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.gets++
+	if m.failGetAt > 0 {
+		if m.failGetAt--; m.failGetAt == 0 {
+			return nil, errors.New("boom once")
+		}
+	}
 	if m.failGet != nil {
 		return nil, m.failGet
 	}
@@ -75,6 +83,10 @@ func (m *memBackend) CreateIfAbsent(key string, data []byte) error {
 		return revlog.ErrExists
 	}
 	m.objs[key] = append([]byte(nil), data...)
+	if m.lostReply {
+		m.lostReply = false
+		return revlog.ErrExists
+	}
 	return nil
 }
 
@@ -94,8 +106,8 @@ func TestSinkNoFullReread(t *testing.T) {
 	if left, err := sink.Ship(path, "node-a"); err != nil || len(left) != 0 {
 		t.Fatalf("ship again: %v %v", left, err)
 	}
-	if mem.lists != 1 || mem.gets != 0 || mem.lastAfter != revlog.Key(3) {
-		t.Errorf("an idle tick: %d lists after %q, %d gets; want 1 list after %q and no get", mem.lists, mem.lastAfter, mem.gets, revlog.Key(3))
+	if mem.lists != 1 || mem.gets != 1 || mem.lastAfter != revlog.Key(2) {
+		t.Errorf("an idle tick: %d lists after %q, %d gets; want 1 list after %q and 1 get (the tip)", mem.lists, mem.lastAfter, mem.gets, revlog.Key(2))
 	}
 	if _, err := l.Append(revlog.Entry{Kind: revlog.SessionRevoked, Subject: "ses_4"}); err != nil {
 		t.Fatal(err)
@@ -104,8 +116,8 @@ func TestSinkNoFullReread(t *testing.T) {
 	if _, err := sink.Ship(path, "node-a"); err != nil {
 		t.Fatal(err)
 	}
-	if mem.gets != 0 {
-		t.Errorf("shipping an own entry read %d objects, want none", mem.gets)
+	if mem.gets != 1 {
+		t.Errorf("shipping an own entry read %d objects, want only the tip", mem.gets)
 	}
 	// Another replica ships through a second Sink value; the first reads exactly that object.
 	if _, err := revlog.NewSink(mem).Ship(other, "node-b"); err != nil {
@@ -115,8 +127,8 @@ func TestSinkNoFullReread(t *testing.T) {
 	if _, err := sink.Ship(path, "node-a"); err != nil {
 		t.Fatal(err)
 	}
-	if mem.gets != 1 || mem.lastAfter != revlog.Key(4) {
-		t.Errorf("one foreign entry: %d gets after %q, want 1 after %q", mem.gets, mem.lastAfter, revlog.Key(4))
+	if mem.gets != 2 || mem.lastAfter != revlog.Key(3) {
+		t.Errorf("one foreign entry: %d gets after %q, want the tip and the entry after %q", mem.gets, mem.lastAfter, revlog.Key(3))
 	}
 }
 
@@ -437,5 +449,137 @@ func TestSinkLegacyAndPaddedBoth(t *testing.T) {
 		if name == "different" && !errors.Is(err, revlog.ErrBroken) {
 			t.Errorf("different duplicate: %v, want ErrBroken", err)
 		}
+	}
+}
+
+// TestSinkLosesEntries (finding B1): the verified prefix is checked against the sink at every
+// tick. An emptied sink is shipped to again from entry 1; a tip that is gone, rolled back or
+// replaced is a break.
+func TestSinkLosesEntries(t *testing.T) {
+	for name, tc := range map[string]struct {
+		damage func(m *memBackend)
+		broken bool
+	}{
+		"a wipe":         {func(m *memBackend) { m.objs = map[string][]byte{} }, false},
+		"a rollback":     {func(m *memBackend) { delete(m.objs, revlog.Key(5)); delete(m.objs, revlog.Key(4)) }, true},
+		"a lost tip":     {func(m *memBackend) { delete(m.objs, revlog.Key(5)) }, true},
+		"a replaced tip": {func(m *memBackend) { m.objs[revlog.Key(5)] = m.objs[revlog.Key(4)] }, true},
+		"a changed tip": {func(m *memBackend) {
+			m.objs[revlog.Key(5)] = []byte(strings.Replace(string(m.objs[revlog.Key(5)]), "ses_5", "ses_X", 1))
+		}, true},
+	} {
+		src, _ := logWith(t, "ses_1", "ses_2", "ses_3", "ses_4", "ses_5")
+		mem := newMem()
+		sink := revlog.NewSink(mem)
+		if _, err := sink.Ship(src, "node-a"); err != nil {
+			t.Fatal(err)
+		}
+		tc.damage(mem)
+		creates := mem.creates
+		left, err := sink.Ship(src, "node-a")
+		if tc.broken {
+			if !errors.Is(err, revlog.ErrBroken) || len(left) != 5 || mem.creates != creates {
+				t.Errorf("%s: %d unshipped, %v, %d creates; want 5, ErrBroken and none", name, len(left), err, mem.creates-creates)
+			}
+			continue
+		}
+		if err != nil || len(left) != 0 {
+			t.Errorf("%s: %v %v", name, left, err)
+		}
+		got, err := revlog.NewSink(mem).Read()
+		if err != nil || len(got) != 5 || got[0].Seq != 1 {
+			t.Errorf("%s: the sink after re-shipping: %d entries, %v", name, len(got), err)
+		}
+	}
+}
+
+// TestSinkReverify (finding B1): a key deleted below the tip is found by the full verification
+// that runs every ReverifyEvery, and not before.
+func TestSinkReverify(t *testing.T) {
+	src, _ := logWith(t, "ses_1", "ses_2", "ses_3")
+	mem := newMem()
+	now := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+	sink := revlog.NewSink(mem)
+	sink.Now = func() time.Time { return now }
+	if _, err := sink.Ship(src, "node-a"); err != nil {
+		t.Fatal(err)
+	}
+	delete(mem.objs, revlog.Key(2))
+	now = now.Add(revlog.ReverifyEvery - time.Second)
+	if _, err := sink.Ship(src, "node-a"); err != nil {
+		t.Fatalf("before the interval the loss below the tip is not looked for: %v", err)
+	}
+	now = now.Add(time.Second)
+	if left, err := sink.Ship(src, "node-a"); !errors.Is(err, revlog.ErrBroken) || len(left) != 3 {
+		t.Fatalf("at the interval: %d unshipped, %v; want 3 and ErrBroken", len(left), err)
+	}
+	if _, err := sink.Ship(src, "node-a"); !errors.Is(err, revlog.ErrBroken) {
+		t.Errorf("the break is kept: %v", err)
+	}
+	// A sink that is intact is verified again without a change of state.
+	ok := newMem()
+	s2 := revlog.NewSink(ok)
+	s2.Now = func() time.Time { return now }
+	if _, err := s2.Ship(src, "node-a"); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(revlog.ReverifyEvery)
+	ok.gets = 0
+	if left, err := s2.Ship(src, "node-a"); err != nil || len(left) != 0 || ok.gets != 3 || ok.count() != 3 {
+		t.Errorf("an intact sink: %v %v, %d gets, %d objects; want a full read of 3 and no new object", left, err, ok.gets, ok.count())
+	}
+}
+
+// TestSinkGetFailsOnFirstScan (finding S1): a get that fails once while the sink is first read
+// does not make the replica ship its own entries again.
+func TestSinkGetFailsOnFirstScan(t *testing.T) {
+	src, _ := logWith(t, "ses_1", "ses_2", "ses_3")
+	mem := newMem()
+	if _, err := revlog.NewSink(mem).Ship(src, "node-a"); err != nil {
+		t.Fatal(err)
+	}
+	for at := 1; at <= 3; at++ {
+		mem.failGetAt = at
+		sink := revlog.NewSink(mem)
+		if left, err := sink.Ship(src, "node-a"); err == nil || len(left) != 3 {
+			t.Fatalf("get %d failing: %d unshipped, %v", at, len(left), err)
+		}
+		if left, err := sink.Ship(src, "node-a"); err != nil || len(left) != 0 {
+			t.Fatalf("get %d, the retry: %v %v", at, left, err)
+		}
+		if mem.count() != 3 {
+			t.Fatalf("get %d failing led to %d objects, want 3: entries shipped twice", at, mem.count())
+		}
+	}
+}
+
+// TestSinkCreateReplyLost (finding S2): a create that succeeded but answered "exists" does not
+// ship the entry a second time.
+func TestSinkCreateReplyLost(t *testing.T) {
+	src, _ := logWith(t, "ses_1", "ses_2")
+	mem := newMem()
+	mem.lostReply = true
+	left, err := revlog.NewSink(mem).Ship(src, "node-a")
+	if err != nil || len(left) != 0 || mem.count() != 2 {
+		t.Fatalf("%v %v, %d objects; want 2 objects, each entry once", left, err, mem.count())
+	}
+	got, err := revlog.NewSink(mem).Read()
+	if err != nil || len(got) != 2 || got[0].Entry.Subject != "ses_1" || got[1].Entry.Subject != "ses_2" {
+		t.Errorf("%v %v", got, err)
+	}
+}
+
+// TestStatusAlertingStalled (finding S3): a round that has not succeeded for longer than the
+// alert time alerts although no backlog is known.
+func TestStatusAlertingStalled(t *testing.T) {
+	last := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+	st := revlog.StatusOf(true, nil)
+	st.LastOK = last
+	if st.Alerting(last.Add(revlog.OffHostAlert)) || !st.Alerting(last.Add(revlog.OffHostAlert+time.Second)) {
+		t.Error("a stalled round does not alert at 5 min 1 s, or alerts too early")
+	}
+	st.Sink = false
+	if st.Alerting(last.Add(time.Hour)) {
+		t.Error("alert without a sink")
 	}
 }

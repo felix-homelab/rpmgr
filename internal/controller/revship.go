@@ -24,11 +24,21 @@ type RevocationShipper struct {
 	Sink    string // the sink directory; empty for none
 	Replica string // this controller's node ID
 	Logger  *slog.Logger
+	Now     func() time.Time // the clock; nil means time.Now
 
 	mu      sync.Mutex
+	started time.Time
+	lastOK  time.Time
 	sink    *revlog.Sink // made at the first round; keeps the verified prefix between rounds
 	status  revlog.Status
 	lastErr string
+}
+
+func (r *RevocationShipper) now() time.Time {
+	if r.Now != nil {
+		return r.Now()
+	}
+	return time.Now()
 }
 
 // Ship runs one round and returns its error; without a sink there is nothing to ship.
@@ -41,11 +51,17 @@ func (r *RevocationShipper) Ship() error {
 		r.sink = revlog.NewSink(revlog.DirBackend{Dir: r.Sink})
 	}
 	sink := r.sink
+	if r.started.IsZero() {
+		r.started = r.now()
+	}
 	r.mu.Unlock()
 	left, err := sink.Ship(r.Path, r.Replica)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.status = revlog.StatusOf(true, left)
+	if err == nil {
+		r.lastOK = r.now()
+	}
 	msg := ""
 	if err != nil {
 		msg = err.Error()
@@ -78,6 +94,9 @@ func (r *RevocationShipper) Status() revlog.Status {
 	defer r.mu.Unlock()
 	st := r.status
 	st.Sink = r.Sink != ""
+	if st.LastOK = r.lastOK; st.LastOK.IsZero() {
+		st.LastOK = r.started // zero before the first round
+	}
 	return st
 }
 

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -68,16 +69,50 @@ func (d DirBackend) List(after string) ([]string, error) {
 	return keys, nil
 }
 
-// Get implements Backend. The padded file is read, else the legacy one. When both exist they must
-// hold the same bytes, or the sink is broken.
-func (d DirBackend) Get(key string) ([]byte, error) {
-	padded, err := os.ReadFile(filepath.Join(d.Dir, filepath.Base(key)))              //nolint:gosec // G304: the configured sink
-	legacy, lerr := os.ReadFile(filepath.Join(d.Dir, legacyName(filepath.Base(key)))) //nolint:gosec // G304: the configured sink
-	switch {
-	case err != nil && lerr == nil:
-		return legacy, nil
-	case err != nil:
+// MaxObject is the largest object a DirBackend reads: the limit of an object read from an object
+// store (docs/03-connections.md, "Timeouts and limits"), so that a sink of either kind is bounded
+// alike.
+const MaxObject = 16 << 20
+
+// readObject reads the regular file at path. It does not follow a symlink, does not block on a
+// FIFO, and reads at most MaxObject bytes.
+func readObject(path string) ([]byte, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|openExtra, 0) //nolint:gosec // G304: the configured sink
+	if err != nil {
 		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	st, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !st.Mode().IsRegular() {
+		return nil, fmt.Errorf("%w: %s is not a regular file", ErrBroken, filepath.Base(path))
+	}
+	b, err := io.ReadAll(io.LimitReader(f, MaxObject+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > MaxObject {
+		return nil, fmt.Errorf("%w: %s is larger than %d bytes", ErrBroken, filepath.Base(path), MaxObject)
+	}
+	return b, nil
+}
+
+// Get implements Backend. The padded file is read, else the legacy one. When both exist they must
+// hold the same bytes, or the sink is broken. Only a missing file counts as absent.
+func (d DirBackend) Get(key string) ([]byte, error) {
+	padded, perr := readObject(filepath.Join(d.Dir, filepath.Base(key)))
+	legacy, lerr := readObject(filepath.Join(d.Dir, legacyName(filepath.Base(key))))
+	switch {
+	case perr != nil && !errors.Is(perr, os.ErrNotExist):
+		return nil, perr
+	case lerr != nil && !errors.Is(lerr, os.ErrNotExist):
+		return nil, lerr
+	case perr != nil && lerr != nil:
+		return nil, perr
+	case perr != nil:
+		return legacy, nil
 	case lerr == nil && !bytes.Equal(padded, legacy):
 		return nil, fmt.Errorf("%w: sink entry %s exists as %s and as %s with different content", ErrBroken, key, key, legacyName(key))
 	}
@@ -87,8 +122,11 @@ func (d DirBackend) Get(key string) ([]byte, error) {
 // CreateIfAbsent implements Backend: the data goes to a temporary file, is synced, and is linked
 // to its key.
 func (d DirBackend) CreateIfAbsent(key string, data []byte) error {
-	if _, err := os.Lstat(filepath.Join(d.Dir, legacyName(filepath.Base(key)))); err == nil {
+	switch _, err := os.Lstat(filepath.Join(d.Dir, legacyName(filepath.Base(key)))); {
+	case err == nil:
 		return ErrExists
+	case !errors.Is(err, os.ErrNotExist):
+		return err
 	}
 	suffix := make([]byte, 8)
 	if _, err := rand.Read(suffix); err != nil {
