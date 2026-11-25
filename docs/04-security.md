@@ -1332,10 +1332,10 @@ Transit; no boot setting selects it before slice 8.9 (#692).
   open, the one error of the sealer. Any other 400, a 404 for a wrong mount or a missing key, and a
   403 are configuration errors, returned with Transit's status and message [V VB-31]. A ciphertext
   that is not of the form `vault:v<n>:<base64>`, with `n` from 1 without a leading zero, does not
-  open without a call. A 2xx answer without a ciphertext, or without a plaintext of exactly 32
-  bytes, is an unavailable Transit, not a value that does not open. The client remembers the highest key
-  version it has seen and refuses a wrap or rewrap answer of a lower one, since Transit has then
-  gone back to an older state.
+  open without a call. A 2xx answer without a ciphertext, or without a plaintext of exactly
+  32 bytes, is an unavailable Transit, not a value that does not open. The client remembers the
+  highest key version it has seen and refuses a wrap or rewrap answer of a lower one, since
+  Transit has then gone back to an older state.
 - **Authentication** is one of two, both from files so that no credential is in the boot file or the
   environment: `kek.kms.token_file` (a token, mode 0600 or 0400), or `kek.kms.approle` with
   `role_id_file` and `secret_id_file` (and `mount`, `approle` by default), which the controller logs
