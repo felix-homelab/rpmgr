@@ -89,7 +89,7 @@ func TestACME_FailedNameRetries(t *testing.T) {
 			DisableARI: true, TestCA: testCA.DirectoryURL, Now: clock, Logger: slog.New(slog.NewTextHandler(logs, nil))})
 	}
 	m := manager()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(c.Sys, 2*time.Minute) // a scoped context, as a lease job has
 	defer cancel()
 	orders := func() (int, int) { return ca.OrdersFor(name), testCA.OrdersFor(name) }
 

@@ -2302,27 +2302,44 @@ Checkpoints prove tampering but cannot restore content, so revocations get their
   (allocation is the write), so the sink has no gaps; entries are hash-chained.
 - **Sink backend** (Phase 2, slice 8.16). Both sinks implement one interface of three operations:
   **list** the keys after a given key, in order; **get** an object by key; **create if absent**,
-  which fails without writing when the key exists. A key is the sequence number as **20 decimal
-  digits with leading zeros** below the sink's prefix, so that a listing's order is the numeric
-  order and the number fits an unsigned 64-bit integer. The filesystem sink creates an object with
-  an exclusive hard link, the S3 sink with a PUT that carries `If-None-Match: *`, which answers 412
-  when the key exists.
+  which fails without writing when the key exists, whatever the content there. A key is the
+  sequence number as **20 decimal digits with leading zeros** below the sink's location, so that a
+  listing's order is the numeric order and the number fits an unsigned 64-bit integer. The
+  filesystem sink creates an object with an exclusive hard link, the S3 sink with a PUT that
+  carries `If-None-Match: *`, which answers 412 when the key exists. The filesystem sink also reads
+  the unpadded names of earlier releases as the same keys and never renames them. It reads only
+  regular files, never a link or a pipe, of at most the object size limit of
+  [03](03-connections.md#timeouts-keepalive-and-backoff).
 - **Shipping.** A replica reads and verifies the whole sink once, at start, and keeps in memory the
-  **verified prefix**: the sequence number and hash of the last entry it checked. A tick lists only
-  the keys after the prefix, gets them, checks that each entry links to the one before and extends
-  the prefix, so a tick with nothing new is one list and the sink is never read again in full. A
-  replica ships its next local entry by creating the key after the prefix; when that key exists,
-  another replica won the number, and it gets that object, verifies it, extends the prefix and tries
-  the next number. **An entry counts as shipped when an object holds its node and its local hash**,
-  not its number: after a restore the local numbers start again, and the entries a restore appends
-  to the restored local log are shipped exactly once, by hash. **A break in the chain** (an object
-  whose previous hash is not the prefix's, or a key that is missing) raises the alert and stops that
-  replica's shipping until an operator has looked; enforcement and the local log go on
-  [D181](14-open-decisions.md#engineering). **Recovery** is to point `revocation_log.sink` at a new
-  prefix: the old prefix is kept, a restore reads both, and the replicas ship what the new prefix
-  lacks from their local logs. A holder of put-only credentials can wedge the sink by creating an
-  object at the next key that does not link; the credentials of a sink are therefore the
-  controllers' alone.
+  **verified prefix**: the sequence number and hash of the last entry it checked. A tick first
+  confirms that the entry the verified prefix ends at is still listed and unchanged, then lists
+  only the keys after it, gets them, checks that each entry links to the one before and extends the
+  verified prefix, so a tick with nothing new is one list and one get. A replica ships its next
+  local entry by creating the key after the verified prefix; when that key exists, another replica
+  won the number (or the replica's own create succeeded and its reply was lost), and it gets that
+  object, verifies it, extends the verified prefix and tries the next number. An object that names
+  this replica must be exactly the entry it tried to create, or the chain is broken. **An entry
+  counts as shipped when an object holds its node and its local hash**, not its number: after a
+  restore the local numbers start again, and the entries a restore appends to the restored local
+  log are shipped exactly once, by hash.
+- **A sink that lost entries** ([D181](14-open-decisions.md#engineering)). Every tick finds a
+  missing or changed tip, and a full verification from entry 1 on the interval of
+  [03](03-connections.md#timeouts-keepalive-and-backoff), held to the verified prefix so that a
+  replaced chain is a break, finds a key deleted or an object rewritten below the tip, so a loss
+  below the tip is seen within that interval and a loss at the tip at the next tick. A sink that
+  has **no object at all** after it was verified is a break too and is not shipped to again: an
+  unmounted share shows an empty directory, and a replica that wrote there would report every entry
+  as off the host, with no alert; a replica that lost its entries would vanish from the record.
+  Only the first load of an empty sink, a fresh sink or a restarted controller, ships from entry 1.
+  A **break in the chain** (a missing tip, a rolled back sink, a chain that does not reach the
+  verified prefix, an object whose previous hash is not the verified prefix's, or a key that is
+  missing) raises the alert and stops that replica's shipping; enforcement and the local log go on.
+  **Recovery:** after a share was unmounted, remount it and restart the controller. Otherwise
+  shipping stays stopped until an operator points `revocation_log.sink` at a new location (a
+  restart finds the break again): the old one is kept, a restore reads both, and the replicas ship
+  what the new one lacks from their local logs. A holder of put-only credentials can wedge the sink
+  by creating an object at the next key that does not link; the credentials of a sink are therefore
+  the controllers' alone.
 - **S3-compatible sink** (Phase 2, slice 9.1). The boot file names it as `revocation_log.sink:
   s3://<bucket>/<prefix>` with `revocation_log.s3.endpoint`, `region` and `credentials_file`, a
   file of two lines, the access key ID and the secret key, of mode 0600 or 0400

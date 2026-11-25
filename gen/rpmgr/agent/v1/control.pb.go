@@ -1462,7 +1462,10 @@ type Hello struct {
 	// The update policy of the agent's host, from its local policy file; unset by agents that do
 	// not report it, which the controller treats as unknown (docs/04-security.md, "Over-the-air
 	// updates").
-	UpdatePolicy  *UpdatePolicy `protobuf:"bytes,9,opt,name=update_policy,json=updatePolicy,proto3" json:"update_policy,omitempty"`
+	UpdatePolicy *UpdatePolicy `protobuf:"bytes,9,opt,name=update_policy,json=updatePolicy,proto3" json:"update_policy,omitempty"`
+	// SHA-256 over the self-signed roots the agent trusts (docs/03-connections.md, "Trust roots in
+	// Welcome and snapshots"); only from an agent with the capability "trust.roots", 32 bytes.
+	RootsDigest   []byte `protobuf:"bytes,10,opt,name=roots_digest,json=rootsDigest,proto3" json:"roots_digest,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1560,6 +1563,13 @@ func (x *Hello) GetUpdatePolicy() *UpdatePolicy {
 	return nil
 }
 
+func (x *Hello) GetRootsDigest() []byte {
+	if x != nil {
+		return x.RootsDigest
+	}
+	return nil
+}
+
 // UpdatePolicy is the auto_update and update_channel of an agent's local policy file, as the root
 // updater would read them: a file that does not load or that others may write counts as
 // auto_update "off". The host stays the authority; the controller only uses the report to warn
@@ -1632,8 +1642,13 @@ type Welcome struct {
 	// DER certificates of the config-signing keys and their intermediates, the next key included,
 	// so the agent can verify snapshots before a key rotation takes effect.
 	SigningCertificates [][]byte `protobuf:"bytes,5,rep,name=signing_certificates,json=signingCertificates,proto3" json:"signing_certificates,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// DER certificates of the controller's trust bundle: the self-signed roots, then the
+	// cross-certificates. Only to an agent with the capability "trust.roots" whose Hello digest
+	// differs from the bundle's or is missing; an agent keeps an offered root only when a
+	// cross-certificate from a root it trusts verifies (docs/04-security.md, "Root rotation").
+	TrustRoots    [][]byte `protobuf:"bytes,6,rep,name=trust_roots,json=trustRoots,proto3" json:"trust_roots,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Welcome) Reset() {
@@ -1697,6 +1712,13 @@ func (x *Welcome) GetMinAgentVersion() string {
 func (x *Welcome) GetSigningCertificates() [][]byte {
 	if x != nil {
 		return x.SigningCertificates
+	}
+	return nil
+}
+
+func (x *Welcome) GetTrustRoots() [][]byte {
+	if x != nil {
+		return x.TrustRoots
 	}
 	return nil
 }
@@ -3261,7 +3283,7 @@ const file_rpmgr_agent_v1_control_proto_rawDesc = "" +
 	"\ttruncated\x18\x05 \x01(\bR\ttruncated\x12\x18\n" +
 	"\abacklog\x18\x06 \x01(\bR\abacklog\"#\n" +
 	"\tAttachEnd\x12\x16\n" +
-	"\x06reason\x18\x01 \x01(\tR\x06reason\"\x96\x03\n" +
+	"\x06reason\x18\x01 \x01(\tR\x06reason\"\xb9\x03\n" +
 	"\x05Hello\x12;\n" +
 	"\flast_applied\x18\x01 \x01(\v2\x18.rpmgr.agent.v1.RevisionR\vlastApplied\x12*\n" +
 	"\x11last_applied_hash\x18\x02 \x01(\fR\x0flastAppliedHash\x12\"\n" +
@@ -3272,18 +3294,22 @@ const file_rpmgr_agent_v1_control_proto_rawDesc = "" +
 	"\n" +
 	"agent_time\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tagentTime\x12(\n" +
 	"\x10deny_list_digest\x18\b \x01(\fR\x0edenyListDigest\x12A\n" +
-	"\rupdate_policy\x18\t \x01(\v2\x1c.rpmgr.agent.v1.UpdatePolicyR\fupdatePolicy\"V\n" +
+	"\rupdate_policy\x18\t \x01(\v2\x1c.rpmgr.agent.v1.UpdatePolicyR\fupdatePolicy\x12!\n" +
+	"\froots_digest\x18\n" +
+	" \x01(\fR\vrootsDigest\"V\n" +
 	"\fUpdatePolicy\x12\x1f\n" +
 	"\vauto_update\x18\x01 \x01(\tR\n" +
 	"autoUpdate\x12%\n" +
-	"\x0eupdate_channel\x18\x02 \x01(\tR\rupdateChannel\"\xe5\x01\n" +
+	"\x0eupdate_channel\x18\x02 \x01(\tR\rupdateChannel\"\x86\x02\n" +
 	"\aWelcome\x12#\n" +
 	"\rsession_epoch\x18\x01 \x01(\x04R\fsessionEpoch\x12\x19\n" +
 	"\bdb_epoch\x18\x02 \x01(\tR\adbEpoch\x12;\n" +
 	"\vserver_time\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"serverTime\x12*\n" +
 	"\x11min_agent_version\x18\x04 \x01(\tR\x0fminAgentVersion\x121\n" +
-	"\x14signing_certificates\x18\x05 \x03(\fR\x13signingCertificates\"\x90\x01\n" +
+	"\x14signing_certificates\x18\x05 \x03(\fR\x13signingCertificates\x12\x1f\n" +
+	"\vtrust_roots\x18\x06 \x03(\fR\n" +
+	"trustRoots\"\x90\x01\n" +
 	"\aApplied\x124\n" +
 	"\brevision\x18\x01 \x01(\v2\x18.rpmgr.agent.v1.RevisionR\brevision\x12\x12\n" +
 	"\x04hash\x18\x02 \x01(\fR\x04hash\x12;\n" +

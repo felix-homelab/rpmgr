@@ -45,6 +45,11 @@ func (AgentSession) Fields() []ent.Field {
 		// local policy file); both empty for an agent that does not report it.
 		field.String("update_auto").Default(""),
 		field.String("update_channel").Default(""),
+		// The lower-case hexadecimal SHA-256 over the self-signed roots the agent reported in Hello
+		// (docs/03-connections.md, "Trust roots in Welcome and snapshots"); empty for an agent that
+		// reports none. The controller lists the agents whose digest differs from its bundle's as the
+		// stragglers of a root rotation.
+		field.String("roots_digest").Default(""),
 	}
 }
 

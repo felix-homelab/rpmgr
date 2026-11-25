@@ -23,6 +23,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/migrations"
+	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
 // The PostgreSQL runs need RPMGR_TEST_PG, an admin DSN such as
@@ -55,7 +56,7 @@ func migratedDB(t *testing.T, d string) *store.DB {
 			}
 			t.Skip("RPMGR_TEST_PG not set")
 		}
-		db, err = store.OpenPostgres(ctx, newPGDatabase(t, admin))
+		db, err = storetest.OpenPostgres(t, newPGDatabase(t, admin), store.PostgresOptions{})
 	}
 	if err != nil {
 		t.Fatal(err)

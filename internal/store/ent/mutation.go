@@ -3031,6 +3031,7 @@ type AgentSessionMutation struct {
 	last_goodbye       *string
 	update_auto        *string
 	update_channel     *string
+	roots_digest       *string
 	clearedFields      map[string]struct{}
 	done               bool
 	oldValue           func(context.Context) (*AgentSession, error)
@@ -3635,6 +3636,42 @@ func (m *AgentSessionMutation) ResetUpdateChannel() {
 	m.update_channel = nil
 }
 
+// SetRootsDigest sets the "roots_digest" field.
+func (m *AgentSessionMutation) SetRootsDigest(s string) {
+	m.roots_digest = &s
+}
+
+// RootsDigest returns the value of the "roots_digest" field in the mutation.
+func (m *AgentSessionMutation) RootsDigest() (r string, exists bool) {
+	v := m.roots_digest
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRootsDigest returns the old "roots_digest" field's value of the AgentSession entity.
+// If the AgentSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentSessionMutation) OldRootsDigest(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRootsDigest is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRootsDigest requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRootsDigest: %w", err)
+	}
+	return oldValue.RootsDigest, nil
+}
+
+// ResetRootsDigest resets all changes to the "roots_digest" field.
+func (m *AgentSessionMutation) ResetRootsDigest() {
+	m.roots_digest = nil
+}
+
 // Where appends a list predicates to the AgentSessionMutation builder.
 func (m *AgentSessionMutation) Where(ps ...predicate.AgentSession) {
 	m.predicates = append(m.predicates, ps...)
@@ -3669,7 +3706,7 @@ func (m *AgentSessionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AgentSessionMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.org_id != nil {
 		fields = append(fields, agentsession.FieldOrgID)
 	}
@@ -3706,6 +3743,9 @@ func (m *AgentSessionMutation) Fields() []string {
 	if m.update_channel != nil {
 		fields = append(fields, agentsession.FieldUpdateChannel)
 	}
+	if m.roots_digest != nil {
+		fields = append(fields, agentsession.FieldRootsDigest)
+	}
 	return fields
 }
 
@@ -3738,6 +3778,8 @@ func (m *AgentSessionMutation) Field(name string) (ent.Value, bool) {
 		return m.UpdateAuto()
 	case agentsession.FieldUpdateChannel:
 		return m.UpdateChannel()
+	case agentsession.FieldRootsDigest:
+		return m.RootsDigest()
 	}
 	return nil, false
 }
@@ -3771,6 +3813,8 @@ func (m *AgentSessionMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldUpdateAuto(ctx)
 	case agentsession.FieldUpdateChannel:
 		return m.OldUpdateChannel(ctx)
+	case agentsession.FieldRootsDigest:
+		return m.OldRootsDigest(ctx)
 	}
 	return nil, fmt.Errorf("unknown AgentSession field %s", name)
 }
@@ -3863,6 +3907,13 @@ func (m *AgentSessionMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetUpdateChannel(v)
+		return nil
+	case agentsession.FieldRootsDigest:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRootsDigest(v)
 		return nil
 	}
 	return fmt.Errorf("unknown AgentSession field %s", name)
@@ -3978,6 +4029,9 @@ func (m *AgentSessionMutation) ResetField(name string) error {
 		return nil
 	case agentsession.FieldUpdateChannel:
 		m.ResetUpdateChannel()
+		return nil
+	case agentsession.FieldRootsDigest:
+		m.ResetRootsDigest()
 		return nil
 	}
 	return fmt.Errorf("unknown AgentSession field %s", name)

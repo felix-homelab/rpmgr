@@ -200,6 +200,20 @@ func (_u *AgentSessionUpdate) SetNillableUpdateChannel(v *string) *AgentSessionU
 	return _u
 }
 
+// SetRootsDigest sets the "roots_digest" field.
+func (_u *AgentSessionUpdate) SetRootsDigest(v string) *AgentSessionUpdate {
+	_u.mutation.SetRootsDigest(v)
+	return _u
+}
+
+// SetNillableRootsDigest sets the "roots_digest" field if the given value is not nil.
+func (_u *AgentSessionUpdate) SetNillableRootsDigest(v *string) *AgentSessionUpdate {
+	if v != nil {
+		_u.SetRootsDigest(*v)
+	}
+	return _u
+}
+
 // Mutation returns the AgentSessionMutation object of the builder.
 func (_u *AgentSessionUpdate) Mutation() *AgentSessionMutation {
 	return _u.mutation
@@ -305,6 +319,9 @@ func (_u *AgentSessionUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if value, ok := _u.mutation.UpdateChannel(); ok {
 		_spec.SetField(agentsession.FieldUpdateChannel, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RootsDigest(); ok {
+		_spec.SetField(agentsession.FieldRootsDigest, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -497,6 +514,20 @@ func (_u *AgentSessionUpdateOne) SetNillableUpdateChannel(v *string) *AgentSessi
 	return _u
 }
 
+// SetRootsDigest sets the "roots_digest" field.
+func (_u *AgentSessionUpdateOne) SetRootsDigest(v string) *AgentSessionUpdateOne {
+	_u.mutation.SetRootsDigest(v)
+	return _u
+}
+
+// SetNillableRootsDigest sets the "roots_digest" field if the given value is not nil.
+func (_u *AgentSessionUpdateOne) SetNillableRootsDigest(v *string) *AgentSessionUpdateOne {
+	if v != nil {
+		_u.SetRootsDigest(*v)
+	}
+	return _u
+}
+
 // Mutation returns the AgentSessionMutation object of the builder.
 func (_u *AgentSessionUpdateOne) Mutation() *AgentSessionMutation {
 	return _u.mutation
@@ -632,6 +663,9 @@ func (_u *AgentSessionUpdateOne) sqlSave(ctx context.Context) (_node *AgentSessi
 	}
 	if value, ok := _u.mutation.UpdateChannel(); ok {
 		_spec.SetField(agentsession.FieldUpdateChannel, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RootsDigest(); ok {
+		_spec.SetField(agentsession.FieldRootsDigest, field.TypeString, value)
 	}
 	_node = &AgentSession{config: _u.config}
 	_spec.Assign = _node.assignValues

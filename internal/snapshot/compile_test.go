@@ -239,3 +239,45 @@ func encode(t *testing.T, s *agentv1.Snapshot) []byte {
 	}
 	return b
 }
+
+// TestCompile_TrustRoots: the trust roots go into the snapshot of an agent with "trust.roots" and
+// of no other; an agent without the capability gets the same snapshot as before; a failure to
+// read the roots fails the compile.
+func TestCompile_TrustRoots(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		storetest.Init(t, db)
+		sys := storetest.SystemCtx(t)
+		roots := [][]byte{[]byte("root"), []byte("cross")}
+		c := &snapshot.Compiler{Roots: func() ([][]byte, error) { return roots, nil }}
+		withCap := testAgent
+		withCap.Capabilities = []string{agentproto.CapTunnelQUIC, agentproto.CapTrustRoots}
+
+		got, err := c.Compile(sys, db, withCap)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.EqualFunc(got.GetTrustRoots(), roots, bytes.Equal) {
+			t.Errorf("trust roots %q", got.GetTrustRoots())
+		}
+		if got, err = c.Compile(sys, db, testAgent); err != nil || len(got.GetTrustRoots()) != 0 {
+			t.Errorf("an agent without the capability: %q, %v", got.GetTrustRoots(), err)
+		}
+		// A change of the roots changes the snapshot, so its hash.
+		roots = roots[:1]
+		a, _ := c.Compile(sys, db, withCap)
+		roots = [][]byte{[]byte("other")}
+		b, _ := c.Compile(sys, db, withCap)
+		pa, _ := proto.Marshal(a)
+		pb, _ := proto.Marshal(b)
+		if bytes.Equal(pa, pb) || len(a.GetTrustRoots()) != 1 || !bytes.Equal(b.GetTrustRoots()[0], []byte("other")) {
+			t.Error("the roots do not change the snapshot")
+		}
+		c.Roots = func() ([][]byte, error) { return nil, errors.New("no roots") }
+		if _, err := c.Compile(sys, db, withCap); err == nil {
+			t.Error("a failure to read the roots did not fail the compile")
+		}
+		if _, err := c.Compile(sys, db, testAgent); err != nil {
+			t.Errorf("the roots are not read for an agent without the capability: %v", err)
+		}
+	})
+}

@@ -5,8 +5,10 @@ package controller_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/x509"
 	"errors"
+	"math/big"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -19,6 +21,7 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/settings"
@@ -403,4 +406,64 @@ func TestApplyStatus(t *testing.T) {
 			t.Errorf("%s: %s, want %s", tt.name, got, tt.want)
 		}
 	}
+}
+
+// TestPush_TrustBundleChange: a change of the trust bundle is pushed like a revision, also when it
+// adds only a cross-certificate, which leaves the roots digest as it is; the snapshot carries the
+// new bundle.
+func TestPush_TrustBundleChange(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		var bundle atomic.Pointer[[]*x509.Certificate]
+		e := startSessionsWith(t, db, func(o *controller.SessionsOptions) {
+			o.TrustBundle = func() []*x509.Certificate { return *bundle.Load() }
+			o.Compiler = &snapshot.Compiler{Sources: []snapshot.Source{orgResources},
+				Roots: func() ([][]byte, error) { return pki.TrustRootsDER(*bundle.Load()) }}
+			o.RevisionCheck = 20 * time.Millisecond
+		})
+		root := e.ca.Root()
+		bundle.Store(&[]*x509.Certificate{root})
+		cert, id := e.agentCert(t)
+		h := hello("0.7.0")
+		h.Capabilities = []string{agentproto.CapTrustRoots}
+		h.RootsDigest = pki.RootsDigest([]*x509.Certificate{root})
+		st := e.open(t, testCtx(t), cert, h)
+		if w := recv(t, st).GetWelcome(); w == nil || len(w.TrustRoots) != 0 {
+			t.Fatalf("Welcome: %v", w)
+		}
+		first, snap1 := e.recvSnapshot(t, st, id)
+		if len(snap1.GetTrustRoots()) != 1 {
+			t.Fatalf("trust roots %d", len(snap1.GetTrustRoots()))
+		}
+		send(t, st, applied(first, snap1.GetRevision()))
+		e.waitState(t, id.ID, func(s *ent.AgentState) bool { return s.LastAckAt != nil })
+
+		// A cross-certificate for another root's key and subject, signed by a third root: the bundle
+		// changes, the digest of its self-signed roots does not.
+		other, err := pki.NewRoot(e.ca.TrustDomain(), time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		signer, err := pki.NewRoot(e.ca.TrustDomain(), time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		tmpl := &x509.Certificate{SerialNumber: big.NewInt(7), Subject: other.Cert.Subject, NotBefore: time.Now().Add(-time.Hour),
+			NotAfter: time.Now().Add(time.Hour), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
+		der, err := x509.CreateCertificate(rand.Reader, tmpl, signer.Cert, other.Cert.PublicKey, signer.Key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cross, err := x509.ParseCertificate(der)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(pki.RootsDigest([]*x509.Certificate{root, cross}), h.RootsDigest) {
+			t.Fatal("a cross-certificate changed the roots digest")
+		}
+		bundle.Store(&[]*x509.Certificate{root, cross})
+		_, snap2 := e.recvSnapshot(t, st, id)
+		if len(snap2.GetTrustRoots()) != 2 {
+			t.Fatalf("the new snapshot has %d trust certificates, want 2", len(snap2.GetTrustRoots()))
+		}
+	})
 }

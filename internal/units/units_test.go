@@ -88,6 +88,19 @@ func TestRenderWritable(t *testing.T) {
 		if n := strings.Count(string(b), "ReadWritePaths="); n != 2 {
 			t.Errorf("%s: %d ReadWritePaths= lines", role, n)
 		}
+		// The unit waits for the mounts of each directory, in [Unit], so that a share that is
+		// mounted late is there when the controller first reads the sink.
+		const wantUnit = "Wants=network-online.target\nRequiresMountsFor=/mnt/rpmgr-revocations\nRequiresMountsFor=/srv/sink\n\n[Service]"
+		if !strings.Contains(string(b), wantUnit) {
+			t.Errorf("%s: no\n%s\nin\n%s", role, wantUnit, b)
+		}
+	}
+	b, err := units.Render("controller", units.Options{Bin: "/usr/local/bin/rpmgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "RequiresMountsFor") {
+		t.Error("RequiresMountsFor without a writable directory")
 	}
 }
 
