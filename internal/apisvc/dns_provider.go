@@ -318,7 +318,7 @@ func (d *DnsProviders) DeleteDnsProvider(ctx context.Context, req *connect.Reque
 // client opens the token of a stored provider and makes the client of its account. Its errors are
 // fixed words: none quotes the token.
 func (d *DnsProviders) client(ctx context.Context, row *ent.DNSProvider) (dns.Provider, error) {
-	tok, err := d.Sealer.Open(providers.SecretContext(row.ID), row.CredentialEnc)
+	tok, err := d.Sealer.Open(ctx, providers.SecretContext(row.ID), row.CredentialEnc)
 	if err != nil {
 		if d.Logger != nil {
 			d.Logger.ErrorContext(ctx, "a dns provider's token cannot be opened", "dns_provider", row.ID)

@@ -215,7 +215,7 @@ func delivery(ctx context.Context, c *ent.Client, o WebhookOptions, a *attempt, 
 		if h.URLEnc == nil || len(*h.URLEnc) == 0 {
 			return webhook.Delivery{}, errors.New("a chat endpoint without its URL")
 		}
-		target, err := o.Sealer.Open(secret.Context{Table: "webhooks", Column: "url_enc", RowID: h.ID}, *h.URLEnc)
+		target, err := o.Sealer.Open(ctx, secret.Context{Table: "webhooks", Column: "url_enc", RowID: h.ID}, *h.URLEnc)
 		if err != nil {
 			return webhook.Delivery{}, err
 		}
@@ -237,13 +237,13 @@ func delivery(ctx context.Context, c *ent.Client, o WebhookOptions, a *attempt, 
 		}
 		return d, nil
 	}
-	cur, err := o.Sealer.Open(secret.Context{Table: "webhooks", Column: "secret_enc", RowID: h.ID}, h.SecretEnc)
+	cur, err := o.Sealer.Open(ctx, secret.Context{Table: "webhooks", Column: "secret_enc", RowID: h.ID}, h.SecretEnc)
 	if err != nil {
 		return webhook.Delivery{}, err
 	}
 	secrets := []secret.Value{cur}
 	if h.PreviousSecretEnc != nil && h.PreviousUntil != nil && now.Before(*h.PreviousUntil) {
-		prev, err := o.Sealer.Open(secret.Context{Table: "webhooks", Column: "previous_secret_enc", RowID: h.ID}, *h.PreviousSecretEnc)
+		prev, err := o.Sealer.Open(ctx, secret.Context{Table: "webhooks", Column: "previous_secret_enc", RowID: h.ID}, *h.PreviousSecretEnc)
 		if err != nil {
 			return webhook.Delivery{}, err
 		}

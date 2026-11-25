@@ -45,7 +45,7 @@ func InstanceSecret(ctx context.Context, c *ent.Client, sealer *secret.Sealer, n
 	if err != nil {
 		return secret.Value{}, err
 	}
-	return sealer.Open(secretContext(name), row.ValueEnc)
+	return sealer.Open(ctx, secretContext(name), row.ValueEnc)
 }
 
 func secretContext(name string) secret.Context {

@@ -45,7 +45,7 @@ func TestDNS_ReservedNamesNeverWritten(t *testing.T) {
 	kek, _ := secret.NewKEK([]byte("0123456789abcdef0123456789abcdef"))
 	sealer, _ := secret.NewSealer(kek)
 	pid := ids.New("dnp")
-	sealed, err := sealer.Seal(providers.SecretContext(pid), secret.New(apiToken))
+	sealed, err := sealer.Seal(context.Background(), providers.SecretContext(pid), secret.New(apiToken))
 	if err != nil {
 		t.Fatal(err)
 	}

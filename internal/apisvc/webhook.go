@@ -182,11 +182,11 @@ func formatProto(f ewebhook.Format) rpmgrv1.WebhookFormat {
 }
 
 // openURL opens the sealed URL of a chat endpoint, for the delivery job and the test only.
-func (w *Webhooks) openURL(h *ent.Webhook) (secret.Value, error) {
+func (w *Webhooks) openURL(ctx context.Context, h *ent.Webhook) (secret.Value, error) {
 	if h.URLEnc == nil || len(*h.URLEnc) == 0 { // NULL reads as an empty value
 		return secret.Value{}, errors.New("apisvc: a chat endpoint without its URL")
 	}
-	return w.Sealer.Open(w.secretContext(h.ID, "url_enc"), *h.URLEnc)
+	return w.Sealer.Open(ctx, w.secretContext(h.ID, "url_enc"), *h.URLEnc)
 }
 
 // CreateWebhook implements WebhookService.
@@ -226,7 +226,7 @@ func (w *Webhooks) create(ctx context.Context, org string, in *rpmgrv1.Webhook) 
 	var sealed []byte
 	shown, urlEnc := in.GetUrl(), []byte(nil)
 	if f.Chat() {
-		if urlEnc, err = w.Sealer.Seal(w.secretContext(id, "url_enc"), secret.New(in.GetSecretUrl())); err != nil {
+		if urlEnc, err = w.Sealer.Seal(ctx, w.secretContext(id, "url_enc"), secret.New(in.GetSecretUrl())); err != nil {
 			return nil, "", err
 		}
 		shown, sealed = webhook.RedactURL(in.GetSecretUrl()), []byte{}
@@ -234,7 +234,7 @@ func (w *Webhooks) create(ctx context.Context, org string, in *rpmgrv1.Webhook) 
 		if sec, err = webhook.NewSecret(); err != nil {
 			return nil, "", err
 		}
-		if sealed, err = w.Sealer.Seal(w.secretContext(id, "secret_enc"), sec); err != nil {
+		if sealed, err = w.Sealer.Seal(ctx, w.secretContext(id, "secret_enc"), sec); err != nil {
 			return nil, "", err
 		}
 	}
@@ -347,7 +347,7 @@ func (w *Webhooks) UpdateWebhook(ctx context.Context, req *connect.Request[rpmgr
 			return err
 		}
 		u := tx.Webhook.UpdateOneID(cur.ID).Where(ewebhook.Version(cur.Version)).SetEventTypes(next.GetEventTypes()).AddVersion(1)
-		if err := w.updateTarget(u, cur, next, f, slices.Contains(m.GetUpdateMask().GetPaths(), "url")); err != nil {
+		if err := w.updateTarget(ctx, u, cur, next, f, slices.Contains(m.GetUpdateMask().GetPaths(), "url")); err != nil {
 			return err
 		}
 		// The options are checked against the format the endpoint will have, so that a change of
@@ -377,7 +377,7 @@ func (w *Webhooks) UpdateWebhook(ctx context.Context, req *connect.Request[rpmgr
 // which holds the service's token, changes only by a new secret_url, and a new format needs one: a
 // URL belongs to its service. An rpmgr endpoint does not become a chat one without its signing
 // secret going, and a chat one does not become rpmgr, which would need a secret to show once.
-func (w *Webhooks) updateTarget(u *ent.WebhookUpdateOne, cur *ent.Webhook, next *rpmgrv1.Webhook, f webhook.Format, urlInMask bool) error {
+func (w *Webhooks) updateTarget(ctx context.Context, u *ent.WebhookUpdateOne, cur *ent.Webhook, next *rpmgrv1.Webhook, f webhook.Format, urlInMask bool) error {
 	curFormat := webhook.Format(cur.Format)
 	secretURL := next.GetSecretUrl()
 	switch {
@@ -411,7 +411,7 @@ func (w *Webhooks) updateTarget(u *ent.WebhookUpdateOne, cur *ent.Webhook, next 
 	if err := webhook.ValidateChatURL(secretURL, cur.OrgID == nil); err != nil {
 		return invalid(err)
 	}
-	sealed, err := w.Sealer.Seal(w.secretContext(cur.ID, "url_enc"), secret.New(secretURL))
+	sealed, err := w.Sealer.Seal(ctx, w.secretContext(cur.ID, "url_enc"), secret.New(secretURL))
 	if err != nil {
 		return err
 	}
@@ -460,7 +460,7 @@ func (w *Webhooks) RotateWebhookSecret(ctx context.Context, req *connect.Request
 	if err != nil {
 		return nil, err
 	}
-	sealed, err := w.Sealer.Seal(w.secretContext(id, "secret_enc"), sec)
+	sealed, err := w.Sealer.Seal(ctx, w.secretContext(id, "secret_enc"), sec)
 	if err != nil {
 		return nil, err
 	}
@@ -473,11 +473,11 @@ func (w *Webhooks) RotateWebhookSecret(ctx context.Context, req *connect.Request
 		if webhook.Format(cur.Format).Chat() {
 			return connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: a chat endpoint has no signing secret to rotate"))
 		}
-		old, err := w.Sealer.Open(w.secretContext(id, "secret_enc"), cur.SecretEnc)
+		old, err := w.Sealer.Open(ctx, w.secretContext(id, "secret_enc"), cur.SecretEnc)
 		if err != nil {
 			return w.unsealFailed(ctx, id, err)
 		}
-		prev, err := w.Sealer.Seal(w.secretContext(id, "previous_secret_enc"), old)
+		prev, err := w.Sealer.Seal(ctx, w.secretContext(id, "previous_secret_enc"), old)
 		if err != nil {
 			return err
 		}
@@ -579,18 +579,18 @@ func (w *Webhooks) test(ctx context.Context, id string) (*rpmgrv1.TestWebhookRes
 	var target secret.Value
 	now := w.now().UTC()
 	if f.Chat() {
-		if target, err = w.openURL(h); err != nil {
+		if target, err = w.openURL(ctx, h); err != nil {
 			return nil, w.unsealFailed(ctx, id, err)
 		}
 	} else {
-		cur, err := w.Sealer.Open(w.secretContext(id, "secret_enc"), h.SecretEnc)
+		cur, err := w.Sealer.Open(ctx, w.secretContext(id, "secret_enc"), h.SecretEnc)
 		if err != nil {
 			return nil, w.unsealFailed(ctx, id, err)
 		}
 		secrets = []secret.Value{cur}
 	}
 	if !f.Chat() && h.PreviousSecretEnc != nil && h.PreviousUntil != nil && now.Before(*h.PreviousUntil) {
-		prev, err := w.Sealer.Open(w.secretContext(id, "previous_secret_enc"), *h.PreviousSecretEnc)
+		prev, err := w.Sealer.Open(ctx, w.secretContext(id, "previous_secret_enc"), *h.PreviousSecretEnc)
 		if err != nil {
 			return nil, w.unsealFailed(ctx, id, err)
 		}

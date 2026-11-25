@@ -159,7 +159,7 @@ func (r *Runner) shipSink(ctx context.Context, s *ent.AuditSink, chains []string
 	}
 	var sinkErr error
 	shipped := 0
-	sink, err := r.open(s)
+	sink, err := r.open(ctx, s)
 	if err != nil {
 		sinkErr = err
 	} else {
@@ -326,14 +326,14 @@ func sameTime(a, b *time.Time) bool {
 }
 
 // open returns the sink s describes.
-func (r *Runner) open(s *ent.AuditSink) (Sink, error) {
+func (r *Runner) open(ctx context.Context, s *ent.AuditSink) (Sink, error) {
 	switch s.Kind {
 	case auditsink.KindWebhook:
-		return openWebhook(r.o, s)
+		return openWebhook(ctx, r.o, s)
 	case auditsink.KindSyslog:
 		return openSyslog(s)
 	case auditsink.KindS3:
-		return openS3(r.o, s)
+		return openS3(ctx, r.o, s)
 	default:
 		return nil, fmt.Errorf("the %s sink is not available yet", s.Kind)
 	}
@@ -352,7 +352,7 @@ func (r *Runner) Test(ctx context.Context, s *ent.AuditSink) error {
 	if s.Kind == auditsink.KindS3 {
 		return r.checkS3(ctx, s)
 	}
-	sink, err := r.open(s)
+	sink, err := r.open(ctx, s)
 	if err != nil {
 		return err
 	}

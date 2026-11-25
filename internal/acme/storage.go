@@ -105,7 +105,7 @@ func prefixed(prefix string) predicate.ACMEStorage {
 }
 
 // Load implements certmagic.Storage; a missing key wraps fs.ErrNotExist, as certmagic requires.
-func (s *Storage) Load(_ context.Context, key string) ([]byte, error) {
+func (s *Storage) Load(ctx context.Context, key string) ([]byte, error) {
 	var out []byte
 	err := store.ReadTx(s.sys, s.db, func(tx *ent.Tx, _ store.Revision) error {
 		row, err := tx.ACMEStorage.Get(s.sys, key)
@@ -115,7 +115,7 @@ func (s *Storage) Load(_ context.Context, key string) ([]byte, error) {
 		if err != nil {
 			return err
 		}
-		v, err := s.sealer.Open(valueContext(key), row.ValueEnc)
+		v, err := s.sealer.Open(ctx, valueContext(key), row.ValueEnc)
 		if err != nil {
 			return err
 		}

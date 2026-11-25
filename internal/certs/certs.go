@@ -259,12 +259,12 @@ func Delete(ctx context.Context, tx *ent.Tx, c *ent.Certificate) error {
 
 // Item opens a stored certificate's key with s and returns the item a gateway fetches; its
 // SHA-256 is the row's content_sha256, or the row was changed outside this package.
-func Item(c *ent.Certificate, s *secret.Sealer) ([]byte, error) {
+func Item(ctx context.Context, c *ent.Certificate, s *secret.Sealer) ([]byte, error) {
 	chain, err := x509.ParseCertificates(c.Chain)
 	if err != nil {
 		return nil, err
 	}
-	v, err := s.Open(keyContext(c.ID), c.KeyEnc)
+	v, err := s.Open(ctx, keyContext(c.ID), c.KeyEnc)
 	if err != nil {
 		return nil, err
 	}

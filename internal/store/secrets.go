@@ -14,7 +14,7 @@ import (
 // in secrets_meta, in tx, the transaction that writes the sealed value (docs/04-security.md,
 // "Secrets at rest and in logs").
 func Seal(ctx context.Context, tx *ent.Tx, s *secret.Sealer, c secret.Context, v secret.Value) ([]byte, error) {
-	sealed, err := s.Seal(c, v)
+	sealed, err := s.Seal(ctx, c, v)
 	if err != nil {
 		return nil, err
 	}

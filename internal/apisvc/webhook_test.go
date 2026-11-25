@@ -80,7 +80,7 @@ func TestWebhook_SecretWriteOnly(t *testing.T) {
 	if strings.Contains(string(row.SecretEnc), first) {
 		t.Fatal("the secret is stored in the clear")
 	}
-	if v, err := e.sealer.Open(secret.Context{Table: "webhooks", Column: "secret_enc", RowID: w.GetId()}, row.SecretEnc); err != nil || v.Reveal() != first { //nolint:forbidigo // the test reads back the secret it stored
+	if v, err := e.sealer.Open(context.Background(), secret.Context{Table: "webhooks", Column: "secret_enc", RowID: w.GetId()}, row.SecretEnc); err != nil || v.Reveal() != first { //nolint:forbidigo // the test reads back the secret it stored
 		t.Fatalf("the stored secret does not open to the shown one: %v", err)
 	}
 

@@ -31,7 +31,7 @@ const chatToken = "CHATTOKEN-abcdefghijklmnop" //nolint:gosec // G101: a test to
 func (e *hookEnv) chatHook(org, path string, f ewebhook.Format, types ...string) *ent.Webhook {
 	e.t.Helper()
 	id := ids.New("whk")
-	sealed, err := e.sealer.Seal(secret.Context{Table: "webhooks", Column: "url_enc", RowID: id}, secret.New(e.url+path+"/"+chatToken))
+	sealed, err := e.sealer.Seal(context.Background(), secret.Context{Table: "webhooks", Column: "url_enc", RowID: id}, secret.New(e.url+path+"/"+chatToken))
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -257,7 +257,7 @@ func TestKEK_RotateKeepsChatURLDeliverable(t *testing.T) {
 	s1, _ := secret.NewSealer(k1)
 	const url = "https://discord.com/api/webhooks/1/" + chatToken
 	id := ids.New("whk")
-	sealed, err := s1.Seal(secret.Context{Table: "webhooks", Column: "url_enc", RowID: id}, secret.New(url))
+	sealed, err := s1.Seal(context.Background(), secret.Context{Table: "webhooks", Column: "url_enc", RowID: id}, secret.New(url))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,13 +285,13 @@ func TestKEK_RotateKeepsChatURLDeliverable(t *testing.T) {
 	row := db.Client().Webhook.GetX(storetest.SystemCtx(t), id)
 	own, other := secret.Context{Table: "webhooks", Column: "url_enc", RowID: id}, secret.Context{Table: "webhooks", Column: "url_enc", RowID: ids.New("whk")}
 	s2, _ := secret.NewSealer(k2)
-	if v, err := s2.Open(own, *row.URLEnc); err != nil || !v.EqualString(url) {
+	if v, err := s2.Open(context.Background(), own, *row.URLEnc); err != nil || !v.EqualString(url) {
 		t.Fatalf("the URL under the new KEK: %v", err)
 	}
-	if _, err := s2.Open(other, *row.URLEnc); err == nil {
+	if _, err := s2.Open(context.Background(), other, *row.URLEnc); err == nil {
 		t.Error("the URL opens in another row's context")
 	}
-	if _, err := s1.Open(own, *row.URLEnc); err == nil {
+	if _, err := s1.Open(context.Background(), own, *row.URLEnc); err == nil {
 		t.Error("the URL still opens under the old KEK")
 	}
 }

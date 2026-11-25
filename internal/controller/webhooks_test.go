@@ -122,7 +122,7 @@ const hookSecret = "rpmgr_whs_hookhookhookhookhookhookhookhookhook01" //nolint:g
 func (e *hookEnv) hook(org, path string, types ...string) *ent.Webhook {
 	e.t.Helper()
 	id := ids.New("whk")
-	sealed, err := e.sealer.Seal(secret.Context{Table: "webhooks", Column: "secret_enc", RowID: id}, secret.New(hookSecret))
+	sealed, err := e.sealer.Seal(context.Background(), secret.Context{Table: "webhooks", Column: "secret_enc", RowID: id}, secret.New(hookSecret))
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -396,8 +396,8 @@ func TestWebhookJob_DeliveryDuringRotation(t *testing.T) {
 	org := storetest.Org(t, e.db, "org-a")
 	h := e.hook(org, "/rot")
 	const next = "rpmgr_whs_nextnextnextnextnextnextnextnextnext02" //nolint:gosec // G101: a test secret
-	cur, _ := e.sealer.Seal(secret.Context{Table: "webhooks", Column: "secret_enc", RowID: h.ID}, secret.New(next))
-	prev, _ := e.sealer.Seal(secret.Context{Table: "webhooks", Column: "previous_secret_enc", RowID: h.ID}, secret.New(hookSecret))
+	cur, _ := e.sealer.Seal(context.Background(), secret.Context{Table: "webhooks", Column: "secret_enc", RowID: h.ID}, secret.New(next))
+	prev, _ := e.sealer.Seal(context.Background(), secret.Context{Table: "webhooks", Column: "previous_secret_enc", RowID: h.ID}, secret.New(hookSecret))
 	e.db.Client().Webhook.UpdateOneID(h.ID).SetSecretEnc(cur).SetPreviousSecretEnc(prev).SetPreviousUntil(e.clock.Add(time.Hour)).ExecX(e.sys)
 	time.Sleep(2 * time.Millisecond)
 	e.change(org, "route.update")

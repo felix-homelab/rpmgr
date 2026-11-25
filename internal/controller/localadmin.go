@@ -280,7 +280,7 @@ func RotateKEK(ctx context.Context, path, previous string, getenv func(string) s
 				}
 			}
 			for _, id := range ids {
-				re, err := sealer.Rewrap(secret.Context{Table: c.table, Column: c.column, RowID: id}, values[id])
+				re, err := sealer.Rewrap(sys, secret.Context{Table: c.table, Column: c.column, RowID: id}, values[id])
 				if err != nil {
 					failed = append(failed, c.table+"."+c.column+" "+id)
 					continue

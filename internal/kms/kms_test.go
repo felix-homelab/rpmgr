@@ -51,11 +51,11 @@ func TestSealerOverTransit(t *testing.T) {
 		t.Fatal(err)
 	}
 	sc := secret.Context{Table: "dns_providers", Column: "credential_enc", RowID: "row-1"}
-	sealed, err := s.Seal(sc, secret.New("low-entropy-value"))
+	sealed, err := s.Seal(context.Background(), sc, secret.New("low-entropy-value"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	v, err := s.Open(sc, sealed)
+	v, err := s.Open(context.Background(), sc, sealed)
 	if err != nil || !v.EqualString("low-entropy-value") {
 		t.Fatalf("Open = %v", err)
 	}
@@ -65,12 +65,12 @@ func TestSealerOverTransit(t *testing.T) {
 	// A value moved to another row does not open: the Transit context differs.
 	other := sc
 	other.RowID = "row-2"
-	if _, err := s.Open(other, sealed); !errors.Is(err, secret.ErrOpen) {
+	if _, err := s.Open(context.Background(), other, sealed); !errors.Is(err, secret.ErrOpen) {
 		t.Fatalf("moved value: %v, want ErrOpen", err)
 	}
 	// Transit down is not ErrOpen.
 	f.srv.Close()
-	if _, err := s.Open(sc, sealed); errors.Is(err, secret.ErrOpen) || !errors.Is(err, ErrUnavailable) {
+	if _, err := s.Open(context.Background(), sc, sealed); errors.Is(err, secret.ErrOpen) || !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("Transit down: %v, want ErrUnavailable and not ErrOpen", err)
 	}
 }
@@ -692,5 +692,37 @@ func waitCount(t *testing.T, f *fakeTransit, key string, n int) {
 	}
 	if got := f.count(key); got != n {
 		t.Fatalf("%d requests of %s, want %d", got, key, n)
+	}
+}
+
+// TestRewrapSkipsOnlyTheCheckedLatestVersion: after Check, a wrapped key of the latest version is
+// returned unchanged without a call to Transit and an older one is re-wrapped; before a Check
+// nothing is skipped, since an earlier answer may be older than Transit's key.
+func TestRewrapSkipsOnlyTheCheckedLatestVersion(t *testing.T) {
+	f := newFakeTransit(t)
+	c, _, _ := testClient(t, f, nil)
+	w1, err := c.Wrap(ctxA, dk, aadA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Rewrap(ctxA, w1, aadA); err != nil || f.count("POST /v1/transit/rewrap/rpmgr") != 1 {
+		t.Fatalf("Rewrap without a Check: %v, %d calls; want a call", err, f.count("POST /v1/transit/rewrap/rpmgr"))
+	}
+	if _, err := c.Check(ctxA); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := c.Rewrap(ctxA, w1, aadA); err != nil || !bytes.Equal(got, w1) || f.count("POST /v1/transit/rewrap/rpmgr") != 1 {
+		t.Fatalf("Rewrap of the latest version: %q, %v, %d calls; want it unchanged and no call", got, err, f.count("POST /v1/transit/rewrap/rpmgr"))
+	}
+	f.setLatest(2)
+	if _, err := c.Check(ctxA); err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.Rewrap(ctxA, w1, aadA)
+	if err != nil || !strings.HasPrefix(string(got), "vault:v2:") {
+		t.Fatalf("Rewrap after a key rotation = %q, %v; want version 2", got, err)
+	}
+	if again, err := c.Rewrap(ctxA, got, aadA); err != nil || !bytes.Equal(again, got) {
+		t.Fatalf("Rewrap of version 2 = %q, %v; want it unchanged", again, err)
 	}
 }
