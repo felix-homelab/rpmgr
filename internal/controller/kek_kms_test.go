@@ -370,3 +370,53 @@ func TestKMS_ReadyFollowsTransit(t *testing.T) {
 		}
 	}
 }
+
+// TestKMS_RotateFailsPartWay: Transit fails after two re-wraps; nothing is recorded, the error holds
+// no token or ciphertext and does not say a value does not open, and a retry re-wraps everything.
+func TestKMS_RotateFailsPartWay(t *testing.T) {
+	ctx := context.Background()
+	h, srv := kmsHost(t)
+	srv.Rotate()
+	srv.FailRewrapAfter(2)
+	_, _, err := controller.RotateKEK(ctx, h.cfg, controller.PreviousKEK{}, noEnv)
+	if err == nil || strings.Contains(err.Error(), "neither") {
+		t.Fatalf("rotate with Transit failing part way: %v", err)
+	}
+	for _, f := range []string{kmstest.Token, "vault:v"} {
+		if strings.Contains(err.Error(), f) {
+			t.Errorf("%q in the error: %v", f, err)
+		}
+	}
+	st, err := controller.StatusKEK(ctx, h.cfg, noEnv)
+	if err != nil || st.Versions[kmsVersion2] != 0 {
+		t.Errorf("a partial rotation was recorded: %+v %v", st.Versions, err)
+	}
+	if !opens(t, h.db, kmsSealer(t, srv)) {
+		t.Error("the CA no longer opens")
+	}
+	srv.FailRewrapAfter(0)
+	if n, _, err := controller.RotateKEK(ctx, h.cfg, controller.PreviousKEK{}, noEnv); err != nil || n == 0 {
+		t.Errorf("retry: %d %v", n, err)
+	}
+}
+
+// TestKMS_RotationRacesTransitRotation: the key is rotated in Transit right after the command read
+// it, so the values on the version it read are skipped; the command must not report success. It
+// changes nothing and a second run re-wraps everything.
+func TestKMS_RotationRacesTransitRotation(t *testing.T) {
+	ctx := context.Background()
+	h, srv := kmsHost(t)
+	st, err := controller.StatusKEK(ctx, h.cfg, noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed := st.Versions[kmsVersion1]
+	srv.RotateAfterNextCheck()
+	if _, _, err := controller.RotateKEK(ctx, h.cfg, controller.PreviousKEK{}, noEnv); err == nil || !strings.Contains(err.Error(), "while the command ran") {
+		t.Fatalf("a rotation that raced the key's: %v", err)
+	}
+	n, v, err := controller.RotateKEK(ctx, h.cfg, controller.PreviousKEK{}, noEnv)
+	if err != nil || n != sealed || v != kmsVersion2 {
+		t.Fatalf("second run: %d %s %v; want %d values on %s", n, v, err, sealed, kmsVersion2)
+	}
+}

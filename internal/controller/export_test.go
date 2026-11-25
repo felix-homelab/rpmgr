@@ -4,6 +4,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"testing"
 	"time"
@@ -96,25 +97,57 @@ func OnRestoreStep(t testing.TB, f func(step string)) {
 	t.Cleanup(func() { restoreHook = nil })
 }
 
-// OpenKMSWithMetrics opens the Transit key of cfg as Run does, with its metrics registered in the
-// returned registry, which holds what the controller would expose after the request.
-func OpenKMSWithMetrics(ctx context.Context, cfg config.Controller) (*prometheus.Registry, error) {
+// KMSProbe is a Transit KEK opened as Run does, with the metrics and the readiness check of a
+// controller.
+type KMSProbe struct {
+	Registry *prometheus.Registry
+	// Ready is the readiness answer.
+	Ready func(context.Context) error
+	// Touch makes a request of the kind a running controller makes, which a failure turns into a
+	// not-ready controller.
+	Touch func(context.Context) error
+}
+
+// OpenKMSWithMetrics opens the Transit key of cfg as Run does, with log as the client's logger. The
+// probe is returned even when opening fails, with only its Registry.
+func OpenKMSWithMetrics(ctx context.Context, cfg config.Controller, log *slog.Logger) (*KMSProbe, error) {
 	h := newKMSHealth()
-	reg := prometheus.NewRegistry()
+	p := &KMSProbe{Registry: prometheus.NewRegistry(), Ready: h.Ready}
 	for _, c := range h.Collectors() {
-		if err := reg.Register(c); err != nil {
+		if err := p.Registry.Register(c); err != nil {
 			return nil, err
 		}
 	}
-	_, err := openKEK(ctx, cfg, nil, nil, h.observe)
-	return reg, err
+	w, err := openKEK(ctx, cfg, nil, log, h.observe)
+	if err != nil {
+		return p, err
+	}
+	h.probe = w.Probe
+	p.Touch = func(ctx context.Context) error {
+		_, err := w.Wrap(ctx, make([]byte, 32), []byte("probe"))
+		return err
+	}
+	return p, nil
+}
+
+// SetLocalLog replaces the logger of the Transit client in local commands for one test.
+func SetLocalLog(t testing.TB, l *slog.Logger) {
+	old := kmsLog
+	kmsLog = l
+	t.Cleanup(func() { kmsLog = old })
 }
 
 // KMSReady is the readiness answer of the Transit health after observing results, as the client
 // reports them. While it is down, Ready reads the key again; that request has the result probe.
 func KMSReady(ctx context.Context, probe string, results ...string) error {
 	h := newKMSHealth()
-	h.probe = func(context.Context) error { h.observe("check", probe); return nil }
+	h.probe = func(context.Context) error {
+		h.observe("check", probe)
+		if probe != "ok" {
+			return errors.New("check failed")
+		}
+		return nil
+	}
 	for _, r := range results {
 		h.observe("encrypt", r)
 	}

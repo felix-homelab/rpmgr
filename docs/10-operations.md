@@ -1184,7 +1184,7 @@ gateway counts as `transport="h2"` ([03](03-connections.md#transport-selection))
 | `rpmgr_gateway_quic_bound` | gauge | gateway | 1 | 1 while the gateway listens for data sessions over QUIC; 0 while it does not, as in a process a hand-off started whose UDP port is still held. Suggested alert: 0 for more than 5 min |
 | `rpmgr_audit_checkpoint_age_seconds` | gauge | controller | 1 | Age of the oldest audit entry no checkpoint covers yet, 0 when every entry is covered ([04](04-security.md#audit-log)); with the external sink (Phase 2), no checkpoint that reached the sink |
 | `rpmgr_revocation_log_sink` | gauge | controller | 1 | 1 if a sink keeps the revocation log off the host, 0 for a single node without one ([Backup and restore](#backup-and-restore)) |
-| `rpmgr_kms_up` | gauge | controller | 2 | 1 while the last request to Transit was answered, 0 after Transit could not be reached or refused the credential (the controller is then not ready, [04](04-security.md#kek-in-vault-or-openbao-transit)); with `kek.source: kms` only |
+| `rpmgr_kms_up` | gauge | controller | 2 | 1 while Transit answers and the key is usable, 0 after a request found Transit unreachable, refused the credential or did not find the key, or after the key failed its check (missing, of another type, not derived); the controller is then not ready, and each `/readyz` reads the key again, at most once a second, until the check passes ([04](04-security.md#kek-in-vault-or-openbao-transit)); with `kek.source: kms` only |
 | `rpmgr_kms_requests_total{op,result}` | counter | controller | 2 | Transit requests by `encrypt`, `decrypt`, `rewrap`, `check` (the read of the key) or `login` and `ok`, `denied`, `unavailable` or `error` |
 | `rpmgr_ca_root_offline` | gauge | controller | 2 | 1 when the root's key is offline ([04](04-security.md#offline-root-ca)) |
 | `rpmgr_ca_intermediate_signing_pending` | gauge | controller | 2 | 1 while the next intermediate waits for an offline root's signature |
@@ -1512,9 +1512,10 @@ Each runbook: **symptoms → steps → done when**.
   start the controllers; back up the new KEK separately; delete the old KEK's file and retire it
   after a successful backup and test restore.
 - **A Transit key** (`kek.source: kms`) rotates in Transit, and replicas keep running (a single
-  controller is stopped for it: the command takes the controller lock shared, so it is refused
-  beside one): rotate the key there, run `rpmgr kek rotate` (it reads the key, then calls `rewrap`
-  for every value that is not on the key's latest version, in batches), wait for `rpmgr kek status`
+  controller is stopped for it: the command takes the controller lock exclusively, so it is refused
+  beside any): rotate the key there, run `rpmgr kek rotate` (it reads the key, then calls `rewrap`
+  once for every value that is not on the key's latest version, in one transaction; it fails and
+  changes nothing if the key was rotated again while it ran), wait for `rpmgr kek status`
   to show none on an older key version, and only then raise the key's minimum decryption version
   in Transit ([04](04-security.md#kek-in-vault-or-openbao-transit)). A command that cannot reach
   Transit stops and changes nothing; `rpmgr kek status` then says why the key did not load and

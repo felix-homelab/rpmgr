@@ -6,9 +6,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -20,6 +22,24 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
+// lockedBuffer is a buffer that the loggers of parallel tests write to.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
+}
+
 var wrappedRe = regexp.MustCompile(`vault:v1:([A-Za-z0-9+/]{40,}={0,2})`)
 
 // TestKMS_CredentialsNeverLoggedInAuditAndStatus provokes the failures of Transit that docs/12
@@ -28,6 +48,9 @@ var wrappedRe = regexp.MustCompile(`vault:v1:([A-Za-z0-9+/]{40,}={0,2})`)
 // into its own error messages. The output of `kek status`, the errors of `kek rotate` and of the
 // start, the metrics and the audit log of the instance must hold none of them.
 func TestKMS_CredentialsNeverLoggedInAuditAndStatus(t *testing.T) {
+	var logs lockedBuffer
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	controller.SetLocalLog(t, logger)
 	for name, login := range map[string]func(*kmstest.Server) string{
 		"token file": func(s *kmstest.Server) string { return "token_file: " + s.WriteCredential("token", kmstest.Token) },
 		"approle": func(s *kmstest.Server) string {
@@ -60,6 +83,10 @@ func TestKMS_CredentialsNeverLoggedInAuditAndStatus(t *testing.T) {
 			}
 			forbidden := []string{kmstest.Token, kmstest.RoleID, kmstest.SecretID, "vault:v", string(m[1])}
 
+			probe, err := controller.OpenKMSWithMetrics(ctx, cfg, logger)
+			if err != nil {
+				t.Fatal(err)
+			}
 			var seen []string
 			provoke := func(mode string) {
 				t.Helper()
@@ -80,13 +107,23 @@ func TestKMS_CredentialsNeverLoggedInAuditAndStatus(t *testing.T) {
 					t.Fatal(err)
 				}
 				seen = append(seen, "kek status:\n"+out.String())
-				reg, err := controller.OpenKMSWithMetrics(ctx, cfg)
-				if err == nil {
+				if _, err := controller.OpenKMSWithMetrics(ctx, cfg, logger); err == nil {
 					t.Errorf("%s: the start would succeed", mode)
 				} else {
 					seen = append(seen, "start error: "+err.Error())
 				}
-				seen = append(seen, "metrics:\n"+gatherText(t, reg))
+				// A running controller: a request fails, then /readyz says why.
+				if err := probe.Touch(ctx); err == nil {
+					t.Errorf("%s: a request succeeded", mode)
+				} else {
+					seen = append(seen, "request error: "+err.Error())
+				}
+				if err := probe.Ready(ctx); err == nil {
+					t.Errorf("%s: ready", mode)
+				} else {
+					seen = append(seen, "readyz: "+err.Error())
+				}
+				seen = append(seen, "metrics:\n"+gatherText(t, probe.Registry))
 			}
 			srv.FailWith(403, true)
 			provoke("refused")
@@ -94,9 +131,18 @@ func TestKMS_CredentialsNeverLoggedInAuditAndStatus(t *testing.T) {
 			provoke("server error")
 			srv.FailWith(200, true)
 			provoke("malformed answer")
-			// With Transit back, the audit log holds the successful rotation too.
+			// Transit fails part of the way through a rotation, on a value's own call: the error of
+			// that value names the value, and must not hold its sealed bytes or the request.
 			srv.FailWith(0, false)
 			srv.Rotate()
+			srv.FailRewrapAfter(1)
+			if _, _, err := controller.RotateKEK(ctx, h.cfg, controller.PreviousKEK{}, noEnv); err == nil {
+				t.Error("a rotation with a failing rewrap succeeded")
+			} else {
+				seen = append(seen, "rotate error part way: "+err.Error())
+			}
+			srv.FailRewrapAfter(0)
+			// With Transit back, the audit log holds the successful rotation too.
 			if n, _, err := controller.RotateKEK(ctx, h.cfg, controller.PreviousKEK{}, noEnv); err != nil || n == 0 {
 				t.Fatalf("rotate with Transit back: %d %v", n, err)
 			}
@@ -115,6 +161,7 @@ func TestKMS_CredentialsNeverLoggedInAuditAndStatus(t *testing.T) {
 			if len(entries) == 0 {
 				t.Fatal("no audit entries to look in")
 			}
+			seen = append(seen, "logs:\n"+logs.String())
 			all := strings.Join(seen, "\n")
 			for _, f := range forbidden {
 				if strings.Contains(all, f) {

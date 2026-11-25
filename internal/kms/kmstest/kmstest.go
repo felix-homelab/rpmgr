@@ -62,6 +62,9 @@ type Server struct {
 	status  int  // if not 0, every call answers with it
 	echo    bool // an error body repeats the token and the request body, as a careless service might
 	calls   map[string]int
+
+	rewrapOK    int // if > 0, rewrap calls after this many fail
+	rotateCheck bool
 }
 
 // New starts a fake with a key at version 1, a derived aes256-gcm96 key, and the token Token.
@@ -148,6 +151,24 @@ func (s *Server) FailWith(status int, echo bool) {
 	s.status, s.echo = status, echo
 }
 
+// FailRewrapAfter makes every rewrap call after the first n answer with a 500 that repeats the
+// token and the request, as FailWith does with echo; 0 stops it. It is for a failure part of the way
+// through `rpmgr kek rotate`.
+func (s *Server) FailRewrapAfter(n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.rewrapOK = n
+	s.calls["POST "+Mount+"/rewrap/"+Key] = 0
+}
+
+// RotateAfterNextCheck makes a new key version right after the next read of the key is answered, as
+// an operator rotating the key while a command runs does.
+func (s *Server) RotateAfterNextCheck() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.rotateCheck = true
+}
+
 // Calls returns how many times "<METHOD> <path after /v1/>" was called.
 func (s *Server) Calls(call string) int {
 	s.mu.Lock()
@@ -216,6 +237,14 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet && op == "keys" {
 		s.reply(w, 200, map[string]any{"data": map[string]any{"type": s.keyType, "derived": s.derived, "latest_version": s.latest}})
+		if s.rotateCheck {
+			s.rotateCheck = false
+			s.latest++
+		}
+		return
+	}
+	if op == "rewrap" && s.rewrapOK > 0 && s.calls[r.Method+" "+path] > s.rewrapOK {
+		s.fail(w, http.StatusInternalServerError, "service failure token="+r.Header.Get("X-Vault-Token")+" request="+string(body))
 		return
 	}
 	ctx, err := base64.StdEncoding.DecodeString(in["context"])

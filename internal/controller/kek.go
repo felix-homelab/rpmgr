@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -17,15 +19,11 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/secret"
 )
 
-// kekWrapper is the Wrapper of a boot file's KEK source, with the version that a value wrapped now
-// carries in secrets_meta.
+// kekWrapper is the Wrapper of a boot file's KEK source and the version a new value carries.
 type kekWrapper struct {
 	secret.Wrapper
-	// Version is the KEK version of a local KEK, or "<mount>/<key>@v<n>" for the latest version of
-	// a Transit key at the time of the call.
+	// Version is the local KEK's version, or "<mount>/<key>@v<n>" for a Transit key's latest.
 	Version string
-	// Local is the KEK of a file or credential; the zero KEK for Transit.
-	Local secret.KEK
 	// Probe asks Transit about the key again; nil for a local KEK.
 	Probe func(context.Context) error
 }
@@ -52,7 +50,7 @@ func openKEK(ctx context.Context, cfg config.Controller, local func(config.Contr
 		if err != nil {
 			return kekWrapper{}, err
 		}
-		return kekWrapper{Wrapper: secret.NewLocalWrapper(k), Version: k.Version(), Local: k}, nil
+		return kekWrapper{Wrapper: secret.NewLocalWrapper(k), Version: k.Version()}, nil
 	}
 	c, err := kms.New(kmsConfig(*cfg.KEK.KMS, log, observe))
 	if err != nil {
@@ -81,32 +79,42 @@ func explainOpen(err error) error {
 	return err
 }
 
+// probeEvery is the least time between two reads of the key that /readyz makes while Transit is
+// down; concurrent checks share the answer, so a probe every second does not load Transit.
+const probeEvery = time.Second
+
 // kmsHealth is what the controller knows of its requests to Transit: the metrics of docs/10 and the
-// answer of /readyz. Transit being unreachable or refusing the credential makes it not ready; a
-// request that Transit answers with an error about the request does not.
+// answer of /readyz. Transit being unreachable, the credential being refused or the key not being
+// usable (missing, of another type, not derived) makes it not ready; a request that Transit answers
+// with an error about the request does not.
 type kmsHealth struct {
 	up       atomic.Bool
 	requests *prometheus.CounterVec
 	probe    func(context.Context) error
+
+	mu     sync.Mutex
+	probed time.Time
+	now    func() time.Time
 }
 
 func newKMSHealth() *kmsHealth {
 	h := &kmsHealth{requests: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "rpmgr_kms_requests_total",
 		Help: "Transit requests by operation (encrypt, decrypt, rewrap, check, login) and result (ok, denied, unavailable, error)."},
-		[]string{"op", "result"})}
+		[]string{"op", "result"}), now: time.Now}
 	h.up.Store(true)
 	return h
 }
 
 func (h *kmsHealth) observe(op, result string) {
 	h.requests.WithLabelValues(op, result).Inc()
-	h.up.Store(result != "unavailable" && result != "denied")
+	// A check that fails, of whatever kind, means the key cannot be used.
+	h.up.Store(result == "ok" || result == "error" && op != "check")
 }
 
 // Collectors returns the metrics of the Transit client.
 func (h *kmsHealth) Collectors() []prometheus.Collector {
 	return []prometheus.Collector{h.requests, prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: "rpmgr_kms_up",
-		Help: "1 while the last request to Transit was answered, 0 after it could not be reached or refused the credential."},
+		Help: "1 while Transit answers and the key is usable, 0 after it could not be reached, refused the credential or the key failed its check."},
 		func() float64 {
 			if h.up.Load() {
 				return 1
@@ -115,17 +123,26 @@ func (h *kmsHealth) Collectors() []prometheus.Collector {
 		})}
 }
 
-// Ready returns why Transit is not usable, or nil. While it is down, each call reads the key again,
-// so that a controller that no traffic reaches finds out that Transit is back.
+// Ready returns why Transit is not usable, or nil. While it is down, a check reads the key again,
+// at most once per probeEvery and shared by callers that come at the same time, so that a
+// controller that no traffic reaches finds out that Transit is back. The check's own failure keeps
+// it down.
 func (h *kmsHealth) Ready(ctx context.Context) error {
 	if h == nil || h.up.Load() {
 		return nil
 	}
-	if h.probe != nil {
-		_ = h.probe(ctx) // observe records the result
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.probe != nil && h.now().Sub(h.probed) >= probeEvery {
+		h.probed = h.now()
+		if err := h.probe(ctx); err != nil {
+			h.up.Store(false)
+		} else {
+			h.up.Store(true)
+		}
 	}
 	if !h.up.Load() {
-		return errors.New("key service: Transit cannot be reached or refuses the credential")
+		return errors.New("key service: Transit cannot be reached, refuses the credential or has no usable key")
 	}
 	return nil
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -80,10 +81,12 @@ func localKEK(cfg config.Controller, getenv func(string) string) (secret.KEK, er
 	return k, err
 }
 
-// localWrapper opens the KEK source of the boot file for a command run from a shell; a Transit key
-// is read and checked, so that a command stops with the reason when Transit cannot be used.
+// kmsLog receives the Transit client's warnings in a local command; they hold no credential.
+var kmsLog = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+// localWrapper opens the boot file's KEK source for a command run from a shell.
 func localWrapper(ctx context.Context, cfg config.Controller, getenv func(string) string) (kekWrapper, error) {
-	return openKEK(ctx, cfg, func(c config.Controller) (secret.KEK, error) { return localKEK(c, getenv) }, nil, nil)
+	return openKEK(ctx, cfg, func(c config.Controller) (secret.KEK, error) { return localKEK(c, getenv) }, kmsLog, nil)
 }
 
 // CAStatus is `rpmgr ca status`: the CA's keys that have not expired, as Settings → PKI shows them.
@@ -398,6 +401,17 @@ func RotateKEK(ctx context.Context, path string, previous PreviousKEK, getenv fu
 		if len(failed) > 0 {
 			return fmt.Errorf("controller: %d secrets open with neither the boot file's KEK nor the previous one, so nothing was re-wrapped: %s",
 				len(failed), strings.Join(failed, ", "))
+		}
+		if cfg.KEK.Source == config.KEKKMS {
+			// A key rotated meanwhile leaves the values skipped at the start on an older version.
+			again, err := localWrapper(sys, cfg, getenv)
+			if err != nil {
+				return err
+			}
+			if again.Version != kek.Version {
+				return fmt.Errorf("controller: the Transit key went from %s to %s while the command ran, so nothing was changed; run it again",
+					kek.Version, again.Version)
+			}
 		}
 		_, err := audit.Append(sys, tx, audit.Entry{ActorType: audit.ActorSystem, ActorID: "local-cli", Action: "kek.rotate",
 			TargetType: "kek", TargetID: kek.Version, Result: audit.Success,

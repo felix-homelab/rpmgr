@@ -1391,11 +1391,13 @@ follow.
   its version, so the envelope's identifier cannot tell a value to re-wrap: the Transit wrapper is a
   `Rewrapper` that the sealer asks for a value with the current identifier, and it skips the value
   only when its key version is the latest one that the command's own read of the key reported.
-  `rpmgr kek rotate` then calls `rewrap` for
-  every wrapped key, in batches, writing each value back only if it is unchanged, which Transit
-  makes possible beside running replicas (the command takes the controller lock shared, so a single
-  controller is stopped for it; with SQLite, the only database until replicas exist, it takes the
-  exclusive lock and one transaction): old key versions stay usable until the operator raises the key's
+  `rpmgr kek rotate` then reads the key, calls `rewrap` once per value that is not on the latest
+  version, and writes all values in one transaction while it holds the controller lock exclusively,
+  so every controller is stopped for it (SQLite is the only database so far). It reads the key
+  again before it commits and fails, changing nothing, if the latest version changed meanwhile, so
+  it never reports success for values that a key rotated during the run left behind. Batches and a
+  shared lock, which Transit would allow beside running replicas, are not implemented. Old key
+  versions stay usable until the operator raises the key's
   minimum decryption version, which is the last step, after `rpmgr kek status` shows no value on an
   older version [D181](14-open-decisions.md#engineering). `kek status` counts from `secrets_meta`,
   which for Transit records the key version as `<mount>/<key>@v<n>`, the `n` of the wrapped key's

@@ -464,6 +464,11 @@ func (c *Client) login(ctx context.Context) error {
 	return err
 }
 
+func isNotFound(err error) bool {
+	var te *Error
+	return errors.As(err, &te) && te.Status == http.StatusNotFound
+}
+
 // observe reports the result of a request to Config.Observe.
 func (c *Client) observe(op string, err error) {
 	if c.cfg.Observe == nil {
@@ -474,7 +479,8 @@ func (c *Client) observe(op string, err error) {
 		c.cfg.Observe(op, "ok")
 	case errors.Is(err, ErrPermissionDenied):
 		c.cfg.Observe(op, "denied")
-	case errors.Is(err, ErrUnavailable):
+	case errors.Is(err, ErrUnavailable), isNotFound(err):
+		// Transit cannot serve the key: it is down, or the key or the mount is gone.
 		c.cfg.Observe(op, "unavailable")
 	default:
 		c.cfg.Observe(op, "error")

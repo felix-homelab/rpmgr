@@ -119,6 +119,14 @@ func (c *Client) Rewrap(ctx context.Context, wrapped, aad []byte) ([]byte, error
 // Check reads the key and refuses one that is missing, of another type or not derived. It also
 // returns the key's latest version. The controller calls it at start.
 func (c *Client) Check(ctx context.Context) (latest int, err error) {
+	latest, err = c.check(ctx)
+	// Observed after the key is validated: a key that is missing, of another type or not derived
+	// is a failed check, not an answered one.
+	c.observe("check", err)
+	return latest, err
+}
+
+func (c *Client) check(ctx context.Context) (latest int, err error) {
 	var out struct {
 		Data struct {
 			Type          string `json:"type"`
@@ -127,7 +135,6 @@ func (c *Client) Check(ctx context.Context) (latest int, err error) {
 		} `json:"data"`
 	}
 	err = c.do(ctx, http.MethodGet, "/"+c.mount+"/keys/"+c.key, nil, &out)
-	c.observe("check", err)
 	if err != nil {
 		var te *Error
 		if errors.As(err, &te) && te.Status == http.StatusNotFound {
