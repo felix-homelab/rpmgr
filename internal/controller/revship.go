@@ -113,6 +113,13 @@ func (r *RevocationShipper) Collectors() []prometheus.Collector {
 			return 0
 		}),
 		gauge("rpmgr_revocation_log_unshipped", "revocation log entries the sink does not hold yet", func(s revlog.Status) float64 { return float64(s.Unshipped) }),
+		gauge("rpmgr_revocation_log_last_success_timestamp_seconds", "when a revocation log shipping round last succeeded; the start of the controller before the first success",
+			func(s revlog.Status) float64 {
+				if s.LastOK.IsZero() {
+					return 0
+				}
+				return float64(s.LastOK.Unix())
+			}),
 		gauge("rpmgr_revocation_log_oldest_unshipped_timestamp_seconds", "when the oldest unshipped revocation log entry was logged; 0 when none",
 			func(s revlog.Status) float64 {
 				if s.Oldest.IsZero() {

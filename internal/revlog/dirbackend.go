@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"syscall"
 )
 
 // DirBackend is the filesystem Backend, a directory usually on a share. An object is a file,
@@ -78,6 +79,9 @@ const MaxObject = 16 << 20
 // FIFO, and reads at most MaxObject bytes.
 func readObject(path string) ([]byte, error) {
 	f, err := os.OpenFile(path, os.O_RDONLY|openExtra, 0) //nolint:gosec // G304: the configured sink
+	if errors.Is(err, syscall.ELOOP) {                    // a symlink where an object belongs
+		return nil, fmt.Errorf("%w: %s is a link", ErrBroken, filepath.Base(path))
+	}
 	if err != nil {
 		return nil, err
 	}

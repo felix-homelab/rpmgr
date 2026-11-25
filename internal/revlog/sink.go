@@ -50,8 +50,8 @@ func parseKey(key string) (uint64, bool) {
 // over the entries of all replicas.
 //
 // A Sink verifies the chain once and keeps the verified prefix, the last sequence number and
-// hash; a later Ship lists only the keys after it. A broken chain stops shipping until the Sink
-// is made anew, with a new prefix.
+// hash; a later Ship lists only the keys after it. A broken chain stops shipping until an
+// operator points the sink at a new directory.
 type Sink struct {
 	// Now is the clock; nil means time.Now. Tests set it.
 	Now     func() time.Time
@@ -147,75 +147,38 @@ func (s *Sink) now() time.Time {
 	return time.Now()
 }
 
-// reset forgets the verified prefix and what is shipped, all together.
-func (s *Sink) reset() {
-	s.loaded, s.last, s.prev = false, 0, ""
-	s.shipped = map[string]map[string]bool{}
-}
-
 func (s *Sink) fail(err error) error {
 	s.broken = err
 	return err
 }
 
-// sync extends the verified prefix by the entries that others created; the caller holds s.mu.
-// With checkTip it first confirms that the entry the prefix ends at is still there and unchanged,
-// and every ReverifyEvery it verifies the whole sink from entry 1 again. A sink that has lost
-// every object is verified as empty and shipped to again from entry 1, as a share that is not
-// mounted shows an empty directory; any other loss is a break.
-func (s *Sink) sync(checkTip bool) error {
-	if s.broken != nil {
-		return s.broken
-	}
-	if s.loaded && checkTip && s.now().Sub(s.verifiedAt) >= ReverifyEvery {
-		s.loaded = false
-	}
-	full := !s.loaded
-	if full {
-		s.reset()
-	}
-	after := ""
-	switch {
-	case s.last > 0 && checkTip:
-		after = Key(s.last - 1)
-	case s.last > 0:
-		after = Key(s.last)
-	}
-	keys, err := s.backend.List(after)
+// fullCheck verifies the whole sink from entry 1 and replaces the verified prefix and the shipped
+// set by what it found, when the chain reaches the entry the old verified prefix ended at and that
+// entry is the one verified. On the first load there is no such anchor, and an empty sink is then
+// shipped to from entry 1; on any later check an empty or replaced sink is a break.
+func (s *Sink) fullCheck() error {
+	keys, err := s.backend.List("")
 	if err != nil {
 		return err
 	}
-	if checkTip && s.last > 0 {
-		if len(keys) == 0 || keys[0] != Key(s.last) {
-			all, err := s.backend.List("")
-			if err != nil {
-				return err
-			}
-			if len(all) > 0 {
-				return s.fail(fmt.Errorf("%w: the sink has lost its entry %d", ErrBroken, s.last))
-			}
-			s.reset()
-			full, keys = true, nil
-		} else {
-			b, err := s.backend.Get(keys[0])
-			if err != nil {
-				return err
-			}
-			var tip SinkEntry
-			if err := json.Unmarshal(b, &tip); err != nil {
-				return s.fail(fmt.Errorf("%w: sink entry %d: %w", ErrBroken, s.last, err))
-			}
-			h, err := tip.hash()
-			if err != nil {
-				return err
-			}
-			if tip.Seq != s.last || tip.Hash != s.prev || h != s.prev {
-				return s.fail(fmt.Errorf("%w: sink entry %d is not the one verified", ErrBroken, s.last))
-			}
-			keys = keys[1:]
+	got, err := s.scan(keys, 0, "")
+	if err != nil {
+		if errors.Is(err, ErrBroken) {
+			return s.fail(err)
 		}
+		return err
 	}
-	got, err := s.scan(keys, s.last, s.prev)
+	if s.last > 0 && (uint64(len(got)) < s.last || got[s.last-1].Hash != s.prev) {
+		return s.fail(fmt.Errorf("%w: the sink no longer holds the entry %d that was verified", ErrBroken, s.last))
+	}
+	s.shipped = map[string]map[string]bool{}
+	s.last, s.prev = 0, ""
+	s.extend(got)
+	s.loaded, s.verifiedAt = true, s.now()
+	return nil
+}
+
+func (s *Sink) extend(got []SinkEntry) {
 	for _, e := range got {
 		if s.shipped[e.Replica] == nil {
 			s.shipped[e.Replica] = map[string]bool{}
@@ -223,17 +186,58 @@ func (s *Sink) sync(checkTip bool) error {
 		s.shipped[e.Replica][e.Entry.Hash] = true
 		s.last, s.prev = e.Seq, e.Hash
 	}
+}
+
+// sync extends the verified prefix by the entries that others created and returns them; the
+// caller holds s.mu. With checkTip it first confirms that the entry the prefix ends at is still
+// there and unchanged, and every ReverifyEvery it verifies the whole sink from entry 1 again,
+// anchored at the prefix. A sink that lost the tip, or all its objects, after it was verified is
+// a break: an unmounted share would otherwise take the entries as if they were off the host.
+func (s *Sink) sync(checkTip bool) ([]SinkEntry, error) {
+	if s.broken != nil {
+		return nil, s.broken
+	}
+	if !s.loaded || (checkTip && s.now().Sub(s.verifiedAt) >= ReverifyEvery) {
+		return nil, s.fullCheck()
+	}
+	after := Key(s.last)
+	if checkTip && s.last > 0 {
+		after = Key(s.last - 1)
+	}
+	keys, err := s.backend.List(after)
+	if err != nil {
+		return nil, err
+	}
+	if checkTip && s.last > 0 {
+		if len(keys) == 0 || keys[0] != Key(s.last) {
+			return nil, s.fail(fmt.Errorf("%w: the sink has lost its entry %d", ErrBroken, s.last))
+		}
+		b, err := s.backend.Get(keys[0])
+		if err != nil {
+			return nil, err
+		}
+		var tip SinkEntry
+		if err := json.Unmarshal(b, &tip); err != nil {
+			return nil, s.fail(fmt.Errorf("%w: sink entry %d: %w", ErrBroken, s.last, err))
+		}
+		h, err := tip.hash()
+		if err != nil {
+			return nil, err
+		}
+		if tip.Seq != s.last || tip.Hash != s.prev || h != s.prev {
+			return nil, s.fail(fmt.Errorf("%w: sink entry %d is not the one verified", ErrBroken, s.last))
+		}
+		keys = keys[1:]
+	}
+	got, err := s.scan(keys, s.last, s.prev)
+	s.extend(got)
 	if err != nil {
 		if errors.Is(err, ErrBroken) {
-			return s.fail(err)
+			return got, s.fail(err)
 		}
-		return err
+		return got, err
 	}
-	s.loaded = true
-	if full {
-		s.verifiedAt = s.now()
-	}
-	return nil
+	return got, nil
 }
 
 // Ship copies the entries of the local log at path that the sink does not hold yet for replica
@@ -249,7 +253,7 @@ func (s *Sink) Ship(path, replica string) ([]Entry, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.sync(true); err != nil {
+	if _, err := s.sync(true); err != nil {
 		return local, err
 	}
 	var todo []Entry
@@ -258,6 +262,7 @@ func (s *Sink) Ship(path, replica string) ([]Entry, error) {
 			todo = append(todo, e)
 		}
 	}
+	tried := map[uint64]string{} // what this call tried to create: sequence number -> hash
 	for len(todo) > 0 {
 		e := SinkEntry{Seq: s.last + 1, Replica: replica, Entry: todo[0], Prev: s.prev}
 		if e.Hash, err = e.hash(); err != nil {
@@ -267,11 +272,20 @@ func (s *Sink) Ship(path, replica string) ([]Entry, error) {
 		if err != nil {
 			return todo, err
 		}
+		tried[e.Seq] = e.Hash
 		switch err := s.backend.CreateIfAbsent(Key(e.Seq), append(b, '\n')); {
 		case errors.Is(err, ErrExists): // another replica took the number: read it, try the next
 			before := s.last
-			if err := s.sync(false); err != nil {
+			got, err := s.sync(false)
+			if err != nil {
 				return todo, err
+			}
+			// An object that names this replica must be one it tried to create, as when the reply
+			// of its own create was lost; anything else is planted.
+			for _, g := range got {
+				if h, ok := tried[g.Seq]; g.Replica == replica && (!ok || h != g.Hash) {
+					return todo, s.fail(fmt.Errorf("%w: sink entry %d names this replica but is not its entry", ErrBroken, g.Seq))
+				}
 			}
 			if s.last == before {
 				return todo, s.fail(fmt.Errorf("%w: the sink key %s exists but is not listed", ErrBroken, Key(e.Seq)))

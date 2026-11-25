@@ -3,6 +3,9 @@
 package revlog_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -452,9 +455,9 @@ func TestSinkLegacyAndPaddedBoth(t *testing.T) {
 	}
 }
 
-// TestSinkLosesEntries (finding B1): the verified prefix is checked against the sink at every
-// tick. An emptied sink is shipped to again from entry 1; a tip that is gone, rolled back or
-// replaced is a break.
+// TestSinkLosesEntries (findings B1, N2a): the verified prefix is checked against the sink at every
+// tick. A sink that was emptied, or whose tip is gone, rolled back or replaced, is a break and
+// nothing is written; only a first load of an empty sink ships from entry 1.
 func TestSinkLosesEntries(t *testing.T) {
 	for name, tc := range map[string]struct {
 		damage func(m *memBackend)
@@ -477,18 +480,11 @@ func TestSinkLosesEntries(t *testing.T) {
 		tc.damage(mem)
 		creates := mem.creates
 		left, err := sink.Ship(src, "node-a")
-		if tc.broken {
-			if !errors.Is(err, revlog.ErrBroken) || len(left) != 5 || mem.creates != creates {
-				t.Errorf("%s: %d unshipped, %v, %d creates; want 5, ErrBroken and none", name, len(left), err, mem.creates-creates)
-			}
-			continue
+		if !errors.Is(err, revlog.ErrBroken) || len(left) != 5 || mem.creates != creates {
+			t.Errorf("%s: %d unshipped, %v, %d creates; want 5, ErrBroken and none", name, len(left), err, mem.creates-creates)
 		}
-		if err != nil || len(left) != 0 {
-			t.Errorf("%s: %v %v", name, left, err)
-		}
-		got, err := revlog.NewSink(mem).Read()
-		if err != nil || len(got) != 5 || got[0].Seq != 1 {
-			t.Errorf("%s: the sink after re-shipping: %d entries, %v", name, len(got), err)
+		if mem.count() > 4 && name == "a wipe" {
+			t.Errorf("%s: objects written", name)
 		}
 	}
 }
@@ -581,5 +577,80 @@ func TestStatusAlertingStalled(t *testing.T) {
 	st.Sink = false
 	if st.Alerting(last.Add(time.Hour)) {
 		t.Error("alert without a sink")
+	}
+}
+
+// forge rewrites every object of the sink with the Subject changed and the chain recomputed.
+func forge(t *testing.T, m *memBackend) {
+	t.Helper()
+	var prev string
+	for n := uint64(1); m.objs[revlog.Key(n)] != nil; n++ {
+		var e revlog.SinkEntry
+		if err := json.Unmarshal(m.objs[revlog.Key(n)], &e); err != nil {
+			t.Fatal(err)
+		}
+		e.Entry.Subject, e.Prev, e.Hash = "forged", prev, ""
+		h := sha256.Sum256(mustJSON(t, e))
+		e.Hash = hex.EncodeToString(h[:])
+		prev = e.Hash
+		m.objs[revlog.Key(n)] = append(mustJSON(t, e), '\n')
+	}
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// TestSinkFullCheckAnchored (finding N1): the hourly full check holds the chain to the verified
+// prefix, so a replaced chain that is consistent in itself, and a rolled-back one, are breaks.
+func TestSinkFullCheckAnchored(t *testing.T) {
+	for name, damage := range map[string]func(t *testing.T, m *memBackend){
+		"a replaced chain": forge,
+		"a rolled-back chain": func(t *testing.T, m *memBackend) {
+			delete(m.objs, revlog.Key(5))
+			delete(m.objs, revlog.Key(4))
+		},
+		"an emptied sink": func(t *testing.T, m *memBackend) { m.objs = map[string][]byte{} },
+	} {
+		src, _ := logWith(t, "ses_1", "ses_2", "ses_3", "ses_4", "ses_5")
+		mem := newMem()
+		now := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+		sink := revlog.NewSink(mem)
+		sink.Now = func() time.Time { return now }
+		if _, err := sink.Ship(src, "node-a"); err != nil {
+			t.Fatal(err)
+		}
+		damage(t, mem)
+		now = now.Add(revlog.ReverifyEvery)
+		creates := mem.creates
+		left, err := sink.Ship(src, "node-a")
+		if !errors.Is(err, revlog.ErrBroken) || len(left) != 5 || mem.creates != creates {
+			t.Errorf("%s: %d unshipped, %v; want 5 and ErrBroken, nothing written", name, len(left), err)
+		}
+	}
+}
+
+// TestSinkPlantedDuringExists (finding N2b): a chain planted between the check and the create is
+// not taken as this replica's own; a lost reply still is.
+func TestSinkPlantedDuringExists(t *testing.T) {
+	src, _ := logWith(t, "ses_1", "ses_2")
+	mem := newMem()
+	mem.beforeCreate = func() { // an attacker with put rights writes a self-consistent object naming this replica
+		e := revlog.SinkEntry{Seq: 1, Replica: "node-a", Entry: revlog.Entry{Seq: 1, Subject: "forged", Hash: "00"}}
+		h := sha256.Sum256(mustJSON(t, e))
+		e.Hash = hex.EncodeToString(h[:])
+		mem.objs[revlog.Key(1)] = append(mustJSON(t, e), '\n')
+	}
+	left, err := revlog.NewSink(mem).Ship(src, "node-a")
+	if !errors.Is(err, revlog.ErrBroken) || len(left) != 2 {
+		t.Fatalf("%d unshipped, %v; want 2 and ErrBroken", len(left), err)
+	}
+	if mem.count() != 1 {
+		t.Errorf("%d objects, want only the planted one", mem.count())
 	}
 }

@@ -43,6 +43,15 @@ func TestDirBackendHostileFiles(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, revlog.Key(5)), make([]byte, revlog.MaxObject), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Symlink(target, filepath.Join(dir, "7")); err != nil { // a legacy name
+		t.Fatal(err)
+	}
+	if _, err := d.Get(revlog.Key(1)); !errors.Is(err, revlog.ErrBroken) {
+		t.Errorf("a symlink at a key: %v, want ErrBroken", err)
+	}
+	if _, err := d.Get(revlog.Key(7)); !errors.Is(err, revlog.ErrBroken) {
+		t.Errorf("a symlink at a legacy name: %v, want ErrBroken", err)
+	}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
