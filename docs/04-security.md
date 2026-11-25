@@ -1308,18 +1308,34 @@ n + 16    the secret under the data key with AES-256-GCM, and its tag
 Phase 2, slices 8.8 and 8.9, [D178](14-open-decisions.md#engineering). With `kek.source: kms` the
 controller asks a Transit key to wrap and unwrap the data keys, and never holds the KEK. It uses a
 small client of its own ([08](08-software-stack.md#data)) and treats Vault and OpenBao as one API
-[V VB-28].
+[V VB-28] [V VB-31]. Slice 8.8 builds the client in `internal/kms`, which implements the
+`Wrapper` of [Envelope format v2](#secrets-at-rest-and-in-logs) and is tested against a fake
+Transit; no boot setting selects it before slice 8.9 (#692).
 
 - **The key** is created by the operator in Transit: type `aes256-gcm96` and `derived` (so that a
   context binds a wrap to its row). At start the controller reads the key and **refuses to start**
   when it is missing, of another type, not derived, or when Transit cannot be reached, with the
-  reason and no credential in it.
+  reason and no credential in it. The client reads the key with `GET /v1/<mount>/keys/<key>` and
+  reports its latest version.
 - **Calls.** `POST /v1/<mount>/encrypt/<key>` with the data key as `plaintext` and the context,
   `decrypt` with the `ciphertext` and the context, and `rewrap`, which moves a ciphertext to the
   key's latest version without the data key leaving Transit [V VB-28]. A request that gets a 429,
   a 5xx or a connection error is repeated, the others are not; timeouts and the repeats are in
   [03](03-connections.md#timeouts-keepalive-and-backoff). The controller follows no redirect and
-  uses no proxy from its environment for Transit.
+  uses no proxy from its environment for Transit. **A 400 whose message says that the key version
+  is too old (`ciphertext or signature version is disallowed by policy (too old)`, after the
+  operator raised the minimum decryption version) or too new (`invalid ciphertext: version is too
+  new`, Transit restored from an older backup)** is an error of its own, neither a value that does
+  not open nor an outage, since the operator can change both states. This is checked first. **A 400
+  that says the authentication failed** (`cipher: message authentication failed`, a changed
+  context) **or that the ciphertext is invalid** (`invalid ciphertext: …`) is a value that does not
+  open, the one error of the sealer. Any other 400, a 404 for a wrong mount or a missing key, and a
+  403 are configuration errors, returned with Transit's status and message [V VB-31]. A ciphertext
+  that is not of the form `vault:v<n>:<base64>`, with `n` from 1 without a leading zero, does not
+  open without a call. A 2xx answer without a ciphertext, or without a plaintext of exactly
+  32 bytes, is an unavailable Transit, not a value that does not open. The client remembers the
+  highest key version it has seen and refuses a wrap or rewrap answer of a lower one, since
+  Transit has then gone back to an older state.
 - **Authentication** is one of two, both from files so that no credential is in the boot file or the
   environment: `kek.kms.token_file` (a token, mode 0600 or 0400), or `kek.kms.approle` with
   `role_id_file` and `secret_id_file` (and `mount`, `approle` by default), which the controller logs
@@ -1327,11 +1343,23 @@ small client of its own ([08](08-software-stack.md#data)) and treats Vault and O
   so a secret ID that an operator replaced is used; a single-use secret ID breaks the login that
   follows once the token reaches its maximum TTL, so the role needs a reusable secret ID or a tool
   that rewrites the file. A renewable token is renewed on the schedule in
-  [03](03-connections.md#timeouts-keepalive-and-backoff); a token file is read again at the first
-  403, so a token that an operator replaced is picked up without a restart. Kubernetes
+  [03](03-connections.md#timeouts-keepalive-and-backoff). The client has no timer: the first
+  request after that time starts the renewal, which runs in the background once for all callers,
+  and every caller keeps the current token meanwhile and gives up at its own deadline. A token
+  that cannot be renewed is replaced by a new login. A token from a file is asked once about its
+  lease with `renew-self`; a root or non-renewable token is used as it is, and a probe that fails
+  because Transit cannot be asked is repeated 30 s later. A failed renewal is tried again after
+  30 s, not at every request.
+  **A 403 with AppRole is first checked with `auth/token/lookup-self`**: a token that is still
+  valid means the policy denies the call, and there is no new login; only a token that is gone logs
+  in again. **Logins are at most one in 30 s**, so after a revoked token or a failed first login the
+  next login waits for that interval and requests fail meanwhile. A token file is read again at the
+  first 403, so a token that an operator replaced is picked up without a restart; the same token
+  again is not tried twice. The files are refused when group or others can read them. Kubernetes
   authentication is Phase 3.
 - **TLS.** HTTPS only, TLS 1.2 or 1.3, verified against `kek.kms.ca_file` (PEM certificates and
-  nothing else) or, without it, the system roots; there is no way to skip the verification.
+  nothing else) or, without it, the system roots; there is no way to skip the verification. A
+  certificate that does not verify is not tried again.
 - **No credential in any log or error.** A token, a role or secret ID, and a response body that
   holds one are never logged or returned. An error carries Transit's status and the first message
   of its `errors` list, at most 200 bytes, after the redaction that the logs below describe.
@@ -1350,7 +1378,8 @@ small client of its own ([08](08-software-stack.md#data)) and treats Vault and O
   controller is stopped for it): old key versions stay usable until the operator raises the key's
   minimum decryption version, which is the last step, after `rpmgr kek status` shows no value on an
   older version [D181](14-open-decisions.md#engineering). `kek status` counts from `secrets_meta`,
-  which for Transit records the key version, and lists the envelope formats by reading each value's
+  which for Transit records the key version as `<mount>/<key>@v<n>`, the `n` of the wrapped key's
+  `vault:v<n>:` prefix, and lists the envelope formats by reading each value's
   first byte.
 - **Backups and recovery.** A database backup is useless without the key that wrapped it, so with
   Transit the KEK's backup is the key service's own: back up Vault's or OpenBao's storage as its
