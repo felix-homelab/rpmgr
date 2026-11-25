@@ -1322,12 +1322,20 @@ setting selects it before slice 8.9 (#692).
   key's latest version without the data key leaving Transit [V VB-28]. A request that gets a 429,
   a 5xx or a connection error is repeated, the others are not; timeouts and the repeats are in
   [03](03-connections.md#timeouts-keepalive-and-backoff). The controller follows no redirect and
-  uses no proxy from its environment for Transit. **A 400 whose message says the authentication
-  failed or names the ciphertext** (a changed context, a ciphertext that is not the key's) is a
-  value that does not open, the one error of the sealer; any other 400, a 404 for a wrong mount or
-  a missing key, and a 403 are configuration errors, returned with Transit's status and message
-  [V VB-31]. A ciphertext that is not of the form `vault:v<n>:<base64>` does not open without a
-  call.
+  uses no proxy from its environment for Transit. **A 400 whose message says that the key version
+  is too old (`ciphertext or signature version is disallowed by policy (too old)`, after the
+  operator raised the minimum decryption version) or too new (`invalid ciphertext: version is too
+  new`, Transit restored from an older backup)** is an error of its own, neither a value that does
+  not open nor an outage, since the operator can change both states. This is checked first. **A 400
+  that says the authentication failed** (`cipher: message authentication failed`, a changed
+  context) **or that the ciphertext is invalid** (`invalid ciphertext: …`) is a value that does not
+  open, the one error of the sealer. Any other 400, a 404 for a wrong mount or a missing key, and a
+  403 are configuration errors, returned with Transit's status and message [V VB-31]. A ciphertext
+  that is not of the form `vault:v<n>:<base64>`, with `n` from 1 without a leading zero, does not
+  open without a call. A 2xx answer without a plaintext or a ciphertext is an unavailable Transit,
+  not a value that does not open. The client remembers the highest key version it has seen and
+  refuses a wrap or rewrap answer of a lower one, since Transit has then gone back to an older
+  state.
 - **Authentication** is one of two, both from files so that no credential is in the boot file or the
   environment: `kek.kms.token_file` (a token, mode 0600 or 0400), or `kek.kms.approle` with
   `role_id_file` and `secret_id_file` (and `mount`, `approle` by default), which the controller logs
@@ -1338,7 +1346,10 @@ setting selects it before slice 8.9 (#692).
   [03](03-connections.md#timeouts-keepalive-and-backoff), by the first request after that time
   (the client has no background task); a token that cannot be renewed is replaced by a new login.
   A token from a file is asked once about its lease with `renew-self`, and a root or
-  non-renewable token is used as it is. A token file is read again at the first 403, so a token
+  non-renewable token is used as it is. A renewal or login runs once for all callers and not under
+  a lock: callers keep the current token meanwhile and give up at their own deadline. **A 403 with
+  AppRole is first checked with `auth/token/lookup-self`**: a token that is still valid means the
+  policy denies the call, and there is no new login; only a token that is gone logs in again. A token file is read again at the first 403, so a token
   that an operator replaced is picked up without a restart; the same token again is not tried
   twice. The files are refused when group or others can read them. Kubernetes
   authentication is Phase 3.
