@@ -187,3 +187,72 @@ func TestRetired_Postgres(t *testing.T) {
 		t.Errorf("a write to a retired database: %v", err)
 	}
 }
+
+// TestRetired_ConfigTx: a configuration transaction of a guarded connection checks too.
+func TestRetired_ConfigTx(t *testing.T) {
+	ctx := context.Background()
+	h := retiredHost(t)
+	db, err := store.OpenSQLite(ctx, h.db, store.SQLiteOptions{RefuseRetired: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	ran := false
+	_, err = store.ConfigTx(storetest.SystemCtx(t), db, func(*ent.Tx) ([]string, error) { ran = true; return nil, nil })
+	if !errors.Is(err, store.ErrRetired) || ran {
+		t.Errorf("a configuration transaction on a retired database: %v (ran %v)", err, ran)
+	}
+}
+
+// TestRetired_PostgresShareLock: on PostgreSQL the check takes a share lock on the instance row, so
+// a retirement waits for a write that has checked, and that write commits before the database is
+// retired.
+func TestRetired_PostgresShareLock(t *testing.T) {
+	ctx := context.Background()
+	dsn := storetest.NewPostgresDatabase(t)
+	setup, err := storetest.OpenPostgres(t, dsn, store.PostgresOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = setup.Close() })
+	dir, err := migrations.Dir(store.Postgres)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Migrate(ctx, setup, dir); err != nil {
+		t.Fatal(err)
+	}
+	storetest.Init(t, setup)
+	guarded, err := storetest.OpenPostgres(t, dsn, store.PostgresOptions{RefuseRetired: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = guarded.Close() })
+
+	inside, release, written := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	go func() {
+		written <- store.WriteTx(storetest.SystemCtx(t), guarded, func(tx *ent.Tx) error {
+			close(inside)
+			<-release
+			return nil
+		})
+	}()
+	<-inside
+	retired := make(chan error, 1)
+	go func() {
+		_, err := setup.Writer.Exec("UPDATE instance SET retired_at = now(), retired_to = '" + retiredTo + "'")
+		retired <- err
+	}()
+	select {
+	case err := <-retired:
+		t.Fatalf("the retirement did not wait for the write that had checked: %v", err)
+	case <-time.After(700 * time.Millisecond):
+	}
+	close(release)
+	if err := <-written; err != nil {
+		t.Errorf("the write that had checked: %v", err)
+	}
+	if err := <-retired; err != nil {
+		t.Errorf("the retirement: %v", err)
+	}
+}
