@@ -83,7 +83,7 @@ func TestACME_WSSHostname(t *testing.T) {
 	t.Cleanup(storage.Close)
 	m := acme.NewManager(acme.ManagerOptions{DB: c.DB, Sys: c.Sys, Sealer: c.Sealer(), Storage: storage, TrustedRoots: pebble.ServerRoots,
 		DisableARI: true, RenewalWindowRatio: 0.9, Logger: c.Logs.Logger(), RetryFirst: time.Millisecond})
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(c.Sys, 3*time.Minute) // a scoped context, as a lease job has
 	defer cancel()
 	waitFor(t, "the certificate of the WSS hostname was never obtained", func() bool {
 		_ = m.Sync(ctx)
