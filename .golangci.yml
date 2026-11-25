@@ -70,8 +70,8 @@ linters:
       - path: internal/secret/
         text: Reveal
         linters: [forbidigo]
-      # The Transit client sends its token as a header, compares it with the one read again after a
-      # 403 and redacts every credential it holds from the messages it returns.
+      # The Transit client sends its token as a header and redacts every credential it holds from
+      # the messages it returns.
       - path: internal/kms/client\.go$
         text: Reveal
         linters: [forbidigo]
