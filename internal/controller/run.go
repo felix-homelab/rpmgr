@@ -179,6 +179,15 @@ func Run(ctx context.Context, o RunOptions) error {
 	} else if !ok {
 		return ErrNotInitialised
 	}
+	if inst, err := db.ReadClient().Instance.Query().Only(sys); err != nil {
+		return err
+	} else if inst.RetiredAt != nil {
+		to := ""
+		if inst.RetiredTo != nil {
+			to = " to " + *inst.RetiredTo
+		}
+		return fmt.Errorf("%w (retired %s%s)", ErrRetired, inst.RetiredAt.UTC().Format(time.RFC3339), to)
+	}
 	ca, err := castore.LoadCA(sys, db, sealer, o.Now)
 	if err != nil {
 		return err
