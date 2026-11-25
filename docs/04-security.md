@@ -520,7 +520,8 @@ an attacker nothing. The agent writes the new set to `roots.pem` atomically (a t
 reloads its trust and **re-pins**: the set of SPKI hashes it trusts is the file's. The signatures
 of snapshots and deny-lists are checked against **every root it holds**, so once R1 is dropped
 they still verify under R2. The control session and the connector's dial to a gateway use the new
-set at once; a gateway's listener keeps the roots it started with until it restarts. A root learned from a snapshot ends the control session once, so that the
+set at once; a gateway's listener keeps the roots it started with until it restarts. A root
+learned from a `Welcome` or from a snapshot ends the control session once, so that the
 reconnect's `Hello` reports the new digest. It removes a root only when an authenticated bundle no
 longer lists it and another root it keeps verified the chain of the session that said so. **That
 removal is not built yet; when it is, a replayed older snapshot or a stale replica must not add a

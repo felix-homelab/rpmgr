@@ -584,3 +584,26 @@ func TestControl_NewRootEndsTheSessionOnce(t *testing.T) {
 		t.Error("the next Hello does not carry the new digest")
 	}
 }
+
+// TestControl_RootFromWelcomeEndsTheSession: a root learned from a Welcome ends the control session
+// once, and the next Hello carries the new digest. It is the Welcome path of the same rule as a
+// snapshot's; the controller sends roots in Welcome only while the digest differs.
+func TestControl_RootFromWelcomeEndsTheSession(t *testing.T) {
+	e := newRTEnv(t)
+	c, _ := e.control(t, &fakeApplier{}, []*x509.Certificate{e.root.Cert})
+	var mu sync.Mutex
+	ended := 0
+	agent.SetSessionEnd(c, func() { mu.Lock(); ended++; mu.Unlock() })
+	r2 := newRoot(t, e.ident.TrustDomain, time.Now())
+	w := &agentv1.Welcome{DbEpoch: epoch1, TrustRoots: ders(r2.Cert, crossCert(t, e.root, r2, &r2.Key.PublicKey, nil))}
+	agent.WelcomeOf(c, w)
+	agent.WelcomeOf(c, &agentv1.Welcome{DbEpoch: epoch1}) // the next session's, without roots
+	mu.Lock()
+	defer mu.Unlock()
+	if ended != 1 {
+		t.Errorf("the session ended %d times, want once", ended)
+	}
+	if !bytes.Equal(agent.HelloOf(c).GetRootsDigest(), pki.RootsDigest(certs(e.root, r2))) {
+		t.Error("the next Hello does not carry the new digest")
+	}
+}

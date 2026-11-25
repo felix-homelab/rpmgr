@@ -147,10 +147,7 @@ func NewControl(o ControlOptions) (*Control, error) {
 		OnTrustRoots: func(der [][]byte) bool { return c.trust.Offer("a snapshot", der) },
 		// The Hello of the next session reports the roots the agent holds now; this happens once per
 		// rotation.
-		OnRootsChanged: func() {
-			o.Logger.Info("ending the control session to report the new trust roots")
-			c.client.Reconnect()
-		}})
+		OnRootsChanged: c.endForRoots})
 	c.client = NewClient(ClientOptions{Identity: id, Endpoints: id.Endpoints, Version: o.Version, Capabilities: caps,
 		BootID: hex.EncodeToString(boot), Roots: c.trust.Pool, Now: o.Now, Logger: o.Logger, Backoff: o.Backoff, Dial: o.Dial, Fallback: o.Fallback,
 		Hello: func(h *agentv1.Hello) {
@@ -164,7 +161,9 @@ func NewControl(o ControlOptions) (*Control, error) {
 		},
 		OnWelcome: func(w *agentv1.Welcome) {
 			c.rt.Welcome(w)
-			c.trust.Offer("a Welcome", w.GetTrustRoots())
+			if c.trust.Offer("a Welcome", w.GetTrustRoots()) {
+				c.endForRoots() // the controller sends roots in Welcome only while the digest differs
+			}
 			var st *agentv1.Status
 			if o.SessionStatus != nil {
 				st = o.SessionStatus()
@@ -238,6 +237,13 @@ func NewControl(o ControlOptions) (*Control, error) {
 		},
 		SaveCertificate: func(key *ecdsa.PrivateKey, chain [][]byte) error { return SaveCertificate(id.Dir, key, chain) }})
 	return c, nil
+}
+
+// endForRoots ends the control session after the agent learned a root, so that the next Hello
+// reports the new digest. It cannot loop: the controller sends no roots to a matching digest.
+func (c *Control) endForRoots() {
+	c.o.Logger.Info("ending the control session to report the new trust roots")
+	c.client.Reconnect()
 }
 
 // RunControl runs an agent's control plane until ctx ends (NewControl, Control.Run).

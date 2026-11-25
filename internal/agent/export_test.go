@@ -51,3 +51,6 @@ func SetSessionEnd(c *Control, f func()) {
 
 // DenyOf returns the deny-list of c.
 func DenyOf(c *Control) *DenyList { return c.deny }
+
+// WelcomeOf runs the agent's handling of a Welcome, as the control session does.
+func WelcomeOf(c *Control, w *agentv1.Welcome) { c.client.o.OnWelcome(w) }

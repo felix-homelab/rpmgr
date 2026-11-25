@@ -480,11 +480,14 @@ Rules:
   ignored and logged, and never rejects the snapshot that carried it. The agent checks the limits
   below on the DER bytes **before** it parses anything and ignores an offer that exceeds them,
   whole. It keeps one root per public key, so the limit counts keys. It reads the digest it sends
-  in `Hello` again from the roots it holds; a root learned from a snapshot ends the control
-  session once, so that the reconnect's `Hello` reports the new set.
+  in `Hello` again from the roots it holds; a root learned from a `Welcome` or from a snapshot
+  ends the control session once, so that the reconnect's `Hello` reports the new set; it cannot
+  loop, because the controller sends roots in `Welcome` only while the digest differs.
 - **Limits** are in the table below. The roots count toward the control message limit of 4 MiB
   ([Framing](#framing)): a snapshot that with its roots exceeds it fails to compile as any
-  oversized snapshot does.
+  oversized snapshot does. A snapshot whose roots cannot be encoded is compiled without them and
+  the error is logged, as `Welcome` is sent. An agent reads a missing `trust_roots` as no
+  information, never as an empty bundle, and keeps the roots it holds.
 
 ### Revisions and ordering
 
