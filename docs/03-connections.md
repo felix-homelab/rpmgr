@@ -85,7 +85,7 @@ sequenceDiagram
   A->>C: TLS 1.3, RootCAs = {pinned root}, ServerName controller.<td><br/>Enroll{token, CSR, host facts, version}
   C->>C: rate limit · one transaction: consume token + check CSR signature + issue<br/>assign ID + SPIFFE URI + DNS SAN (CSR subject/SANs ignored)
   C-->>A: certificate (7 d) + chain + trust bundle + controller endpoints
-  Note over A: further roots from this authenticated response are kept<br/>only if cross-signed by the pinned root
+  Note over A: further roots from this authenticated response are kept<br/>only if cross-signed by a root it trusts
   A->>C: open control session (mutual TLS)
 ```
 
@@ -214,10 +214,13 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
   version, `boot_id`, the agent's clock, a digest of its deny-list (the controller resends the
   list on a mismatch) and, from an agent with the capability `ota`, its update policy: the
   `auto_update` and `update_channel` of its local policy file, as the root updater would read them
-  ([04](04-security.md#over-the-air-updates)). It carries no agent ID: the controller takes the identity from the client
+  ([04](04-security.md#over-the-air-updates)) and, from an agent with the capability `trust.roots`,
+  a digest of the roots it trusts ([Trust roots](#trust-roots-in-welcome-and-snapshots)). It
+  carries no agent ID: the controller takes the identity from the client
   certificate. **Welcome** carries the controller's time, the `session_epoch` assigned to this
-  session, the current `db_epoch`, `min_agent_version`, and the certificates of the config-signing
-  keys, the next key included, so the agent can verify snapshots across a key rotation.
+  session, the current `db_epoch`, `min_agent_version`, the certificates of the config-signing
+  keys, the next key included, so the agent can verify snapshots across a key rotation, and, to an
+  agent with `trust.roots`, the trust roots.
 - **Signed messages.** Snapshots and deny-lists travel as `Signed{payload, signature, key_id}`: the
   agent verifies and persists exactly the signed bytes, so nothing is re-encoded, and a snapshot's
   hash is the SHA-256 of its payload. A snapshot names the agent it was compiled for; an agent
@@ -393,7 +396,10 @@ Rules:
    at every new revision and when the config-signing key changes; the snapshot names its signing
    key, so the agent then keeps a copy signed by the new key. The controller looks for new
    revisions at the revision check interval (see the timeout table), so a revision that another
-   process wrote, such as an admin command, reaches the agents too. A snapshot whose hash equals
+   process wrote, such as an admin command, reaches the agents too; with several replicas a
+   notification reaches them at once and the check is the bound if it is lost
+   ([10](10-operations.md#high-availability)). A change of the trust roots is a new snapshot as
+   well ([Trust roots](#trust-roots-in-welcome-and-snapshots)). A snapshot whose hash equals
    the one the agent named in `Hello`, or the one it was sent last, is not sent again. `Applied`
    and `Rejected` count only for a snapshot that the same session was sent; of a rejection the
    controller keeps at most 32 reasons of at most 512 bytes each. The last 5 snapshots sent to
@@ -442,6 +448,39 @@ Rules:
     only the update state or the update policy leaves a gateway's data sessions and counters as
     they are ([04](04-security.md#over-the-air-updates)). An agent that reports no policy, as
     releases before v0.4.0 do, is *unknown* to the controller.
+
+### Trust roots in Welcome and snapshots
+
+[D180](14-open-decisions.md#engineering), [04](04-security.md#root-rotation). Phase 2, capability
+`trust.roots`.
+
+- **What is sent.** `Welcome.trust_roots` (field 6) and `Snapshot.trust_roots` (the next free
+  field) list, as DER, every certificate of the controller's trust bundle: the **self-signed**
+  certificate of each root and the **cross-certificates** that tie a new root to an old one. The
+  order is fixed: the self-signed certificates first, then the cross-certificates, each group
+  sorted by the SHA-256 of the certificate's SubjectPublicKeyInfo, the same value as the root pin,
+  and certificates with the same SPKI by their raw DER bytes, ascending, so two replicas send the
+  same bytes. **Certificates with identical raw DER count once**, in the list and in the digest.
+  Outside a rotation the list is one certificate. The field goes only to an agent that announced
+  `trust.roots`; one without it keeps the root it has and shows as a straggler of a rotation
+  ([04](04-security.md#root-rotation)). Agents announce `trust.roots` **from slice 8.13 (#696)
+  on**, because the capability promises that they can take part in a root rotation.
+- **The digest.** `Hello.roots_digest` (field 10) is the SHA-256 over the agent's trusted
+  self-signed roots in the order above, each contributing `uvarint(len(DER)) ‖ DER`.
+  **Cross-certificates do not count toward the digest.** The controller computes the same digest of
+  its current bundle, records the agent's in `agent_sessions.roots_digest`
+  ([06](06-data-model.md#desired-vs-observed-state)), and lists the agents whose digest differs as
+  the stragglers of a rotation. Roots in `Welcome` are sent when the digest differs, or when `Hello`
+  has none; the snapshot always carries them, so a change of the bundle changes every snapshot's
+  hash and is pushed like a revision. The pusher's change key covers the **whole bundle,
+  cross-certificates included**, so a new cross-certificate alone is pushed although the digest
+  stays the same.
+- **What an agent does with them** is in [04](04-security.md#root-rotation): it keeps an offered
+  root only when a cross-certificate from a root it trusts verifies. A root that fails the rule is
+  ignored and logged, and never rejects the snapshot that carried it.
+- **Limits** are in the table below. The roots count toward the control message limit of 4 MiB
+  ([Framing](#framing)): a snapshot that with its roots exceeds it fails to compile as any
+  oversized snapshot does.
 
 ### Revisions and ordering
 
@@ -1599,6 +1638,14 @@ sequenceDiagram
 | Reconnect backoff | full jitter, base 0.5 s, factor 2, cap 30 s (control) / 15 s (data); reset after 60 s healthy; honour `Goodbye.retry_after` | Avoids reconnect storms and synchronised retries |
 | Singleton job lease (controller) | TTL 30 s, renewed every 10 s; another replica tries to take it every 5 s | A dead replica's jobs move within 30 s; renewals have two chances before expiry ([10](10-operations.md#high-availability)). The `dns` lease is the exception: TTL 90 s, renewed every 30 s, so that it can outlast the safety margin before a batch ([15](15-dns.md#timers-and-limits)) |
 | Host firewall helper (Phase 2) | the gateway writes its desired ranges at most once per 5 s and only when they changed, and reads the helper's status file every 5 s; a helper that has not answered a changed desired file, or has written no status file, within 1 min is reported as failed; the desired file at most 64 KiB and 256 ranges, the bounds file at most 16 KiB, the status file at most 64 KiB; one `ufw` command at most 30 s, one run at most 5 min | [R] A burst of pool edits starts the helper once, not often enough to trip systemd's start limit, and a file past the limits is refused, not read ([04](04-security.md#host-firewall-for-port-pools-phase-2)) |
+| Controller lock check (PostgreSQL, Phase 2) | every 5 s, each check at most 5 s | The lock ends with its connection ([06](06-data-model.md#connecting-to-postgresql-phase-2)); the connection has `idle_session_timeout` 0 and TCP keepalives; a loss is acted on at once, and the **stop bound** is 10 s (an interval and a check); a controller that has just taken the lock waits one stop bound before its first write |
+| Controller node heartbeat (HA, Phase 2) | every 10 s; a node is live for 30 s after it; a row with no backlog is removed after 24 h | The singleton job lease's TTL, so a dead replica is not live for longer than its jobs wait ([06](06-data-model.md#system)) |
+| Controller-to-controller connection (HA, Phase 2) | dial and handshake 5 s; HTTP/2 `PING` after 15 s without activity, answered within 10 s, as the TCP fallback; a forwarded operation carries the caller's deadline | A dead peer is noticed within 25 s, and the operation fails with the caller's deadline ([10](10-operations.md#high-availability)) |
+| Transit request (Phase 2) | 10 s per request, the answer at most 64 KiB; a connection error, a 429 or a 5xx is tried again at most 3 times, after 0.5 s, 1 s and 2 s, `Retry-After` honoured up to 5 s; the token is renewed at half its lease and read again at the first 403 | A key service that is down for seconds does not stop the controller, and one that is down for longer does so visibly ([04](04-security.md#secrets-at-rest-and-in-logs)) |
+| Revocation-log sink (Phase 2) | an object store request 10 s; shipping every 10 s lists only what follows the verified prefix a replica caches, and reads the whole sink once, at start | A tick costs one request when nothing happened ([04](04-security.md#revocation-log)) |
+| Database password file (Phase 2) | at most 4 KiB, one non-empty line | A password and nothing else ([06](06-data-model.md#connecting-to-postgresql-phase-2)) |
+| Database copy (Phase 2) | batches of 1 000 rows, in one transaction on the target for the whole copy | Bounds the memory of the copier, not the time ([06](06-data-model.md#copying-a-database)) |
+| Trust roots (Phase 2) | at most 4 self-signed roots and 8 certificates in all, each at most 2 KiB as DER, in `Welcome` and in a snapshot; the digest is 32 bytes | A rotation holds 2 roots and 1 cross-certificate, so there is room for one more rotation before the first ends ([Trust roots](#trust-roots-in-welcome-and-snapshots)) |
 | Controller admission | 50 new control sessions/s per replica; excess gets `Goodbye{overloaded}` with a `retry_after` drawn from 1–10 s | Restart storms, spread out again |
 | Control session start | `Hello` within 10 s, as the first message only | A connection that sends nothing holds no session |
 | Data session start | `SessionHello` within 10 s of the session control stream, as its first message only; the connector waits as long for `SessionWelcome` | As for control sessions |
@@ -1631,7 +1678,7 @@ sequenceDiagram
 | Audit export | one export stream runs at most 5 min, its read transaction with it; the check is made per line, and every write of the stream carries the same deadline, so an export that runs out, or whose client stops reading, is cut off with `DEADLINE_EXCEEDED` and recorded as a failure | A slow or stalled reader cannot hold a read transaction open ([04](04-security.md#audit-log)) |
 | Audit retention | checked every 1 h (singleton job); the retention itself is an instance setting ([10](10-operations.md#runtime-settings-ui--settings)) | Entries past it go within the hour, up to a checkpoint ([04](04-security.md#audit-log)) |
 | Connector-local policy file | checked every 2 s, by a gateway too, for the update policy it reports; `SIGHUP` (`systemctl reload`) reloads it at once | An edit takes effect without a new revision ([04](04-security.md#connector-local-policy)); the controller learns a changed update policy within a few seconds ([Control session](#control-session)) |
-| Revision and deny-list check | every 1 s | A revision or a revocation written by another process reaches the agents without a notification channel; with several replicas, the safety net behind `LISTEN/NOTIFY` ([10](10-operations.md#high-availability)) |
+| Revision and deny-list check | every 1 s, once per replica and not per session | The bound on how late an agent learns of a revision or a revocation, whatever happens to a notification. A single controller has no channel from other processes, such as an admin command, so the check is how their writes reach the agents. With several replicas `LISTEN/NOTIFY` delivers within milliseconds and the check is the safety net behind it, after a lost notification or a reconnect ([10](10-operations.md#high-availability)). It reads the revision counter and the deny-list's version, never a session's rows, so its cost does not grow with the agents |
 | Route drain | 30 s | Finish in-flight requests |
 | Route port in use | a `tcp` or `udp` route port the gateway cannot bind (`not_ready(port_in_use)`) is tried again every 5 s | [R] A port another process frees is taken within seconds, without a new revision |
 | Gateway drain | 60 s | Time for connectors to re-home |
@@ -1750,6 +1797,7 @@ used, not by the route compiler:
 | `health.active` | Connector | Active health checks of targets; a connector without it counts its targets as healthy, and the route status notes "health not checked" ([D133](14-open-decisions.md#engineering)) |
 | `tunnel.wss` | Gateway, connector | Data sessions over WSS |
 | `logs.stream` | Gateway, connector | Live logs (`Open` and `Attach`) |
+| `trust.roots` | Gateway, connector | The trust roots in `Welcome` and snapshots, the roots digest in `Hello`, and root rotation by cross-certificate ([Trust roots](#trust-roots-in-welcome-and-snapshots)); an agent without it never learns a new root and has to re-enroll when the old one is dropped |
 | `ota` | Gateway, connector | Over-the-air updates: the agent takes a release offer in its snapshot, stages it for the root updater and reports the update state and the updater's outcome in `Status`; an agent without it is never offered a release. Announced only on a Linux host with the root updater installed ([04](04-security.md#over-the-air-updates)) |
 | `firewall.ranges` | Gateway | The host's `ufw` is handed to rpmgr: the gateway gets the port pools of its group in its snapshot, writes their ranges for the root helper and reports the helper's state in `Status`. Announced only by a gateway whose boot file has `firewall.backend: ufw` ([04](04-security.md#host-firewall-for-port-pools-phase-2)); a gateway without it gets no pool, so one of an earlier release never meets a resource it does not know |
 | `http.cache` | Gateway | Response cache (Phase 3): the gateway takes the cache settings of a route, `CachePurge`, and the `cache.list` and `cache.lookup` operations |
