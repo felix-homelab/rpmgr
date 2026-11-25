@@ -56,12 +56,38 @@ func Rotate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) ([
 	}
 	old := active[cakey.KindIntermediate]
 	var inter pki.KeyPair
-	if !now.Before(old.NotBefore.Add(old.NotAfter.Sub(old.NotBefore) / 2)) {
-		if inter, err = replaceIntermediate(ctx, tx, s, active[cakey.KindRoot], old, now); err != nil {
-			return nil, err
+	rootOffline := keyOffline(active[cakey.KindRoot])
+	pending, err := pendingIntermediate(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case now.Before(old.NotBefore.Add(old.NotAfter.Sub(old.NotBefore) / 2)):
+		inter, err = openKey(s, old)
+	case rootOffline && pending == nil && next[cakey.KindIntermediate] == nil:
+		// An offline root cannot sign: ask for a signature, and go on with the old intermediate.
+		if _, err = RequestIntermediateSigning(ctx, tx, s, now); err == nil {
+			done = append(done, "intermediate needs signing")
+			inter, err = openKey(s, old)
 		}
+	case rootOffline && next[cakey.KindIntermediate] != nil && pending == nil:
+		n := next[cakey.KindIntermediate]
+		if now.Before(n.NotBefore) || !now.Before(n.NotAfter) {
+			// Never make an intermediate active that issues leaves nobody accepts: go on with the old one
+			// and say so; the operator signs a new request.
+			done = append(done, "signed next intermediate is not valid now; not activated")
+			inter, err = openKey(s, old)
+			break
+		}
+		inter, err = activateIntermediate(ctx, tx, s, old, n)
+		done = append(done, "intermediate replaced by the signed next one")
+	case rootOffline:
+		inter, err = openKey(s, old) // still waits for its signature
+	default:
+		inter, err = replaceIntermediate(ctx, tx, s, active[cakey.KindRoot], old, now)
 		done = append(done, "intermediate rotated")
-	} else if inter, err = openKey(s, old); err != nil {
+	}
+	if err != nil {
 		return nil, err
 	}
 	is, err := pki.NewIssuer(root, inter, func() time.Time { return now })
@@ -109,6 +135,9 @@ var ErrRotated = errors.New("pki: the intermediate was rotated meanwhile")
 // RotateIntermediate replaces the active intermediate now, before its half-life, in tx: the old
 // one is retired and keeps verifying the leaves it issued until it expires (docs/04-security.md,
 // "CA rotation"). It needs the system scope; the caller reloads the CA afterwards.
+//
+// With an offline root it returns ErrRootOffline; RequestIntermediateSigning asks for a signature
+// instead.
 func RotateIntermediate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) error {
 	root, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusActive)).Only(ctx)
 	if err != nil {
@@ -126,6 +155,9 @@ func RotateIntermediate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now t
 // one is retired only while it is still active, so of two rotations at once one fails with
 // ErrRotated instead of leaving two active intermediates.
 func replaceIntermediate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, root, old *ent.CAKey, now time.Time) (pki.KeyPair, error) {
+	if keyOffline(root) {
+		return pki.KeyPair{}, ErrRootOffline
+	}
 	rootKP, err := openKey(s, root)
 	if err != nil {
 		return pki.KeyPair{}, err
@@ -142,4 +174,21 @@ func replaceIntermediate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, root
 		return pki.KeyPair{}, ErrRotated
 	}
 	return inter, saveKey(ctx, tx, s, cakey.KindIntermediate, inter, cakey.StatusActive)
+}
+
+// activateIntermediate retires old and makes the imported next intermediate active, as the schedule
+// asks. Like replaceIntermediate it fails with ErrRotated if old is no longer active.
+func activateIntermediate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, old, next *ent.CAKey) (pki.KeyPair, error) {
+	kp, err := openKey(s, next)
+	if err != nil {
+		return pki.KeyPair{}, err
+	}
+	n, err := tx.CAKey.Update().Where(cakey.ID(old.ID), cakey.StatusEQ(cakey.StatusActive)).SetStatus(cakey.StatusRetired).Save(ctx)
+	if err != nil {
+		return pki.KeyPair{}, err
+	}
+	if n != 1 {
+		return pki.KeyPair{}, ErrRotated
+	}
+	return kp, tx.CAKey.UpdateOne(next).SetStatus(cakey.StatusActive).Exec(ctx)
 }

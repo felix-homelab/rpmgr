@@ -3,15 +3,20 @@
 package controller_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/lease"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/store"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
@@ -43,6 +48,51 @@ func TestCARotation(t *testing.T) {
 	}
 	if n := e.db.Client().AuditEntry.Query().Where(auditentry.Action("ca.rotate")).CountX(e.sys); n != 1 {
 		t.Fatalf("%d audit records of the rotation", n)
+	}
+}
+
+// TestCARotationOfflineRoot: with the root offline the job asks for a signature instead of signing,
+// logs the need as a warning, and as an error from 30 days before the intermediate expires.
+func TestCARotationOfflineRoot(t *testing.T) {
+	db := storetest.Migrated(t, store.SQLite)
+	e := startSessions(t, db, "0.1.0", 0)
+	if err := store.WriteTx(e.sys, db, func(tx *ent.Tx) error {
+		_, err := castore.ExportRootOffline(e.sys, tx, e.sealer, "correct horse battery staple 42",
+			func(f []byte) ([]byte, error) { return f, nil })
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	leases := lease.New(db, "ctn_test", nil)
+	first := e.ca.Intermediate()
+	var logs bytes.Buffer
+	at := first.NotBefore.Add(first.NotAfter.Sub(first.NotBefore)/2 + time.Hour)
+	o := controller.CAOptions{DB: db, CA: e.ca, Sealer: e.sealer, Leases: leases, Now: func() time.Time { return at },
+		Logger: slog.New(slog.NewTextHandler(&logs, nil))}
+	run := func() {
+		t.Helper()
+		if err := runOnce(t, leases, controller.CARotation(o)); err != nil {
+			t.Fatalf("job errors: %v", err)
+		}
+	}
+	run()
+	if !e.ca.Intermediate().Equal(first) {
+		t.Fatal("the intermediate was replaced without a signature")
+	}
+	if !strings.Contains(logs.String(), "level=WARN") || strings.Contains(logs.String(), "level=ERROR") {
+		t.Fatalf("log of the first run: %s", logs.String())
+	}
+	if n := e.db.Client().AuditEntry.Query().Where(auditentry.Action("ca.rotate"), auditentry.Reason("intermediate needs signing")).CountX(e.sys); n != 1 {
+		t.Fatalf("%d audit records of the request", n)
+	}
+	logs.Reset()
+	at = first.NotAfter.Add(-30 * 24 * time.Hour)
+	run()
+	if !strings.Contains(logs.String(), "level=ERROR") {
+		t.Fatalf("log 30 days before expiry: %s", logs.String())
+	}
+	if n := e.db.Client().AuditEntry.Query().Where(auditentry.Action("ca.rotate"), auditentry.Reason("intermediate needs signing")).CountX(e.sys); n != 1 {
+		t.Fatalf("%d audit records of the request: it was made twice", n)
 	}
 }
 

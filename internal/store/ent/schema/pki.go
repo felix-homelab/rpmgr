@@ -35,10 +35,15 @@ func (CAKey) Fields() []ent.Field {
 		field.Enum("kind").Values("root", "intermediate", "config_signing", "audit_checkpoint").Immutable(),
 		field.String("algorithm").NotEmpty().Immutable(),
 		field.Bytes("public_key").NotEmpty().Immutable(),
-		field.Bytes("certificate").NotEmpty().Immutable(),
+		// certificate is null for a next intermediate that waits for the signature of an offline root,
+		// until its signed certificate is imported; not_before and not_after then hold the expected
+		// validity and are replaced by the certificate's.
+		field.Bytes("certificate").Optional(),
+		// csr is the PEM request of such a key.
+		field.Bytes("csr").Optional(),
 		field.Bytes("key_enc").Optional().Nillable().Sensitive(),
-		field.Time("not_before").Immutable(),
-		field.Time("not_after").Immutable(),
+		field.Time("not_before"),
+		field.Time("not_after"),
 		field.Enum("status").Values("next", "active", "retired"),
 	}
 }

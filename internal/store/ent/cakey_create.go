@@ -44,6 +44,12 @@ func (_c *CAKeyCreate) SetCertificate(v []byte) *CAKeyCreate {
 	return _c
 }
 
+// SetCsr sets the "csr" field.
+func (_c *CAKeyCreate) SetCsr(v []byte) *CAKeyCreate {
+	_c.mutation.SetCsr(v)
+	return _c
+}
+
 // SetKeyEnc sets the "key_enc" field.
 func (_c *CAKeyCreate) SetKeyEnc(v []byte) *CAKeyCreate {
 	_c.mutation.SetKeyEnc(v)
@@ -155,14 +161,6 @@ func (_c *CAKeyCreate) check() error {
 			return &ValidationError{Name: "public_key", err: fmt.Errorf(`ent: validator failed for field "CAKey.public_key": %w`, err)}
 		}
 	}
-	if _, ok := _c.mutation.Certificate(); !ok {
-		return &ValidationError{Name: "certificate", err: errors.New(`ent: missing required field "CAKey.certificate"`)}
-	}
-	if v, ok := _c.mutation.Certificate(); ok {
-		if err := cakey.CertificateValidator(v); err != nil {
-			return &ValidationError{Name: "certificate", err: fmt.Errorf(`ent: validator failed for field "CAKey.certificate": %w`, err)}
-		}
-	}
 	if _, ok := _c.mutation.NotBefore(); !ok {
 		return &ValidationError{Name: "not_before", err: errors.New(`ent: missing required field "CAKey.not_before"`)}
 	}
@@ -232,6 +230,10 @@ func (_c *CAKeyCreate) createSpec() (*CAKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Certificate(); ok {
 		_spec.SetField(cakey.FieldCertificate, field.TypeBytes, value)
 		_node.Certificate = value
+	}
+	if value, ok := _c.mutation.Csr(); ok {
+		_spec.SetField(cakey.FieldCsr, field.TypeBytes, value)
+		_node.Csr = value
 	}
 	if value, ok := _c.mutation.KeyEnc(); ok {
 		_spec.SetField(cakey.FieldKeyEnc, field.TypeBytes, value)
