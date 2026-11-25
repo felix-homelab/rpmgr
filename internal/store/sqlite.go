@@ -32,6 +32,9 @@ type SQLiteOptions struct {
 	// on the same database refuses to start (one controller per SQLite database). Administration
 	// commands that run next to a controller leave it off.
 	Lock bool
+	// RefuseRetired makes every write transaction check that `rpmgr migrate-db` has not retired the
+	// database, for commands that take no controller lock.
+	RefuseRetired bool
 }
 
 // DB is an opened database. On SQLite, Writer is the single writer connection and Reader a pool of
@@ -42,6 +45,8 @@ type DB struct {
 	Writer  *sql.DB
 	Reader  *sql.DB
 	unlock  func() error
+	// refuseRetired is SQLiteOptions.RefuseRetired.
+	refuseRetired bool
 	// lockLost is closed when the PostgreSQL session that holds the controller lock ends.
 	lockLost <-chan struct{}
 
@@ -87,6 +92,7 @@ func OpenSQLite(ctx context.Context, path string, o SQLiteOptions) (*DB, error) 
 		}
 		db.unlock = unlock
 	}
+	db.refuseRetired = o.RefuseRetired
 	var err error
 	if db.Writer, err = openPool(ctx, sqliteDSN(path, o.BusyTimeout, false), 1); err != nil {
 		_ = db.Close()

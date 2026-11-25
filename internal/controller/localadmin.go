@@ -53,8 +53,12 @@ func openLocal(ctx context.Context, path, what string) (config.Controller, *stor
 	if _, err := os.Stat(cfg.Database.DSN); err != nil {
 		return cfg, nil, nil, fmt.Errorf("controller: no database at %s; run `rpmgr controller init` first: %w", cfg.Database.DSN, err)
 	}
-	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{})
+	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{RefuseRetired: true})
 	if err != nil {
+		return cfg, nil, nil, err
+	}
+	if err := refuseRetired(ctx, db); err != nil {
+		_ = db.Close()
 		return cfg, nil, nil, err
 	}
 	sys, err := authz.System(ctx, "local-cli", what, audit.SystemScopes(db))

@@ -179,6 +179,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	} else if !ok {
 		return ErrNotInitialised
 	}
+	if err := refuseRetired(ctx, db); err != nil {
+		return err
+	}
 	ca, err := castore.LoadCA(sys, db, sealer, o.Now)
 	if err != nil {
 		return err
