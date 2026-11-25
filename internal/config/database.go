@@ -27,7 +27,7 @@ type Database struct {
 // validated, so a boot file prepared for a PostgreSQL controller can be read before the controller
 // itself accepts it. Unknown keys inside the section, a DSN of a SQLite database that is not an
 // absolute path, a PostgreSQL database without a DSN, and both a password file and a password
-// credential are refused. A missing section is the default, the SQLite database of a single node.
+// credential are refused. The section must be there, because a misspelt key must not fall back to the default database; a file with a second YAML document is refused as the boot files are.
 func LoadDatabase(path string) (Database, error) {
 	fh, err := os.Open(path) //nolint:gosec // G304: the path is the operator's --from or --to-file
 	if err != nil {
@@ -44,16 +44,22 @@ func LoadDatabase(path string) (Database, error) {
 	var doc struct {
 		Database yaml.Node `yaml:"database"`
 	}
-	if err := yaml.Unmarshal(data, &doc); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	if err := dec.Decode(&doc); err != nil {
 		return Database{}, fmt.Errorf("%s: config: %w", path, err)
 	}
+	var extra any
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		return Database{}, fmt.Errorf("%s: config: more than one YAML document", path)
+	}
+	if doc.Database.Kind != yaml.MappingNode {
+		return Database{}, fmt.Errorf("%s: config: no database section; name the database explicitly (a boot file of a gateway or connector has none)", path)
+	}
 	var d Database
-	if doc.Database.Kind != 0 {
-		dec := yaml.NewDecoder(bytes.NewReader(mustMarshal(&doc.Database)))
-		dec.KnownFields(true)
-		if err := dec.Decode(&d); err != nil {
-			return Database{}, fmt.Errorf("%s: database: %w", path, err)
-		}
+	sec := yaml.NewDecoder(bytes.NewReader(mustMarshal(&doc.Database)))
+	sec.KnownFields(true)
+	if err := sec.Decode(&d); err != nil {
+		return Database{}, fmt.Errorf("%s: database: %w", path, err)
 	}
 	setDefault(&d.Driver, "sqlite")
 	if d.Driver == "sqlite" {

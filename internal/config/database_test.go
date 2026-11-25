@@ -26,7 +26,6 @@ func TestLoadDatabase(t *testing.T) {
 		want config.Database
 	}{
 		"sqlite":      {"database: {driver: sqlite, dsn: /srv/rpmgr/c.db}\n", config.Database{Driver: "sqlite", DSN: "/srv/rpmgr/c.db"}},
-		"default":     {"public_url: https://p.example.com\n", config.Database{Driver: "sqlite", DSN: "/var/lib/rpmgr/controller.db"}},
 		"empty block": {"database: {}\n", config.Database{Driver: "sqlite", DSN: "/var/lib/rpmgr/controller.db"}},
 		"postgres with a file": {"database: {driver: postgres, dsn: 'postgres://rpmgr@db.example.com/rpmgr', password_file: /srv/pw}\n",
 			config.Database{Driver: "postgres", DSN: "postgres://rpmgr@db.example.com/rpmgr", PasswordFile: "/srv/pw"}},
@@ -47,6 +46,12 @@ func TestLoadDatabase(t *testing.T) {
 		"postgres no dsn":    "database: {driver: postgres}\n",
 		"two password kinds": "database: {driver: postgres, dsn: 'postgres://u@h/d', password_file: /srv/a, password_credential: b}\n",
 		"another driver":     "database: {driver: mysql, dsn: x}\n",
+		"misspelt key":       "databse: {driver: sqlite, dsn: /srv/c.db}\n",
+		"no section":         "public_url: https://p.example.com\n",
+		"a gateway file":     "version: 1\ncontroller_url: https://p.example.com\n",
+		"second document":    "public_url: https://p.example.com\n---\ndatabase: {driver: sqlite, dsn: /srv/c.db}\n",
+		"two documents":      "database: {driver: sqlite, dsn: /srv/c.db}\n---\ndatabase: {driver: sqlite, dsn: /srv/d.db}\n",
+		"null section":       "database:\n",
 		"not yaml":           "database: [\n",
 		"database a scalar":  "database: sqlite\n",
 	}
