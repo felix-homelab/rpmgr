@@ -1237,6 +1237,8 @@ var (
 		{Name: "db_epoch", Type: field.TypeString},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "restore_review_since", Type: field.TypeTime, Nullable: true},
+		{Name: "retired_at", Type: field.TypeTime, Nullable: true},
+		{Name: "retired_to", Type: field.TypeString, Nullable: true},
 	}
 	// InstanceTable holds the schema information for the "instance" table.
 	InstanceTable = &schema.Table{
