@@ -1431,14 +1431,18 @@ Each runbook: **symptoms → steps → done when**.
 - **With an offline root** the job does not issue at half-life; Settings → PKI says "intermediate
   needs signing", and the alert is critical at the lead time of
   [04](04-security.md#offline-root-ca):
-  1. `rpmgr ca rotate-intermediate --csr-out <request>` on the controller host (or take the request
-     the job made from `rpmgr ca status`). Note the key hash it prints.
+  1. `rpmgr ca rotate-intermediate --csr-out <request>` on the controller host: it writes the
+     request the job made, or makes one. Note the key hash it prints; `rpmgr ca status` and
+     Settings → PKI show it too.
   2. Carry the request to the offline host and run `rpmgr ca sign-intermediate --root-file <file>
      --csr <request> --out <certificate>`. It shows the key's hash: it must equal the one in step 1.
      Confirm, and enter the passphrase.
   3. Carry the certificate back and run `rpmgr ca import-intermediate --in <certificate>`. It
      refuses a certificate that does not chain to the root, is not name-constrained to the trust
      domain or has the wrong path length, and changes nothing then.
+- **If the alert says the signed intermediate is not valid now**, it was signed with a clock that
+  is off, or too long ago: make a new request (step 1), sign it with the offline host's clock
+  corrected, and import it; the import retires the stale one.
 - **Done when**: every agent's certificate is issued by the new intermediate (Settings → PKI), and
   the notice is gone.
 

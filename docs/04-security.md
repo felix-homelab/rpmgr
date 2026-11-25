@@ -448,6 +448,10 @@ only on a host the operator chooses, in a ceremony.
   on Settings → PKI and in `rpmgr ca status`. The alert becomes critical **30 days before the
   active intermediate expires**, if no signed certificate has been imported by then.
   The rotation job also logs the need at each run, as a warning and from that day as an error.
+  A signed next intermediate that is **not valid now** is never activated: Settings → PKI and
+  `rpmgr ca status` say so as a critical alert, the job logs it as an error at each run, and it
+  writes no audit entry for it, as nothing changes. The operator makes a new request; importing the
+  signed new one retires the stale one.
   `rpmgr ca rotate-intermediate --csr-out <file>` does the same at once; without `--csr-out` it
   refuses while the root is offline. The signing keys are not held up: their certificates come
   from the intermediate ([CA hierarchy](#ca-hierarchy)).

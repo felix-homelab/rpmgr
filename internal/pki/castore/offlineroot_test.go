@@ -574,7 +574,7 @@ func TestRequestIntermediateSigningConcurrent(t *testing.T) {
 }
 
 // A signed intermediate that is no longer valid when the schedule would activate it is not
-// activated: the old one stays and the job says so.
+// activated: the old one stays and the alert says so.
 func TestRotateDoesNotActivateExpiredIntermediate(t *testing.T) {
 	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *castore.CA) {
 		sys := storetest.SystemCtx(t)
@@ -595,12 +595,87 @@ func TestRotateDoesNotActivateExpiredIntermediate(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-		if len(done) == 0 || !strings.Contains(done[0], "not valid now; not activated") {
-			t.Fatalf("rotation = %v", done)
+		if strings.Contains(strings.Join(done, "; "), "intermediate") {
+			t.Fatalf("rotation = %v: it changed no intermediate, so it has nothing to record of one", done)
+		}
+		if a, err := castore.IntermediateSigningAlert(sys, db, at); err != nil || a != castore.AlertNextNotValid {
+			t.Fatalf("alert %q %v, want AlertNextNotValid", a, err)
 		}
 		active, err := db.ReadClient().CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusActive)).Count(sys)
 		if err != nil || active != 1 || e.pending(t).Status != cakey.StatusNext {
 			t.Fatalf("the expired intermediate was activated (%d active, err %v)", active, err)
+		}
+	})
+}
+
+// An imported next intermediate that is not valid now (expired, or not yet valid) is an alert of its
+// own; a request that waits is the other one. A new request, signed and imported, replaces the
+// stale one, so that the alert ends and the schedule can activate the new one.
+func TestNextIntermediateNotValidAlert(t *testing.T) {
+	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *castore.CA) {
+		sys := storetest.SystemCtx(t)
+		e := goOffline(t, db, kek)
+		hash, err := castore.NextIntermediateKeyHash(sys, db)
+		if err != nil || hash != pki.PublicKeyHash(e.pending(t).PublicKey) {
+			t.Fatalf("key hash %q %v", hash, err)
+		}
+		cert, err := pki.SignIntermediate(e.root, e.csr, t0.Add(day))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := e.importDER(t, cert.Raw, t0.Add(day)); err != nil {
+			t.Fatal(err)
+		}
+		alert := func(at time.Time) castore.SigningAlert {
+			t.Helper()
+			a, err := castore.IntermediateSigningAlert(sys, db, at)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return a
+		}
+		for name, tc := range map[string]struct {
+			at   time.Time
+			want castore.SigningAlert
+		}{
+			"valid":         {t0.Add(2 * day), castore.AlertNone},
+			"not yet valid": {cert.NotBefore.Add(-time.Minute), castore.AlertNextNotValid},
+			"expired":       {cert.NotAfter, castore.AlertNextNotValid},
+		} {
+			if a := alert(tc.at); a != tc.want {
+				t.Errorf("%s: %q, want %q", name, a, tc.want)
+			}
+		}
+
+		// Recovery: a new request, signed and imported, replaces the stale one.
+		late := cert.NotAfter.Add(day)
+		var csr []byte
+		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
+			var err error
+			csr, err = castore.RequestIntermediateSigning(sys, tx, e.s, late)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if a := alert(late); a != castore.AlertNextNotValid {
+			t.Fatalf("with the stale one and a request: %q", a)
+		}
+		fresh, err := pki.SignIntermediate(e.root, csr, late)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := e.importDER(t, fresh.Raw, late); err != nil {
+			t.Fatal(err)
+		}
+		if a := alert(late); a != castore.AlertNone {
+			t.Errorf("after the new one was imported: %q", a)
+		}
+		next, err := db.ReadClient().CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusNext)).Count(sys)
+		if err != nil || next != 1 {
+			t.Errorf("%d next intermediates after the import, want the new one only (%v)", next, err)
+		}
+		if _, err := castore.LoadCA(sys, db, e.s, func() time.Time { return t0.Add(2 * day) }); err != nil {
+			t.Errorf("the CA does not load with the retired stale intermediate: %v", err)
 		}
 	})
 }

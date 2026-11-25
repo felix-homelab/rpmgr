@@ -46,6 +46,22 @@ func TestPkiStatusWithPendingIntermediate(t *testing.T) {
 	if !r.Msg.RootOffline {
 		t.Error("the status does not say that the root is offline")
 	}
+	if r.Msg.SigningAlert != rpmgrv1.SigningAlert_SIGNING_ALERT_NEEDS_SIGNING || len(r.Msg.NextIntermediateKeyHash) != 64 {
+		t.Errorf("alert %v, key hash %q: want needs-signing and the hash of the waiting key", r.Msg.SigningAlert, r.Msg.NextIntermediateKeyHash)
+	}
+	// 30 days before the active intermediate expires the alert is critical.
+	var expires time.Time
+	for _, k := range r.Msg.Keys {
+		if k.Kind == rpmgrv1.CAKeyKind_CA_KEY_KIND_INTERMEDIATE {
+			expires = k.NotAfter.AsTime()
+		}
+	}
+	e.pki.Now = func() time.Time { return expires.Add(-castore.IntermediateSigningCritical) }
+	if c, err := ada.pki.GetPkiStatus(context.Background(), connect.NewRequest(&rpmgrv1.GetPkiStatusRequest{})); err != nil ||
+		c.Msg.SigningAlert != rpmgrv1.SigningAlert_SIGNING_ALERT_CRITICAL {
+		t.Errorf("30 days before the expiry: %v %v", c, err)
+	}
+	e.pki.Now = nil
 	// The Settings button rotates with the online root only: with an offline one it is refused, and
 	// says so.
 	if err := ada.stepUp(pw, ""); err != nil {

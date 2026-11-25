@@ -73,9 +73,9 @@ func Rotate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) ([
 	case rootOffline && next[cakey.KindIntermediate] != nil && pending == nil:
 		n := next[cakey.KindIntermediate]
 		if now.Before(n.NotBefore) || !now.Before(n.NotAfter) {
-			// Never make an intermediate active that issues leaves nobody accepts: go on with the old one
-			// and say so; the operator signs a new request.
-			done = append(done, "signed next intermediate is not valid now; not activated")
+			// Never make an intermediate active that issues leaves nobody accepts: go on with the old
+			// one. IntermediateSigningAlert says so, on Settings → PKI and in the log of every run; this
+			// is no change, so no audit entry each hour. The operator signs a new request.
 			inter, err = openKey(s, old)
 			break
 		}

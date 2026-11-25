@@ -77,12 +77,15 @@ func CARotation(o CAOptions) lease.Job {
 }
 
 // warnSigning logs, on every run, that the next intermediate waits for the signature of an offline
-// root: a warning at first, an error when the active intermediate expires within 30 days
+// root: a warning at first, an error when the active intermediate expires within 30 days or the
+// signed one is not valid now
 // (docs/04-security.md, "Offline root CA").
 func (o *CAOptions) warnSigning(ctx context.Context) {
 	switch a, err := castore.IntermediateSigningAlert(ctx, o.DB, o.Now()); {
 	case err != nil:
 		o.Logger.Error("cannot check whether the intermediate waits for a signature", "error", err)
+	case a == castore.AlertNextNotValid:
+		o.Logger.Error("the signed intermediate is not valid now and is not activated; sign a new request with the offline root")
 	case a == castore.AlertCritical:
 		o.Logger.Error("the intermediate needs the offline root's signature and the active one expires within 30 days")
 	case a == castore.AlertNeedsSigning:

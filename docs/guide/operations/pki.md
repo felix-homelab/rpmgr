@@ -54,7 +54,10 @@ Under **Settings**, the Instance Admin opens **PKI**. **Certificate authority** 
 domain, the root pin, and each key whose certificate has not expired: **Key**, **State**,
 **Subject**, **Valid** and **Replaced on**, the day the schedule replaces it. The states are
 **Next** (made ahead and announced to agents, not signing yet), **Active** and **Retired**
-(replaced, still verifying what it signed until it expires).
+(replaced, still verifying what it signed until it expires). With the root offline the page says
+so, has no rotation button, and shows a notice while the next intermediate waits for the root's
+signature or its signature is not valid, and while the sealed root key may still be recoverable
+([Take the root offline](#take-the-root-offline)).
 
 ### With the command line
 
@@ -197,6 +200,12 @@ sudo rpmgr ca rotate-intermediate --csr-out next.csr    # on the controller host
 rpmgr ca sign-intermediate --root-file rpmgr-root.age --csr next.csr --out next.crt   # offline host
 sudo rpmgr ca import-intermediate --in next.crt         # controller host
 ```
+
+**Settings**, **PKI** and `rpmgr ca status` show a notice with the key's hash while the request
+waits for its signature. It turns critical shortly before the active intermediate expires
+([04](../../04-security.md#offline-root-ca)); an expired intermediate cannot issue certificates. If the signed intermediate is not valid when the
+schedule would use it, for instance because the offline host's clock was off, a critical notice
+says so: make a new request, sign it and import it, which retires the stale one.
 
 The first command prints the SHA-256 of the new key. `sign-intermediate` needs no database, KEK or
 controller. It asks for the passphrase and shows the subject, the key's hash, the validity and the

@@ -264,6 +264,18 @@ func ImportIntermediate(ctx context.Context, tx *ent.Tx, der []byte, now time.Ti
 	if !cert.NotAfter.After(active.NotAfter) {
 		return fmt.Errorf("%w: it does not outlast the active intermediate", pki.ErrIntermediateRefused)
 	}
+	// A signed next intermediate that is not valid now is never activated; this one replaces it.
+	stale, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusNext), cakey.IDNEQ(p.ID)).All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, r := range stale {
+		if len(r.Certificate) > 0 && notValidAt(r, now) {
+			if err := tx.CAKey.UpdateOne(r).SetStatus(cakey.StatusRetired).Exec(ctx); err != nil {
+				return err
+			}
+		}
+	}
 	return tx.CAKey.UpdateOne(p).SetCertificate(cert.Raw).SetNotBefore(cert.NotBefore).SetNotAfter(cert.NotAfter).Exec(ctx)
 }
 
@@ -275,17 +287,21 @@ const (
 	AlertNone         SigningAlert = ""              // nothing waits for a signature
 	AlertNeedsSigning SigningAlert = "needs_signing" // a request waits
 	AlertCritical     SigningAlert = "critical"      // it waits and the active intermediate expires within 30 days
+	// AlertNextNotValid is for a signed next intermediate that is not valid now, which the schedule
+	// does not activate: the operator signs a new request.
+	AlertNextNotValid SigningAlert = "next_not_valid"
 )
 
 // IntermediateSigningAlert reports whether the next intermediate waits for a signature, and
-// whether the active intermediate expires in IntermediateSigningCritical or less.
+// whether the active intermediate expires in IntermediateSigningCritical or less; or whether the
+// signed next intermediate is not valid now.
 func IntermediateSigningAlert(ctx context.Context, db *store.DB, now time.Time) (SigningAlert, error) {
 	rows, err := db.ReadClient().CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate),
 		cakey.StatusIn(cakey.StatusActive, cakey.StatusNext)).All(ctx)
 	if err != nil {
 		return AlertNone, err
 	}
-	var waits bool
+	var waits, invalid bool
 	var expires time.Time
 	for _, r := range rows {
 		switch {
@@ -293,15 +309,38 @@ func IntermediateSigningAlert(ctx context.Context, db *store.DB, now time.Time) 
 			expires = r.NotAfter
 		case len(r.Certificate) == 0:
 			waits = true
+		case notValidAt(r, now):
+			invalid = true
 		}
 	}
 	switch {
+	case invalid:
+		return AlertNextNotValid, nil
 	case !waits:
 		return AlertNone, nil
 	case !expires.IsZero() && !now.Before(expires.Add(-IntermediateSigningCritical)):
 		return AlertCritical, nil
 	}
 	return AlertNeedsSigning, nil
+}
+
+// notValidAt reports whether the validity of the key's certificate does not include now.
+func notValidAt(r *ent.CAKey, now time.Time) bool {
+	return now.Before(r.NotBefore) || !now.Before(r.NotAfter)
+}
+
+// NextIntermediateKeyHash is the SHA-256 of the public key of the next intermediate, the one that
+// waits for a signature or holds one that is not valid now; empty when there is none.
+func NextIntermediateKeyHash(ctx context.Context, db *store.DB) (string, error) {
+	r, err := db.ReadClient().CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusNext)).
+		Order(cakey.ByNotAfter(sql.OrderDesc())).First(ctx)
+	if ent.IsNotFound(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return pki.PublicKeyHash(r.PublicKey), nil
 }
 
 type sealedKey struct {

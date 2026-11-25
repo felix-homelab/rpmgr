@@ -11,7 +11,7 @@ import { Status, type Look } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
-import { CAKeyKind, CAKeyState, PkiService, type CAKey } from "@/gen/rpmgr/v1/pki_pb";
+import { CAKeyKind, CAKeyState, PkiService, SigningAlert, type CAKey, type GetPkiStatusResponse } from "@/gen/rpmgr/v1/pki_pb";
 import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
 import { InstanceAdminPage, InstanceSettingsSection } from "@/pages/settings";
@@ -30,6 +30,13 @@ const states: Record<CAKeyState, [string, Look]> = {
   [CAKeyState.CA_KEY_STATE_NEXT]: ["next", "pending"],
   [CAKeyState.CA_KEY_STATE_ACTIVE]: ["active", "ok"],
   [CAKeyState.CA_KEY_STATE_RETIRED]: ["retired", "off"],
+};
+
+const signingAlerts: Record<SigningAlert, [string, "error" | "info"] | undefined> = {
+  [SigningAlert.UNSPECIFIED]: undefined,
+  [SigningAlert.NEEDS_SIGNING]: ["needsSigning", "info"],
+  [SigningAlert.CRITICAL]: ["critical", "error"],
+  [SigningAlert.NEXT_NOT_VALID]: ["nextNotValid", "error"],
 };
 
 // Pki shows the Instance Admin the CA's keys and the root's pin, rotates the intermediate, and
@@ -59,6 +66,7 @@ function Keys() {
             {t("pki.rootPin")}
             <Command command={s.rootPin} label={t("pki.rootPin")} />
           </div>
+          <Notices s={s} />
           <Table framed={false}>
             <THead>
               <tr>{["kind", "state", "subject", "valid", "rotates"].map((c) => <TH key={c}>{t(`pki.columns.${c}`)}</TH>)}</tr>
@@ -67,10 +75,25 @@ function Keys() {
               {s.keys.map((k, i) => <KeyRow key={i} k={k} />)}
             </tbody>
           </Table>
-          <Rotate />
+          {!s.rootOffline && <Rotate />}
         </>
       )}
     </Card>
+  );
+}
+
+// Notices are what an offline root asks of the operator (docs/04-security.md, "Offline root CA"):
+// the signature the next intermediate waits for, a signed one that is not valid now, and the sealed
+// key that may remain until the KEK is rotated.
+function Notices({ s }: { s: GetPkiStatusResponse }) {
+  const { t } = useTranslation();
+  const signing = signingAlerts[s.signingAlert];
+  return (
+    <>
+      {s.rootOffline && <Alert tone="info">{t("pki.rootOffline")}</Alert>}
+      {s.rootKeyResidueKek && <Alert>{t("pki.rootResidue", { kek: s.rootKeyResidueKek })}</Alert>}
+      {signing && <Alert tone={signing[1]}>{t(`pki.signing.${signing[0]}`, { hash: s.nextIntermediateKeyHash })}</Alert>}
+    </>
   );
 }
 

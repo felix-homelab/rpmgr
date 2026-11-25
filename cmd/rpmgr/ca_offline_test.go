@@ -141,6 +141,9 @@ func TestCAOfflineRootRoundTrip(t *testing.T) {
 	if hash == nil {
 		t.Fatalf("no key hash in %q", asked)
 	}
+	if out := run("ca", "status"); !strings.Contains(out, "needs the offline root's signature (key SHA-256 "+hash[1]+")") {
+		t.Errorf("status with a request that waits: %q", out)
+	}
 	if e := fail("ca", "rotate-intermediate", "--csr-out", csr); !strings.Contains(e, "exists") {
 		t.Errorf("an existing request file: %q", e)
 	}
@@ -190,7 +193,7 @@ func TestCAOfflineRootRoundTrip(t *testing.T) {
 	if e := fail("ca", "import-intermediate", "--in", cert); !strings.Contains(e, "no intermediate waits") {
 		t.Errorf("a second import: %q", e)
 	}
-	if out := run("ca", "status"); !strings.Contains(out, "next") {
-		t.Errorf("status after the import shows no next intermediate: %q", out)
+	if out := run("ca", "status"); !strings.Contains(out, "next") || strings.Contains(out, "needs the offline root's signature") {
+		t.Errorf("status after the import shows no next intermediate, or still asks for a signature: %q", out)
 	}
 }

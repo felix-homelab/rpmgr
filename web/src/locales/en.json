@@ -1661,7 +1661,14 @@
     "rotate": "Rotate the intermediate now…",
     "rotateAsk": "Make a new intermediate active now? The current one keeps verifying the certificates it issued until they expire.",
     "rotateIt": "Rotate it",
-    "rotated": "A new intermediate is active."
+    "rotated": "A new intermediate is active.",
+    "rootOffline": "The root's key is offline. It signs only on the host that holds its file, so the intermediate is not rotated here: use rpmgr ca rotate-intermediate --csr-out on the controller host.",
+    "rootResidue": "The root's sealed key may still be recoverable from free pages, the write-ahead log and older backups, and KEK {{kek}} opens it. Rotate the KEK and destroy that one.",
+    "signing": {
+      "needsSigning": "The next intermediate needs the offline root's signature (key SHA-256 {{hash}}). Sign the request with rpmgr ca sign-intermediate on the offline host, then run rpmgr ca import-intermediate.",
+      "critical": "The next intermediate needs the offline root's signature (key SHA-256 {{hash}}) and the active one expires soon. Sign the request with rpmgr ca sign-intermediate on the offline host, then run rpmgr ca import-intermediate.",
+      "nextNotValid": "The signed intermediate (key SHA-256 {{hash}}) is not valid now and is not used. Make a new request with rpmgr ca rotate-intermediate --csr-out, sign it on the offline host and import it."
+    }
   },
   "traffic": {
     "title": "Traffic",

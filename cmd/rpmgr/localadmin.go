@@ -106,6 +106,9 @@ func caCommand() *cli.Command {
 				fmt.Fprintf(env.Stdout, "\nWARNING: the root's sealed key may still be recoverable from free pages, the write-ahead log and older backups,\n"+
 					"and KEK %s opens it. Rotate the KEK and destroy that one (docs/10-operations.md, \"Take the root offline\").\n", kek)
 			}
+			if msg := signingAlertText(st); msg != "" {
+				fmt.Fprintf(env.Stdout, "\n%s\n", msg)
+			}
 			fmt.Fprintln(env.Stdout)
 			return writeCAKeys(env, st.GetKeys())
 		}),
@@ -131,6 +134,23 @@ func caCommand() *cli.Command {
 			return err
 		}),
 		offlineRootCommand(), signIntermediateCommand(), importIntermediateCommand())
+}
+
+// signingAlertText is what `ca status` says of the need for the offline root's signature.
+func signingAlertText(st *rpmgrv1.GetPkiStatusResponse) string {
+	hash := st.GetNextIntermediateKeyHash()
+	switch st.GetSigningAlert() {
+	case rpmgrv1.SigningAlert_SIGNING_ALERT_NEEDS_SIGNING:
+		return fmt.Sprintf("The intermediate needs the offline root's signature (key SHA-256 %s): sign the request with rpmgr ca sign-intermediate\n"+
+			"on the offline host, then run rpmgr ca import-intermediate (rpmgr ca rotate-intermediate --csr-out writes the request again).", hash)
+	case rpmgrv1.SigningAlert_SIGNING_ALERT_CRITICAL:
+		return fmt.Sprintf("CRITICAL: the intermediate needs the offline root's signature (key SHA-256 %s) and the active one expires soon: sign the\n"+
+			"request with rpmgr ca sign-intermediate on the offline host, then run rpmgr ca import-intermediate.", hash)
+	case rpmgrv1.SigningAlert_SIGNING_ALERT_NEXT_NOT_VALID:
+		return fmt.Sprintf("CRITICAL: the signed intermediate (key SHA-256 %s) is not valid now and is not activated: make a new request with\n"+
+			"rpmgr ca rotate-intermediate --csr-out, sign it on the offline host and import it.", hash)
+	}
+	return ""
 }
 
 func rootKeyState(st *rpmgrv1.GetPkiStatusResponse) string {
