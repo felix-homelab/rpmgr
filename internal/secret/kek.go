@@ -29,30 +29,52 @@ func LoadKEKFile(path string) (KEK, error) {
 // owned by root and the service's group, in a directory only the service and root can enter: a
 // credential its own group may read is accepted, one other users may read is not.
 func LoadSystemdCredential(name string, getenv func(string) string) (KEK, error) {
+	path, err := CredentialPath(name, getenv)
+	if err != nil {
+		return KEK{}, fmt.Errorf("KEK credential: %w", err)
+	}
+	return loadKEK(path, "KEK credential", true)
+}
+
+// CredentialPath returns the path of the systemd credential name in $CREDENTIALS_DIRECTORY.
+func CredentialPath(name string, getenv func(string) string) (string, error) {
 	dir := getenv("CREDENTIALS_DIRECTORY")
 	if dir == "" {
-		return KEK{}, errors.New("KEK credential: CREDENTIALS_DIRECTORY is not set; is the service started with LoadCredentialEncrypted=?")
+		return "", errors.New("CREDENTIALS_DIRECTORY is not set; is the service started with LoadCredentialEncrypted=?")
 	}
 	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
-		return KEK{}, fmt.Errorf("KEK credential: invalid name %q", name)
+		return "", fmt.Errorf("invalid name %q", name)
 	}
-	return loadKEK(filepath.Join(dir, name), "KEK credential", true)
+	return filepath.Join(dir, name), nil
 }
 
 // loadKEK reads and checks a KEK file; with groupRead, the group of the process (or root's) may
 // read it too.
 func loadKEK(path, what string, groupRead bool) (KEK, error) {
+	data, err := ReadFile(path, what, groupRead, maxKEKFile)
+	if err != nil {
+		return KEK{}, err
+	}
+	return parseKEK(data, what+" "+path)
+}
+
+// ReadFile reads a secret from a file of at most max bytes, such as the KEK or a database
+// password. Symbolic links are followed, but the file itself must be a regular file that neither
+// its group nor other users can read or write; with groupRead, the group of the process (or
+// root's) may read it too, as systemd gives a credential to a service that runs as another user.
+// Errors name the file and what it holds, never its content.
+func ReadFile(path, what string, groupRead bool, max int) ([]byte, error) {
 	f, err := os.Open(path) //nolint:gosec // G304: the path is the operator's boot configuration
 	if err != nil {
-		return KEK{}, fmt.Errorf("%s: %w", what, err)
+		return nil, fmt.Errorf("%s: %w", what, err)
 	}
 	defer func() { _ = f.Close() }() // read-only; a close error loses nothing
 	fi, err := f.Stat()
 	if err != nil {
-		return KEK{}, fmt.Errorf("%s: %w", what, err)
+		return nil, fmt.Errorf("%s: %w", what, err)
 	}
 	if !fi.Mode().IsRegular() {
-		return KEK{}, fmt.Errorf("%s %s: not a regular file", what, path)
+		return nil, fmt.Errorf("%s %s: not a regular file", what, path)
 	}
 	perm := fi.Mode().Perm()
 	allowed := perm&0o077 == 0
@@ -60,13 +82,16 @@ func loadKEK(path, what string, groupRead bool) (KEK, error) {
 		allowed = true
 	}
 	if !allowed {
-		return KEK{}, fmt.Errorf("%s %s: mode %04o lets other users read it; use 0600 or 0400", what, path, perm)
+		return nil, fmt.Errorf("%s %s: mode %04o lets other users read it; use 0600 or 0400", what, path, perm)
 	}
-	data, err := io.ReadAll(io.LimitReader(f, maxKEKFile+1))
+	data, err := io.ReadAll(io.LimitReader(f, int64(max)+1))
 	if err != nil {
-		return KEK{}, fmt.Errorf("%s: %w", what, err)
+		return nil, fmt.Errorf("%s: %w", what, err)
 	}
-	return parseKEK(data, what+" "+path)
+	if len(data) > max {
+		return nil, fmt.Errorf("%s %s: larger than %d bytes", what, path, max)
+	}
+	return data, nil
 }
 
 func parseKEK(data []byte, what string) (KEK, error) {

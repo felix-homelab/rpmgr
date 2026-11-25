@@ -2,7 +2,7 @@
 # repository files, documents, workflows and secrets, the Go, protobuf, store, build and
 # end-to-end stages, and the web UI. Every step is a script in .github/scripts/ that runs the same
 # way locally.
-# Until v1.0.0 (D64) a pull request runs only the stages its changes need, PostgreSQL 18 only and
+# Until v1.0.0 (D64) a pull request runs only the stages its changes need, PostgreSQL 19 only and
 # the cross-platform builds as vet only; a push to main runs only the stages that always run; the
 # nightly run calls this workflow with full set to run everything.
 # A merge queue group (merge_group) runs like a pull request: stages from the files the group
@@ -246,24 +246,25 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
-    # Full runs test on two PostgreSQL versions, one after the other, each package with up to
-    # 20 minutes (check-store.sh).
+    # Pull requests test on the newest PostgreSQL major, full runs on the oldest as well (D174), one
+    # after the other, each package with up to 20 minutes (check-store.sh). 15 is the oldest
+    # supported major (store.MinPostgresMajor), 19 the newest tested (store.MaxTestedPostgresMajor).
     timeout-minutes: ${{ inputs.full && 75 || 45 }}
     services:
-      pg16:
-        image: mirror.gcr.io/library/postgres:16@sha256:65b16a8b326e0cfbdf33fa7e783f2a0cb352a61448616ccccfd616ef42aa0f65
+      pg15:
+        image: mirror.gcr.io/library/postgres:15@sha256:8cf673eb99f8b9042c9078ee4ca0e775428c77097e9d999bfc9ba4b4347f5733
         env:
           POSTGRES_USER: rpmgr
           POSTGRES_PASSWORD: rpmgr # a throw-away test database
-        ports: ["5416:5432"]
+        ports: ["5415:5432"]
         options: --health-cmd "pg_isready -U rpmgr" --health-interval 2s --health-timeout 5s --health-retries 30
-      pg18:
-        image: mirror.gcr.io/library/postgres:18@sha256:fc973eb97c9fd04bfa1840e0f510719a584ccb3be8debfe6a4144637a9dfe8cf
+      pg19:
+        image: mirror.gcr.io/library/postgres:19@sha256:e99b33203b969310f42fd7edf8b3a295ee81a9909a3e2569b3ce87f25b1f4ca0
         env:
           POSTGRES_USER: rpmgr
           POSTGRES_PASSWORD: rpmgr # a throw-away test database
           POSTGRES_DB: lintdev # empty development database for atlas migrate lint
-        ports: ["5418:5432"]
+        ports: ["5419:5432"]
         options: --health-cmd "pg_isready -U rpmgr" --health-interval 2s --health-timeout 5s --health-retries 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -286,14 +287,14 @@ jobs:
           restore-keys: |
             go-store-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum') }}-shard${{ matrix.shard }}-
             go-store-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
-      - name: Store tests on PostgreSQL 18, and 16 in full runs; migrations linted
+      - name: Store tests on PostgreSQL 19, and 15 in full runs; migrations linted
         env:
           STORE_SKIP_SQLITE: "1" # the go job runs the same tests on SQLite
           GO_TEST_SHARD: ${{ matrix.shard }}/4
           RPMGR_TEST_PG_URLS: >-
-            ${{ inputs.full && 'postgres://rpmgr:rpmgr@127.0.0.1:5416/postgres?sslmode=disable' || '' }}
-            postgres://rpmgr:rpmgr@127.0.0.1:5418/postgres?sslmode=disable
-          RPMGR_LINT_PG_DEV: postgres://rpmgr:rpmgr@127.0.0.1:5418/lintdev?sslmode=disable
+            ${{ inputs.full && 'postgres://rpmgr:rpmgr@127.0.0.1:5415/postgres?sslmode=disable' || '' }}
+            postgres://rpmgr:rpmgr@127.0.0.1:5419/postgres?sslmode=disable
+          RPMGR_LINT_PG_DEV: postgres://rpmgr:rpmgr@127.0.0.1:5419/lintdev?sslmode=disable
           REQUIRE_PG: "1"
         run: .github/scripts/check-store.sh
 
