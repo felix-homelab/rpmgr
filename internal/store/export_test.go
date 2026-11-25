@@ -3,8 +3,10 @@
 package store
 
 import (
+	"context"
 	"time"
 
+	"entgo.io/ent/dialect/sql/schema"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -29,4 +31,9 @@ func SetLockCheckInterval(cleanup func(func()), d time.Duration) {
 	old := lockCheckInterval
 	lockCheckInterval = d
 	cleanup(func() { lockCheckInterval = old })
+}
+
+// CopyOrder is the order in which CopyDatabase copies the tables of db.
+func CopyOrder(db *DB) ([]*schema.Table, error) {
+	return copyOrder(context.Background(), db.Reader, db.Dialect)
 }
