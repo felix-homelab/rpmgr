@@ -142,13 +142,26 @@ func (a *builtIn) claimedGateway(ctx context.Context, c *ent.Client) (string, er
 	if a.leaf == nil || len(a.leaf.URIs) != 1 {
 		return "", nil
 	}
-	ca, err := c.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusActive)).Only(ctx)
+	// The roots of this database's trust bundle: the root that issues, and the old one in the overlap
+	// of a root rotation, under which an identity made before the rotation still chains.
+	cas, err := c.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusIn(cakey.StatusActive, cakey.StatusOverlap)).All(ctx)
 	if err != nil {
 		return "", err
 	}
-	root, err := x509.ParseCertificate(ca.Certificate)
-	if err != nil {
-		return "", err
+	roots, inter := x509.NewCertPool(), x509.NewCertPool()
+	var root *x509.Certificate
+	for _, ca := range cas {
+		r, err := x509.ParseCertificate(ca.Certificate)
+		if err != nil {
+			return "", err
+		}
+		roots.AddCert(r)
+		if ca.Status == cakey.StatusActive {
+			root = r
+		}
+	}
+	if root == nil {
+		return "", errors.New("allinone: the database holds no active root")
 	}
 	td, err := pki.TrustDomainOf(root)
 	if err != nil {
@@ -158,8 +171,6 @@ func (a *builtIn) claimedGateway(ctx context.Context, c *ent.Client) (string, er
 	if err != nil || id.Kind != pki.KindGateway {
 		return "", nil //nolint:nilerr // another trust domain or kind names no gateway of this database
 	}
-	roots, inter := x509.NewCertPool(), x509.NewCertPool()
-	roots.AddCert(root)
 	for _, c := range a.chain {
 		inter.AddCert(c)
 	}

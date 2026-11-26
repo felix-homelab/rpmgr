@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -44,8 +45,16 @@ type caState struct {
 	// signers are the config-signing certificates agents may need: the active one, the next one
 	// and those retired that have not expired.
 	signers []*x509.Certificate
-	// intermediates are the active intermediate first, then the retired ones that have not expired.
+	// intermediates are the active intermediate first, then the retired ones that have not expired and
+	// chain to a root of the bundle, then Y, the certificate an old root signed for the active
+	// intermediate's key during a root rotation.
 	intermediates []*x509.Certificate
+	// y is that certificate; nil outside a root rotation's overlap.
+	y *x509.Certificate
+	// roots are the self-signed roots of the trust bundle, the issuing one first: more than one only
+	// in the overlap of a root rotation. bundle adds the cross-certificate X of the new root then.
+	roots, bundle []*x509.Certificate
+	pool          *x509.CertPool
 	keys          string // the rows it was loaded from, to notice a rotation
 }
 
@@ -130,7 +139,7 @@ func LoadCA(ctx context.Context, db *store.DB, s *secret.Sealer, now func() time
 // did. It needs the system scope.
 func (ca *CA) Reload(ctx context.Context, db *store.DB, s *secret.Sealer, now func() time.Time) (bool, error) {
 	rows, err := db.ReadClient().CAKey.Query().Where(cakey.Or(
-		cakey.StatusIn(cakey.StatusActive, cakey.StatusNext),
+		cakey.StatusIn(cakey.StatusActive, cakey.StatusNext, cakey.StatusOverlap),
 		cakey.And(cakey.KindIn(cakey.KindIntermediate, cakey.KindConfigSigning), cakey.StatusEQ(cakey.StatusRetired),
 			cakey.NotAfterGT(now())),
 	)).Order(ent.Asc(cakey.FieldID)).All(ctx)
@@ -139,7 +148,7 @@ func (ca *CA) Reload(ctx context.Context, db *store.DB, s *secret.Sealer, now fu
 	}
 	var keys strings.Builder
 	for _, r := range rows {
-		keys.WriteString(r.ID + ":" + string(r.Status) + ";")
+		keys.WriteString(r.ID + ":" + string(r.Status) + ":" + fmt.Sprint(len(r.CrossCertificate)) + ";")
 	}
 	if old := ca.state(); old != nil && old.keys == keys.String() {
 		return false, nil
@@ -176,7 +185,7 @@ func loadState(ctx context.Context, rows []*ent.CAKey, s *secret.Sealer, now fun
 			older = append(older, c)
 		case r.Kind == cakey.KindConfigSigning && r.Status == cakey.StatusNext:
 			nextSigner = append(nextSigner, c)
-		case r.Kind == cakey.KindConfigSigning:
+		case r.Kind == cakey.KindConfigSigning && r.Status == cakey.StatusRetired:
 			retiredSigners = append(retiredSigners, c)
 		}
 	}
@@ -185,11 +194,19 @@ func loadState(ctx context.Context, rows []*ent.CAKey, s *secret.Sealer, now fun
 			return nil, fmt.Errorf("pki: the database holds no active %s key", kind)
 		}
 	}
-	root, err := x509.ParseCertificate(active[cakey.KindRoot].Certificate)
+	roots, bundle, cross, err := rootBundle(rows)
 	if err != nil {
-		return nil, fmt.Errorf("pki: root certificate: %w", err)
+		return nil, err
 	}
-	st := &caState{}
+	st := &caState{roots: roots, bundle: bundle}
+	if len(cross) > 0 {
+		st.y = cross[0]
+	}
+	// A retired intermediate that no root of the bundle signed, such as the old root's after it was
+	// dropped, verifies nothing any more.
+	older = slices.DeleteFunc(older, func(c *x509.Certificate) bool {
+		return !slices.ContainsFunc(st.roots, func(r *x509.Certificate) bool { return c.CheckSignatureFrom(r) == nil })
+	})
 	var inter pki.KeyPair
 	for kind, dst := range map[cakey.Kind]*pki.KeyPair{
 		cakey.KindIntermediate: &inter, cakey.KindConfigSigning: &st.configSigner, cakey.KindAuditCheckpoint: &st.auditSigner,
@@ -198,17 +215,100 @@ func loadState(ctx context.Context, rows []*ent.CAKey, s *secret.Sealer, now fun
 			return nil, err
 		}
 	}
-	if st.issuer, err = pki.NewIssuer(root, inter, now, older...); err != nil {
+	if st.issuer, err = pki.NewIssuerRoots(st.roots, inter, now, cross, older...); err != nil {
 		return nil, err
 	}
-	st.intermediates = append([]*x509.Certificate{inter.Cert}, older...)
+	st.pool = x509.NewCertPool()
+	for _, r := range st.roots {
+		st.pool.AddCert(r)
+	}
+	st.intermediates = append(append([]*x509.Certificate{inter.Cert}, older...), cross...)
 	for p, kp := range map[pki.Purpose]pki.KeyPair{pki.PurposeConfigSigning: st.configSigner, pki.PurposeAuditCheckpoint: st.auditSigner} {
-		if err := pki.VerifySigner(kp.Cert, st.intermediates, root, p, now()); err != nil {
+		// During the overlap of a root rotation the active signing key may still chain to the old root.
+		var err error
+		for _, r := range st.roots {
+			if err = pki.VerifySigner(kp.Cert, st.intermediates, r, p, now()); err == nil {
+				break
+			}
+		}
+		if err != nil {
 			return nil, err
 		}
 	}
-	st.signers = append(append([]*x509.Certificate{st.configSigner.Cert}, nextSigner...), retiredSigners...)
+	// A signing certificate that no intermediate left in the bundle signed is of no use to an agent.
+	signedByIntermediate := func(c *x509.Certificate) bool {
+		return slices.ContainsFunc(st.intermediates, func(i *x509.Certificate) bool { return c.CheckSignatureFrom(i) == nil })
+	}
+	st.signers = []*x509.Certificate{st.configSigner.Cert}
+	for _, c := range append(nextSigner, retiredSigners...) {
+		if signedByIntermediate(c) {
+			st.signers = append(st.signers, c)
+		}
+	}
 	return st, nil
+}
+
+// rootBundle works out the trust bundle from the rows of ca_keys: the self-signed roots, the root
+// that issues first, and the bundle, which in the overlap of a root rotation adds the new root's
+// cross-certificate X; cross is Y, the certificate the old root signed for the active intermediate,
+// then or none. It is the one source of the bundle, for the CA and for the snapshots.
+func rootBundle(rows []*ent.CAKey) (roots, bundle, cross []*x509.Certificate, err error) {
+	var active, interm *ent.CAKey
+	var overlap []*x509.Certificate
+	for _, r := range rows {
+		switch {
+		case r.Kind == cakey.KindRoot && r.Status == cakey.StatusActive:
+			active = r
+		case r.Kind == cakey.KindIntermediate && r.Status == cakey.StatusActive:
+			interm = r
+		case r.Kind == cakey.KindRoot && r.Status == cakey.StatusOverlap && len(r.Certificate) > 0:
+			c, err := x509.ParseCertificate(r.Certificate)
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("pki: certificate of key %s: %w", r.ID, err)
+			}
+			overlap = append(overlap, c)
+		}
+	}
+	if active == nil {
+		return nil, nil, nil, errors.New("pki: the database holds no active root")
+	}
+	root, err := x509.ParseCertificate(active.Certificate)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("pki: root certificate: %w", err)
+	}
+	roots = append([]*x509.Certificate{root}, overlap...)
+	bundle = slices.Clone(roots)
+	if len(overlap) == 0 {
+		return roots, bundle, nil, nil
+	}
+	for _, r := range []*ent.CAKey{active, interm} {
+		if r == nil || len(r.CrossCertificate) == 0 {
+			continue
+		}
+		c, err := x509.ParseCertificate(r.CrossCertificate)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("pki: cross-certificate of key %s: %w", r.ID, err)
+		}
+		if r == active {
+			bundle = append(bundle, c)
+		} else {
+			cross = append(cross, c)
+		}
+	}
+	return roots, bundle, cross, nil
+}
+
+// BundleOf reads the trust bundle from the database through c: what Welcome and the snapshots
+// compiled in the same transaction carry, so that a snapshot of a revision holds the roots of that
+// revision and not those the CA loaded before it (docs/04-security.md, "Root rotation").
+func BundleOf(ctx context.Context, c *ent.CAKeyClient) ([]*x509.Certificate, error) {
+	rows, err := c.Query().Where(cakey.KindIn(cakey.KindRoot, cakey.KindIntermediate),
+		cakey.StatusIn(cakey.StatusActive, cakey.StatusOverlap)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	_, bundle, _, err := rootBundle(rows)
+	return bundle, err
 }
 
 // openKey opens a sealed key and checks it against its certificate.
@@ -238,16 +338,32 @@ func openKey(ctx context.Context, s *secret.Sealer, r *ent.CAKey) (pki.KeyPair, 
 // TrustDomain returns the CA's trust domain.
 func (ca *CA) TrustDomain() string { return ca.state().issuer.TrustDomain() }
 
-// Root returns the root certificate.
+// Root returns the root certificate that issues: the new root once a rotation moved issuing to it.
 func (ca *CA) Root() *x509.Certificate { return ca.state().issuer.Root() }
+
+// Roots returns the self-signed roots of the trust bundle, the issuing one first: more than one only
+// in the overlap of a root rotation.
+func (ca *CA) Roots() []*x509.Certificate { return slices.Clone(ca.state().roots) }
+
+// EnrollmentRoot is the root whose pin an agent enrolls with: the oldest root of the bundle. In the
+// overlap of a rotation that is the old root, so that an agent enrolled then holds both roots, the
+// new one through the bundle Enroll returns, and verifies snapshots signed under either; once the old
+// root is dropped it is the new root.
+func (ca *CA) EnrollmentRoot() *x509.Certificate {
+	r := ca.state().roots
+	return r[len(r)-1]
+}
+
+// RootsPool returns the roots as a pool, for a listener's client CAs and the verification of what
+// a peer presents. A reload makes a new pool, so a caller that must follow a rotation asks again.
+func (ca *CA) RootsPool() *x509.CertPool { return ca.state().pool }
 
 // TrustBundle returns the certificates of the controller's trust bundle: the self-signed root of
 // every root and the cross-certificates. It is the one source of the trust roots in Welcome and
-// snapshots, of their digest and of the pusher's change key. The CA holds one root and no
-// cross-certificate yet.
-func (ca *CA) TrustBundle() []*x509.Certificate {
-	return []*x509.Certificate{ca.Root()}
-}
+// snapshots, of their digest and of the pusher's change key. Outside the overlap of a root rotation
+// it is the one root; in it, {R1, R2, X}: the old root, the new one and the cross-certificate that
+// the old one signed for the new one.
+func (ca *CA) TrustBundle() []*x509.Certificate { return slices.Clone(ca.state().bundle) }
 
 // TrustRoots returns the trust bundle as DER for Welcome and snapshots (pki.TrustRootsDER).
 func (ca *CA) TrustRoots() ([][]byte, error) {
@@ -259,10 +375,17 @@ func (ca *CA) Intermediate() *x509.Certificate { return ca.state().issuer.Interm
 
 // Chain returns leaf and the intermediate that issued it, as DER: what a holder presents. An
 // intermediate that does not sign leaf, which only a rotation between issuing and this call can
-// cause, is not added.
+// cause, is not added. In the overlap of a root rotation the chain of a leaf the new intermediate
+// issued carries Y beside it, so that a verifier that knows only the old root finds
+// `leaf <- Y <- old root` and one that knows the new root `leaf <- intermediate <- new root`
+// (docs/04-security.md, "Root rotation").
 func (ca *CA) Chain(leaf *x509.Certificate) [][]byte {
-	for _, c := range ca.state().intermediates {
+	st := ca.state()
+	for i, c := range st.intermediates {
 		if leaf.CheckSignatureFrom(c) == nil {
+			if i == 0 && st.y != nil {
+				return [][]byte{leaf.Raw, c.Raw, st.y.Raw}
+			}
 			return [][]byte{leaf.Raw, c.Raw}
 		}
 	}
@@ -450,4 +573,13 @@ func MarkSeen(ctx context.Context, tx *ent.Tx, cert *x509.Certificate, now time.
 		return nil, err
 	}
 	return older, nil
+}
+
+// TrustRootsOf is BundleOf as DER, for the trust roots of a snapshot (pki.TrustRootsDER).
+func TrustRootsOf(ctx context.Context, c *ent.CAKeyClient) ([][]byte, error) {
+	bundle, err := BundleOf(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	return pki.TrustRootsDER(bundle)
 }
