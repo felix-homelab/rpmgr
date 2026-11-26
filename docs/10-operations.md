@@ -932,6 +932,11 @@ service that still runs the previous binary, with the command that restarts it.
   - all sessions and every **enrollment token** from the backup that can still be used are
     invalidated (a token consumed after the backup would otherwise become usable again). [R] So are
     unused password-reset links and open invitations, which are one-time credentials too.
+  - **a backup from before a root rotation** brings the old root back as the issuing root, and
+    agents that dropped it no longer trust it: restoring one from before the switch makes the old
+    root issue again, and one from before the drop puts the old root back in the bundle, which the
+    agents dropped. The restore does not refuse or warn of this: rotate the root again after such a
+    restore, or re-enroll every agent, and take a new backup at once after a rotation.
   - agents enrolled after the backup are unknown and must re-enroll. An agent that renewed its
     certificate after the backup keeps its control session, but `Renew` and `Reauth` refuse a
     certificate the restored database does not record
