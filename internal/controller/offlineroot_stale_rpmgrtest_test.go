@@ -133,8 +133,8 @@ func TestRequestIntermediate_ConcurrentRequest(t *testing.T) {
 	if len(a) == 0 || !bytes.Equal(a, b) {
 		t.Error("the two files do not hold the same request")
 	}
-	if calls < 2 {
-		t.Errorf("planned %d times, want a second plan after the first went stale", calls)
+	if calls != 3 {
+		t.Errorf("planned %d times, want 3: the inner request, then the outer twice", calls)
 	}
 	if n := nextIntermediates(t, h); n != 1 {
 		t.Errorf("%d next intermediates, want 1", n)
