@@ -61,7 +61,7 @@ type RootExportPlan struct {
 	kek    string
 }
 
-// PlanRootExport opens the key of the active root, which c reads, for ExportRootOffline's Apply. It
+// PlanRootExport opens the key of the active root, which c reads, for RootExportPlan.Apply. It
 // refuses a root that is offline already (ErrRootOffline).
 func PlanRootExport(ctx context.Context, c *ent.CAKeyClient, s *secret.Sealer) (*RootExportPlan, error) {
 	row, err := c.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusActive)).Only(ctx)
@@ -93,6 +93,10 @@ func PlanRootExport(ctx context.Context, c *ent.CAKeyClient, s *secret.Sealer) (
 func (p *RootExportPlan) Apply(ctx context.Context, tx *ent.Tx, passphrase string,
 	persist func(file []byte) (readBack []byte, err error)) (RootExport, error) {
 	if err := pki.CheckPassphrase(passphrase); err != nil {
+		return RootExport{}, err
+	}
+	// Two exports at once take turns, as two requests do.
+	if err := lockRoot(ctx, tx, p.id); err != nil {
 		return RootExport{}, err
 	}
 	row, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusActive)).Only(ctx)
@@ -249,8 +253,20 @@ var ErrRootOnline = errors.New("pki: the root is online and signs the intermedia
 // lockRoot makes concurrent requests take turns. PostgreSQL runs at READ COMMITTED, so two
 // transactions could both find no pending request: an update of the root row, to the value it has,
 // takes its row lock, so the second waits and then sees the first's request. SQLite has one writer.
+// The update matches the planned root only while it is active, so a plan for a root that is no
+// longer active is stale (ErrRotated) instead of making that root active again.
 func lockRoot(ctx context.Context, tx *ent.Tx, id string) error {
-	return tx.CAKey.UpdateOneID(id).SetStatus(cakey.StatusActive).Exec(ctx)
+	n, err := tx.CAKey.Update().
+		Where(cakey.ID(id), cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusActive)).
+		SetStatus(cakey.StatusActive).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return ErrRotated
+	}
+	return nil
 }
 
 // pendingIntermediate is the next intermediate that waits for a signature, or nil.

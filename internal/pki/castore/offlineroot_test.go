@@ -547,13 +547,15 @@ func TestRequestIntermediateSigningConcurrent(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-		csrs := make([][]byte, 4)
+		const callers = 4
+		csrs := make([][]byte, callers)
+		errs := make([]error, callers)
 		var wg sync.WaitGroup
 		for i := range csrs {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				_ = store.WriteTx(sys, db, func(tx *ent.Tx) error {
+				errs[i] = store.WriteTx(sys, db, func(tx *ent.Tx) error {
 					var err error
 					csrs[i], err = castore.RequestIntermediateSigning(sys, tx, s, t0)
 					return err
@@ -565,12 +567,34 @@ func TestRequestIntermediateSigningConcurrent(t *testing.T) {
 		if err != nil || n != 1 {
 			t.Fatalf("%d next intermediates (err %v), want 1", n, err)
 		}
-		for _, c := range csrs {
-			if c != nil && !bytes.Equal(c, csrs[0]) && csrs[0] != nil {
-				t.Fatal("two different requests were handed out")
+		waiting := rootRowNext(t, db).Csr
+		got := 0
+		for i := range csrs {
+			switch {
+			case errs[i] == nil:
+				if !bytes.Equal(csrs[i], waiting) {
+					t.Errorf("caller %d got a request that does not wait", i)
+				}
+				got++
+			case errors.Is(errs[i], castore.ErrRotated):
+			default:
+				t.Errorf("caller %d: %v", i, errs[i])
 			}
 		}
+		if got == 0 {
+			t.Error("no caller got the waiting request")
+		}
 	})
+}
+
+// rootRowNext is the next intermediate that waits.
+func rootRowNext(t *testing.T, db *store.DB) *ent.CAKey {
+	t.Helper()
+	r, err := db.ReadClient().CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusNext)).Only(storetest.SystemCtx(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
 }
 
 // A signed intermediate that is no longer valid when the schedule would activate it is not

@@ -45,3 +45,23 @@ func RequestIntermediateSigning(ctx context.Context, tx *ent.Tx, s *secret.Seale
 	}
 	return p.CSR(), nil
 }
+
+// Rotate plans and applies the schedule in tx, for tests that have no key service to wait for. The
+// server code plans before its transaction.
+func Rotate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) ([]string, error) {
+	p, err := PlanRotation(ctx, tx.CAKey, s, now)
+	if err != nil {
+		return nil, err
+	}
+	return p.Apply(ctx, tx)
+}
+
+// RotateIntermediate plans and applies the replacement of the active intermediate in tx, for tests.
+func RotateIntermediate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) error {
+	p, err := PlanIntermediateRotation(ctx, tx.CAKey, s, now)
+	if err != nil {
+		return err
+	}
+	_, err = p.Apply(ctx, tx)
+	return err
+}

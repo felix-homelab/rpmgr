@@ -131,11 +131,10 @@ func (p *Pki) RotateIntermediate(ctx context.Context, _ *connect.Request[rpmgrv1
 		row, err = tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusActive)).Only(sys)
 		return err
 	})
+	// The plan refused an offline root before the transaction; a root that went offline since changes
+	// the keys the plan saw, which is ErrRotated.
 	if errors.Is(err, castore.ErrRotated) {
 		return nil, connect.NewError(connect.CodeAborted, err)
-	}
-	if errors.Is(err, castore.ErrRootOffline) {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	}
 	if err != nil {
 		return nil, storeError(err)
@@ -160,7 +159,7 @@ func (p *Pki) now() time.Time {
 }
 
 // caKeyOf is a key of the CA as the API shows it, with the time the schedule replaces it if it is
-// active (castore.Rotate).
+// active (castore.PlanRotation).
 func caKeyOf(r *ent.CAKey) (*rpmgrv1.CAKey, error) {
 	cert, err := x509.ParseCertificate(r.Certificate)
 	if err != nil {
