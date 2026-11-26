@@ -17,6 +17,7 @@ import { AuthService } from "@/gen/rpmgr/v1/auth_pb";
 import { InstanceSettingsSchema, OrgSettingsSchema, SettingsService, type InstanceSettings, type OrgSettings } from "@/gen/rpmgr/v1/settings_pb";
 import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
+import { BootSettingsSection } from "@/pages/boot-settings";
 import { settingFields, withRelay, type Section, type SettingField } from "@/pages/settings-fields";
 import { useGroups } from "@/routes-data";
 import { useOrg } from "@/session";
@@ -60,6 +61,7 @@ export function Settings() {
       {admin && <RevocationLogNotice />}
       {org && <OrgSettingsSection orgId={org.orgId} owner={org.role === "owner"} />}
       {admin && <InstanceSettingsSection title={t("settings.instance")} sections={["agents", "endpoints", "traffic", "acme", "mail", "audit"]} />}
+      {admin && <BootSettingsSection />}
     </div>
   );
 }

@@ -70,8 +70,10 @@ var noJobs bool
 
 // RunOptions configure Run.
 type RunOptions struct {
-	Config  config.Controller
-	Version string
+	Config config.Controller
+	// ConfigFile is the path Config was read from, shown in the boot settings; empty if none.
+	ConfigFile string
+	Version    string
 	// Sources compile the agents' snapshots.
 	Sources []snapshot.Source
 	// ACMERoots, if set, trusts the ACME CA's TLS certificate instead of the system roots (tests).
@@ -465,7 +467,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_settings_proto.Services().ByName("SettingsService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewSettingsServiceHandler(&apisvc.Settings{DB: db, Sys: sys, Sealer: sealer, Now: o.Now, RevocationLog: shipper.Status}, opts...)
+			return rpmgrv1connect.NewSettingsServiceHandler(&apisvc.Settings{DB: db, Sys: sys, Sealer: sealer, Now: o.Now, RevocationLog: shipper.Status,
+				Boot: &apisvc.BootSource{Config: cfg, NodeID: nodeID, ConfigFile: o.ConfigFile, LoadedAt: o.Now()}}, opts...)
 		}); err != nil {
 		return err
 	}

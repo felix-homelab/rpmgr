@@ -47,6 +47,11 @@ Changes to the design documents are not recorded here: see the git history and t
 - Settings → PKI and `rpmgr ca status` alert when the next intermediate waits for the offline root's
   signature, in time before the active one expires, and when the signed one is not valid now. With
   the root offline, the page says so and leaves out the rotation button. (#694)
+- The Settings page shows the Instance Admin the controller's boot settings, read-only: the
+  database driver (for PostgreSQL its server, database, user and TLS mode), the kind of KEK
+  source, the listen addresses and the revocation-log sink. The API method `GetBootSettings`
+  returns them to the Instance Admin only; no secret, DSN or path of a secret file is ever
+  returned.
 
 ### Changed
 
