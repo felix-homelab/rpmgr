@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -16,12 +17,14 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/ids"
+	"github.com/felix-homelab/rpmgr/internal/kms"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -46,7 +49,11 @@ type hookEnv struct {
 	held   lease.Lease
 	job    lease.Job
 
-	logs *bytes.Buffer // what the job logs
+	logs   *bytes.Buffer // what the job logs
+	outage atomic.Bool   // the KEK's key service is down
+	// badVersion makes the key service refuse the key version; unwraps counts the calls.
+	badVersion atomic.Bool
+	unwraps    atomic.Int32
 
 	mu     sync.Mutex
 	got    []received
@@ -54,6 +61,25 @@ type hookEnv struct {
 	// reply and replyBody are sent with every answer (a 429's Retry-After, Discord's JSON).
 	reply     http.Header
 	replyBody string
+}
+
+// outageWrapper is a local KEK whose key service can be taken down.
+type outageWrapper struct {
+	secret.Wrapper
+	down       *atomic.Bool
+	badVersion *atomic.Bool // Transit does not accept the key version, which /readyz does not report
+	unwraps    *atomic.Int32
+}
+
+func (w *outageWrapper) Unwrap(ctx context.Context, wrapped, aad []byte) ([]byte, error) {
+	w.unwraps.Add(1)
+	if w.badVersion.Load() {
+		return nil, fmt.Errorf("%w: test", kms.ErrKeyVersion)
+	}
+	if w.down.Load() {
+		return nil, fmt.Errorf("%w: test outage", kms.ErrUnavailable)
+	}
+	return w.Wrapper.Unwrap(ctx, wrapped, aad)
 }
 
 type received struct {
@@ -70,9 +96,10 @@ func newHookEnv(t *testing.T, guarded bool) *hookEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealer, _ := secret.NewSealer(kek)
-	e := &hookEnv{t: t, db: db, sys: storetest.SystemCtx(t), sealer: sealer, clock: time.Now().UTC(),
+	e := &hookEnv{t: t, db: db, sys: storetest.SystemCtx(t), clock: time.Now().UTC(),
 		logs: &bytes.Buffer{}, answer: func(string, int) int { return http.StatusNoContent }}
+	sealer, _ := secret.NewSealerWith(&outageWrapper{Wrapper: secret.NewLocalWrapper(kek), down: &e.outage, badVersion: &e.badVersion, unwraps: &e.unwraps})
+	e.sealer = sealer
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		e.mu.Lock()
@@ -122,7 +149,7 @@ const hookSecret = "rpmgr_whs_hookhookhookhookhookhookhookhookhook01" //nolint:g
 func (e *hookEnv) hook(org, path string, types ...string) *ent.Webhook {
 	e.t.Helper()
 	id := ids.New("whk")
-	sealed, err := e.sealer.Seal(secret.Context{Table: "webhooks", Column: "secret_enc", RowID: id}, secret.New(hookSecret))
+	sealed, err := e.sealer.Seal(context.Background(), secret.Context{Table: "webhooks", Column: "secret_enc", RowID: id}, secret.New(hookSecret))
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -396,8 +423,8 @@ func TestWebhookJob_DeliveryDuringRotation(t *testing.T) {
 	org := storetest.Org(t, e.db, "org-a")
 	h := e.hook(org, "/rot")
 	const next = "rpmgr_whs_nextnextnextnextnextnextnextnextnext02" //nolint:gosec // G101: a test secret
-	cur, _ := e.sealer.Seal(secret.Context{Table: "webhooks", Column: "secret_enc", RowID: h.ID}, secret.New(next))
-	prev, _ := e.sealer.Seal(secret.Context{Table: "webhooks", Column: "previous_secret_enc", RowID: h.ID}, secret.New(hookSecret))
+	cur, _ := e.sealer.Seal(context.Background(), secret.Context{Table: "webhooks", Column: "secret_enc", RowID: h.ID}, secret.New(next))
+	prev, _ := e.sealer.Seal(context.Background(), secret.Context{Table: "webhooks", Column: "previous_secret_enc", RowID: h.ID}, secret.New(hookSecret))
 	e.db.Client().Webhook.UpdateOneID(h.ID).SetSecretEnc(cur).SetPreviousSecretEnc(prev).SetPreviousUntil(e.clock.Add(time.Hour)).ExecX(e.sys)
 	time.Sleep(2 * time.Millisecond)
 	e.change(org, "route.update")
@@ -453,6 +480,70 @@ func TestWebhookJob_UnsealFailure(t *testing.T) {
 	}
 	if !strings.Contains(e.logs.String(), bad.ID) {
 		t.Errorf("the log does not name the endpoint: %q", e.logs.String())
+	}
+}
+
+// TestWebhookJob_KeyServiceOutageIsNotAnEndpointFailure: while the KEK's key service is down, a
+// delivery cannot be prepared; that is no failed attempt of the endpoint, which stays enabled with
+// no failing_since, and the event is delivered once the key service is back.
+func TestWebhookJob_KeyServiceOutageIsNotAnEndpointFailure(t *testing.T) {
+	e := newHookEnv(t, false)
+	org := storetest.Org(t, e.db, "org-a")
+	h := e.hook(org, "/hook")
+	time.Sleep(2 * time.Millisecond)
+	e.change(org, "route.update")
+	e.outage.Store(true)
+	for range 3 {
+		e.clock = e.clock.Add(time.Hour)
+		e.mustRun()
+	}
+	hk := e.db.Client().Webhook.GetX(e.sys, h.ID)
+	n := e.db.Client().WebhookDelivery.Query().Where(webhookdelivery.WebhookID(h.ID)).CountX(e.sys)
+	if len(e.ids("/hook")) != 0 || n != 0 || !hk.Enabled || hk.FailingSince != nil {
+		t.Fatalf("during the outage: %d requests, %d attempts, endpoint %+v", len(e.ids("/hook")), n, hk)
+	}
+	e.outage.Store(false)
+	e.mustRun()
+	if len(e.ids("/hook")) != 1 {
+		t.Fatalf("after the outage: %v", e.ids("/hook"))
+	}
+}
+
+// TestWebhookJob_KeyVersionIsAFailure: a key version that Transit does not accept keeps /readyz
+// green, so the delivery is a failed attempt with a retry, as for any other error, and not a skip
+// that nothing records.
+func TestWebhookJob_KeyVersionIsAFailure(t *testing.T) {
+	e := newHookEnv(t, false)
+	org := storetest.Org(t, e.db, "org-a")
+	h := e.hook(org, "/hook")
+	time.Sleep(2 * time.Millisecond)
+	e.change(org, "route.update")
+	e.badVersion.Store(true)
+	e.mustRun()
+	d := e.db.Client().WebhookDelivery.Query().Where(webhookdelivery.WebhookID(h.ID)).OnlyX(e.sys)
+	if d.Error == "" || d.Attempt != 1 || d.NextAttemptAt == nil || len(e.ids("/hook")) != 0 {
+		t.Fatalf("the attempt: %+v", d)
+	}
+}
+
+// TestWebhookJob_PassStopsAtTheFirstOutage: with the key service down, the first delivery that
+// cannot be prepared ends the pass, so the others do not each wait for Transit; nothing is recorded.
+func TestWebhookJob_PassStopsAtTheFirstOutage(t *testing.T) {
+	e := newHookEnv(t, false)
+	org := storetest.Org(t, e.db, "org-a")
+	for _, p := range []string{"/a", "/b", "/c"} {
+		e.hook(org, p)
+	}
+	time.Sleep(2 * time.Millisecond)
+	e.change(org, "route.update")
+	e.outage.Store(true)
+	e.unwraps.Store(0)
+	e.mustRun()
+	if n := e.unwraps.Load(); n != 1 {
+		t.Errorf("%d unwraps in a pass with the key service down, want 1", n)
+	}
+	if n := e.db.Client().WebhookDelivery.Query().CountX(e.sys); n != 0 {
+		t.Errorf("%d attempts recorded during the outage", n)
 	}
 }
 

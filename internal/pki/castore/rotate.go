@@ -4,13 +4,17 @@ package castore
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/secret"
+	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 )
@@ -25,19 +29,107 @@ const (
 	SignerPromoteBefore = 60 * 24 * time.Hour
 )
 
-// Rotate brings the CA's keys up to the schedule at now, in tx, and returns what it changed:
+// ErrRotated is returned when the CA's active keys changed while a plan was made and written:
+// another rotation, request or ceremony came first.
+var ErrRotated = errors.New("pki: the CA's keys changed meanwhile: another rotation, request or ceremony came first")
+
+// A Plan is a rotation worked out before its transaction: the keys it needs are opened, the new
+// ones made and sealed, all of which may wait for a key service, which a write transaction must not.
+// Apply writes it, and fails with ErrRotated if the active keys are not the ones it was made from.
+type Plan struct {
+	seen  string
+	steps []planStep
+	// lock is the root that Apply locks first, when a step makes a request for a signature.
+	lock string
+	// csr is the request (PEM) of a PlanSigningRequest: the new one, or the one that waits.
+	csr []byte
+}
+
+type planStep struct {
+	done            string
+	retire, promote string // IDs of keys: retire an active one, activate a next one
+	create          *newKey
+}
+
+type newKey struct {
+	id     string
+	kind   cakey.Kind
+	status cakey.Status
+	kp     pki.KeyPair
+	sealed []byte
+	// request is set for a next intermediate that waits for the offline root's signature: it has no
+	// certificate, and the key and the validity it is expected to get are in pub, csr and the times.
+	request *signingRequest
+}
+
+type signingRequest struct {
+	pub, csr            []byte
+	notBefore, notAfter time.Time
+}
+
+// keysSeen names the active and next keys of rows and whether a key is offline, to tell a changed
+// set: a plan made before the root went offline must not be applied after it.
+func keysSeen(rows []*ent.CAKey) string {
+	var b strings.Builder
+	for _, r := range rows {
+		b.WriteString(r.ID + ":" + string(r.Status))
+		if keyOffline(r) {
+			b.WriteString(":offline")
+		}
+		b.WriteString(";")
+	}
+	return b.String()
+}
+
+func readActive(ctx context.Context, c *ent.CAKeyClient) ([]*ent.CAKey, error) {
+	return c.Query().Where(cakey.StatusIn(cakey.StatusActive, cakey.StatusNext)).Order(ent.Asc(cakey.FieldID)).All(ctx)
+}
+
+// sealNew makes a key record for kp, sealing its private key with s. It runs before the
+// transaction that writes the record.
+func sealNew(ctx context.Context, s *secret.Sealer, kind cakey.Kind, kp pki.KeyPair, status cakey.Status) (*newKey, error) {
+	k := &newKey{id: ids.New("cak"), kind: kind, status: status, kp: kp}
+	var err error
+	k.sealed, err = sealKey(ctx, s, k.id, kp.Key)
+	return k, err
+}
+
+// sealKey seals the private key of the row id (PKCS #8, cleared afterwards).
+func sealKey(ctx context.Context, s *secret.Sealer, id string, key *ecdsa.PrivateKey) ([]byte, error) {
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(der)
+	return s.Seal(ctx, keyContext(id), secret.FromBytes(der))
+}
+
+// PlanRotation brings the CA's keys up to the schedule at now, from the keys c reads, which may be
+// outside a transaction; Apply writes it and returns what it changed:
 //   - the intermediate is replaced at half its lifetime; the old one is retired and keeps
 //     verifying the leaves it issued until it expires;
 //   - the config-signing and the audit-checkpoint key each get a next key SignerNextBefore their
 //     certificate expires, which replaces them SignerPromoteBefore it does.
 //
-// Every new key is sealed under s. Rotate needs the system scope; the caller runs it as a
-// singleton job and reloads the CA afterwards.
-func Rotate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) ([]string, error) {
-	rows, err := tx.CAKey.Query().Where(cakey.StatusIn(cakey.StatusActive, cakey.StatusNext)).All(ctx)
+// Every new key is sealed under s, here and so before the transaction. The caller runs it as a
+// singleton job and reloads the CA afterwards. It needs the system scope.
+func PlanRotation(ctx context.Context, c *ent.CAKeyClient, s *secret.Sealer, now time.Time) (*Plan, error) {
+	return plan(ctx, c, s, now, false)
+}
+
+// PlanIntermediateRotation replaces the active intermediate now, before its half-life: the old one
+// is retired and keeps verifying the leaves it issued until it expires (docs/04-security.md, "CA
+// rotation"). It refuses an offline root (ErrRootOffline). The caller reloads the CA afterwards.
+func PlanIntermediateRotation(ctx context.Context, c *ent.CAKeyClient, s *secret.Sealer, now time.Time) (*Plan, error) {
+	return plan(ctx, c, s, now, true)
+}
+
+func plan(ctx context.Context, c *ent.CAKeyClient, s *secret.Sealer, now time.Time, forceIntermediate bool) (*Plan, error) {
+	rows, err := readActive(ctx, c)
 	if err != nil {
 		return nil, err
 	}
+	p := &Plan{seen: keysSeen(rows)}
 	active, next := map[cakey.Kind]*ent.CAKey{}, map[cakey.Kind]*ent.CAKey{}
 	for _, r := range rows {
 		if r.Status == cakey.StatusActive {
@@ -49,20 +141,62 @@ func Rotate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) ([
 	if active[cakey.KindRoot] == nil || active[cakey.KindIntermediate] == nil {
 		return nil, fmt.Errorf("pki: the database holds no active root or intermediate")
 	}
-	var done []string
 	root, err := x509.ParseCertificate(active[cakey.KindRoot].Certificate)
 	if err != nil {
 		return nil, err
 	}
 	old := active[cakey.KindIntermediate]
+	rootOffline := keyOffline(active[cakey.KindRoot])
+	halfLife := !now.Before(old.NotBefore.Add(old.NotAfter.Sub(old.NotBefore) / 2))
 	var inter pki.KeyPair
-	if !now.Before(old.NotBefore.Add(old.NotAfter.Sub(old.NotBefore) / 2)) {
-		if inter, err = replaceIntermediate(ctx, tx, s, active[cakey.KindRoot], old, now); err != nil {
+	switch {
+	case forceIntermediate && rootOffline:
+		return nil, ErrRootOffline
+	case !forceIntermediate && !halfLife:
+		inter, err = openKey(ctx, s, old)
+	case rootOffline:
+		// An offline root cannot sign: ask for a signature, and go on with the old intermediate until
+		// the signed one is imported and valid.
+		n := next[cakey.KindIntermediate]
+		switch {
+		case n == nil:
+			var nk *newKey
+			if nk, err = newSigningRequest(ctx, s, now); err != nil {
+				return nil, err
+			}
+			p.lock = active[cakey.KindRoot].ID
+			p.csr = nk.request.csr
+			p.steps = append(p.steps, planStep{done: "intermediate needs signing", create: nk})
+			inter, err = openKey(ctx, s, old)
+		case len(n.Certificate) == 0, now.Before(n.NotBefore) || !now.Before(n.NotAfter):
+			// It still waits for its signature, or the signed one is not valid now: never make an
+			// intermediate active that issues leaves nobody accepts. IntermediateSigningAlert says so, on
+			// Settings -> PKI and in the log of every run; this is no change, so no audit entry each hour.
+			inter, err = openKey(ctx, s, old)
+		default:
+			if inter, err = openKey(ctx, s, n); err == nil {
+				p.steps = append(p.steps, planStep{done: "intermediate replaced by the signed next one", retire: old.ID, promote: n.ID})
+			}
+		}
+	default:
+		var rootKP pki.KeyPair
+		if rootKP, err = openKey(ctx, s, active[cakey.KindRoot]); err != nil {
 			return nil, err
 		}
-		done = append(done, "intermediate rotated")
-	} else if inter, err = openKey(s, old); err != nil {
+		if inter, err = pki.NewIntermediate(rootKP, now); err != nil {
+			return nil, err
+		}
+		var nk *newKey
+		if nk, err = sealNew(ctx, s, cakey.KindIntermediate, inter, cakey.StatusActive); err != nil {
+			return nil, err
+		}
+		p.steps = append(p.steps, planStep{done: "intermediate rotated", retire: old.ID, create: nk})
+	}
+	if err != nil {
 		return nil, err
+	}
+	if forceIntermediate {
+		return p, nil
 	}
 	is, err := pki.NewIssuer(root, inter, func() time.Time { return now })
 	if err != nil {
@@ -77,13 +211,7 @@ func Rotate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) ([
 		}
 		switch {
 		case n != nil && !now.Before(a.NotAfter.Add(-SignerPromoteBefore)):
-			if err := tx.CAKey.UpdateOne(a).SetStatus(cakey.StatusRetired).Exec(ctx); err != nil {
-				return nil, err
-			}
-			if err := tx.CAKey.UpdateOne(n).SetStatus(cakey.StatusActive).Exec(ctx); err != nil {
-				return nil, err
-			}
-			done = append(done, string(kind)+" key replaced by the next one")
+			p.steps = append(p.steps, planStep{done: string(kind) + " key replaced by the next one", retire: a.ID, promote: n.ID})
 		case n == nil && !now.Before(a.NotAfter.Add(-SignerNextBefore)):
 			key, err := pki.NewKey()
 			if err != nil {
@@ -93,53 +221,68 @@ func Rotate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) ([
 			if err != nil {
 				return nil, err
 			}
-			if err := saveKey(ctx, tx, s, kind, pki.KeyPair{Cert: cert, Key: key}, cakey.StatusNext); err != nil {
+			nk, err := sealNew(ctx, s, kind, pki.KeyPair{Cert: cert, Key: key}, cakey.StatusNext)
+			if err != nil {
 				return nil, err
 			}
-			done = append(done, "next "+string(kind)+" key created")
+			p.steps = append(p.steps, planStep{done: "next " + string(kind) + " key created", create: nk})
 		}
 	}
+	return p, nil
+}
+
+// Apply writes the plan in tx and returns what it changed. The old intermediate is retired only
+// while it is still active, so of two rotations at once one fails with ErrRotated instead of
+// leaving two active intermediates.
+func (p *Plan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
+	if p.lock != "" {
+		// PostgreSQL runs at READ COMMITTED: two requests could both find none waiting. Taking the root's
+		// row lock first makes them take turns, and the second then sees the first's request.
+		if err := lockRoot(ctx, tx, p.lock); err != nil {
+			return nil, err
+		}
+	}
+	rows, err := readActive(ctx, tx.CAKey)
+	if err != nil {
+		return nil, err
+	}
+	if keysSeen(rows) != p.seen {
+		return nil, ErrRotated
+	}
+	var done []string
+	for _, st := range p.steps {
+		if st.retire != "" {
+			n, err := tx.CAKey.Update().Where(cakey.ID(st.retire), cakey.StatusEQ(cakey.StatusActive)).SetStatus(cakey.StatusRetired).Save(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if n != 1 {
+				return nil, ErrRotated
+			}
+		}
+		if st.promote != "" {
+			if err := tx.CAKey.UpdateOneID(st.promote).SetStatus(cakey.StatusActive).Exec(ctx); err != nil {
+				return nil, err
+			}
+		}
+		if k := st.create; k != nil {
+			if err := store.RecordSealed(ctx, tx, keyContext(k.id), k.sealed); err != nil {
+				return nil, err
+			}
+			c := tx.CAKey.Create().SetID(k.id).SetKind(k.kind).SetAlgorithm(keyAlgorithm).SetKeyEnc(k.sealed).SetStatus(k.status)
+			if r := k.request; r != nil {
+				// Not before and not after hold the validity the root will most likely give; the
+				// certificate's replace them at the import.
+				c.SetPublicKey(r.pub).SetCsr(r.csr).SetNotBefore(r.notBefore).SetNotAfter(r.notAfter)
+			} else {
+				c.SetPublicKey(k.kp.Cert.RawSubjectPublicKeyInfo).SetCertificate(k.kp.Cert.Raw).
+					SetNotBefore(k.kp.Cert.NotBefore).SetNotAfter(k.kp.Cert.NotAfter)
+			}
+			if err := c.Exec(ctx); err != nil {
+				return nil, err
+			}
+		}
+		done = append(done, st.done)
+	}
 	return done, nil
-}
-
-// ErrRotated is returned when the active intermediate changed while it was being replaced: another
-// rotation came first.
-var ErrRotated = errors.New("pki: the intermediate was rotated meanwhile")
-
-// RotateIntermediate replaces the active intermediate now, before its half-life, in tx: the old
-// one is retired and keeps verifying the leaves it issued until it expires (docs/04-security.md,
-// "CA rotation"). It needs the system scope; the caller reloads the CA afterwards.
-func RotateIntermediate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) error {
-	root, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusActive)).Only(ctx)
-	if err != nil {
-		return err
-	}
-	old, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusActive)).Only(ctx)
-	if err != nil {
-		return err
-	}
-	_, err = replaceIntermediate(ctx, tx, s, root, old, now)
-	return err
-}
-
-// replaceIntermediate retires old and saves a new active intermediate signed by root. The old
-// one is retired only while it is still active, so of two rotations at once one fails with
-// ErrRotated instead of leaving two active intermediates.
-func replaceIntermediate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, root, old *ent.CAKey, now time.Time) (pki.KeyPair, error) {
-	rootKP, err := openKey(s, root)
-	if err != nil {
-		return pki.KeyPair{}, err
-	}
-	inter, err := pki.NewIntermediate(rootKP, now)
-	if err != nil {
-		return pki.KeyPair{}, err
-	}
-	n, err := tx.CAKey.Update().Where(cakey.ID(old.ID), cakey.StatusEQ(cakey.StatusActive)).SetStatus(cakey.StatusRetired).Save(ctx)
-	if err != nil {
-		return pki.KeyPair{}, err
-	}
-	if n != 1 {
-		return pki.KeyPair{}, ErrRotated
-	}
-	return inter, saveKey(ctx, tx, s, cakey.KindIntermediate, inter, cakey.StatusActive)
 }

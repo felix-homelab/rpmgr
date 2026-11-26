@@ -203,24 +203,24 @@ func TestKEK_StatusAndRotate(t *testing.T) {
 		t.Errorf("old %v", st.Old)
 	}
 
-	if _, _, err := controller.RotateKEK(ctx, h.cfg, filepath.Join(t.TempDir(), "missing"), noEnv); err == nil {
+	if _, _, err := controller.RotateKEK(ctx, h.cfg, controller.PreviousKEK{File: filepath.Join(t.TempDir(), "missing")}, noEnv); err == nil {
 		t.Error("a previous KEK file that does not exist")
 	}
 	wrong := filepath.Join(t.TempDir(), "wrong")
 	writeKEK(t, wrong, 0o600)
-	if _, _, err := controller.RotateKEK(ctx, h.cfg, wrong, noEnv); err == nil || !strings.Contains(err.Error(), "neither") {
+	if _, _, err := controller.RotateKEK(ctx, h.cfg, controller.PreviousKEK{File: wrong}, noEnv); err == nil || !strings.Contains(err.Error(), "neither") {
 		t.Errorf("a previous KEK that opens nothing: %v", err)
 	}
 	loose := filepath.Join(t.TempDir(), "loose")
 	writeKEK(t, loose, 0o644)
-	if _, _, err := controller.RotateKEK(ctx, h.cfg, loose, noEnv); err == nil {
+	if _, _, err := controller.RotateKEK(ctx, h.cfg, controller.PreviousKEK{File: loose}, noEnv); err == nil {
 		t.Error("a previous KEK file other users can read")
 	}
 	running, err := store.OpenSQLite(ctx, h.db, store.SQLiteOptions{Lock: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := controller.RotateKEK(ctx, h.cfg, prev, noEnv); !errors.Is(err, controller.ErrStopController) {
+	if _, _, err := controller.RotateKEK(ctx, h.cfg, controller.PreviousKEK{File: prev}, noEnv); !errors.Is(err, controller.ErrStopController) {
 		t.Errorf("with a controller running: %v", err)
 	}
 	_ = running.Close()
@@ -228,7 +228,7 @@ func TestKEK_StatusAndRotate(t *testing.T) {
 		t.Fatalf("a refused rotation changed secrets: %+v", st)
 	}
 
-	n, v, err := controller.RotateKEK(ctx, h.cfg, prev, noEnv)
+	n, v, err := controller.RotateKEK(ctx, h.cfg, controller.PreviousKEK{File: prev}, noEnv)
 	if err != nil || n != sealed || v != k2.Version() {
 		t.Fatalf("rotate: %d %s %v; want %d secrets under %s", n, v, err, sealed, k2.Version())
 	}
@@ -248,7 +248,7 @@ func TestKEK_StatusAndRotate(t *testing.T) {
 		}
 	}
 	_ = db.Close()
-	if n, _, err := controller.RotateKEK(ctx, h.cfg, prev, noEnv); err != nil || n != 0 {
+	if n, _, err := controller.RotateKEK(ctx, h.cfg, controller.PreviousKEK{File: prev}, noEnv); err != nil || n != 0 {
 		t.Errorf("rotating again: %d %v", n, err)
 	}
 	if got := strings.Join(localActions(t, h), "\n"); !strings.Contains(got, "kek.rotate ") || !strings.Contains(got, "system_scope.grant rpmgr kek status") {

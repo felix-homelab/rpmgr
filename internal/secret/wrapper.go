@@ -29,6 +29,17 @@ type Wrapper interface {
 	Unwrap(ctx context.Context, wrapped, aad []byte) ([]byte, error)
 }
 
+// A Rewrapper is a Wrapper whose key has versions that change without changing its identifier, as
+// a Transit key does when it is rotated. Sealer.Rewrap asks it about a value that already has the
+// current identifier, which it would otherwise skip.
+type Rewrapper interface {
+	Wrapper
+	// Rewrap moves a wrapped data key to the key's latest version without the data key leaving the
+	// service. It returns wrapped itself, unchanged, when that is the version already. It returns
+	// ErrOpen for a wrapped data key that does not open.
+	Rewrap(ctx context.Context, wrapped, aad []byte) ([]byte, error)
+}
+
 // LocalWrapper wraps data keys with AES-256-GCM under a KEK the controller holds.
 type LocalWrapper struct{ kek KEK }
 

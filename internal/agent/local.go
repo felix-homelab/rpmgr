@@ -49,7 +49,7 @@ func ReadLocal(identityDir, stateDir string, now time.Time) (Local, error) {
 	}
 	out := Local{Loaded: l}
 	out.Snapshot, out.SnapshotErr = lastKnownGood(l, stateDir, now)
-	d := NewDenyList(DenyListOptions{StateDir: stateDir, Root: l.Root, Signers: func() []*x509.Certificate { return l.Signing },
+	d := NewDenyList(DenyListOptions{StateDir: stateDir, Roots: func() []*x509.Certificate { return l.RootCerts }, Signers: func() []*x509.Certificate { return l.Signing },
 		Now: func() time.Time { return now }})
 	out.DenyErr = d.Load()
 	out.Denied = len(d.entries())
@@ -91,7 +91,7 @@ func lastKnownGood(l Loaded, stateDir string, now time.Time) (*agentv1.Snapshot,
 	if err := proto.Unmarshal(b, signed); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrBadLastKnownGood, err)
 	}
-	return snapsig.VerifySnapshot(signed, l.Signing, l.Root, l.SPIFFE(), now)
+	return snapsig.VerifySnapshotRoots(signed, l.Signing, l.RootCerts, l.SPIFFE(), now)
 }
 
 // controllerConn connects to a controller endpoint as the agent, at SNI controller.<td>.

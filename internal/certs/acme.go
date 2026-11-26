@@ -8,6 +8,7 @@ import (
 	"crypto"
 	"crypto/sha256"
 	"crypto/x509"
+	"errors"
 
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/secret"
@@ -36,11 +37,58 @@ func ACMEOf(ctx context.Context, cc *ent.CertificateClient, org, name string) (*
 	return nil, nil
 }
 
+// SealedKey is a certificate's private key sealed before the transaction that writes it, for the
+// row ID the seal is bound to.
+type SealedKey struct {
+	ID  string
+	Enc []byte
+}
+
+// ErrStaleKey is returned by RecordACMESealed when the certificate row is not the one the key was
+// sealed for, because it was created or replaced meanwhile; the caller seals again.
+var ErrStaleKey = errors.New("certs: the certificate row changed while its key was sealed")
+
+// SealACMEKey seals key for the ACME certificate row of org and name, or for the row that a
+// first certificate creates. A key service can take long, so the caller seals before the write
+// transaction, and RecordACMESealed checks inside it that the row is the same.
+func SealACMEKey(ctx context.Context, c *ent.CertificateClient, s *secret.Sealer, org, name string, key crypto.Signer) (*SealedKey, error) {
+	row, err := ACMEOf(ctx, c, org, name)
+	if err != nil {
+		return nil, err
+	}
+	id := ids.New("crt")
+	if row != nil {
+		id = row.ID
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		return nil, err
+	}
+	enc, err := s.Seal(ctx, keyContext(id), secret.FromBytes(der))
+	clear(der)
+	if err != nil {
+		return nil, err
+	}
+	return &SealedKey{ID: id, Enc: enc}, nil
+}
+
+// RecordACMESealed is RecordACME with the key sealed by SealACMEKey; it seals nothing in tx.
+func RecordACMESealed(ctx context.Context, tx *ent.Tx, sk *SealedKey, org, name string, chain []*x509.Certificate, key crypto.Signer,
+	attempt error) (*ent.Certificate, bool, error) {
+	return recordACME(ctx, tx, nil, sk, org, name, chain, key, attempt)
+}
+
 // RecordACME writes the outcome of obtaining or renewing org's ACME certificate for name. With
 // a chain and key the row gets them, active, unless it holds them already; attempt, if not nil,
 // is the error of the last attempt, kept in last_error. A row without a certificate is failed.
 // changed reports whether the certificate itself changed, so gateways need a new snapshot.
 func RecordACME(ctx context.Context, tx *ent.Tx, s *secret.Sealer, org, name string, chain []*x509.Certificate, key crypto.Signer,
+	attempt error) (*ent.Certificate, bool, error) {
+	return recordACME(ctx, tx, s, nil, org, name, chain, key, attempt)
+}
+
+// recordACME seals the key with s inside tx, or, with sk, uses the key sealed before it.
+func recordACME(ctx context.Context, tx *ent.Tx, s *secret.Sealer, sk *SealedKey, org, name string, chain []*x509.Certificate, key crypto.Signer,
 	attempt error) (row *ent.Certificate, changed bool, err error) {
 	row, err = ACMERow(ctx, tx, org, name)
 	if err != nil {
@@ -78,16 +126,33 @@ func RecordACME(ctx context.Context, tx *ent.Tx, s *secret.Sealer, org, name str
 		return row, false, err
 	}
 	id := ids.New("crt")
-	if row != nil {
+	switch {
+	case row != nil:
 		id = row.ID
+	case sk != nil:
+		id = sk.ID // the first certificate: the row is made for the ID the key was sealed for
 	}
-	der, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		return nil, false, err
+	var sealed []byte
+	if sk != nil {
+		if sk.ID != id {
+			return nil, false, ErrStaleKey
+		}
+		sealed = sk.Enc
+	} else {
+		if s == nil { // sealed outside, but the row needs a key that was not
+			return nil, false, ErrStaleKey
+		}
+		der, err := x509.MarshalPKCS8PrivateKey(key)
+		if err != nil {
+			return nil, false, err
+		}
+		sealed, err = s.Seal(ctx, keyContext(id), secret.FromBytes(der))
+		clear(der)
+		if err != nil {
+			return nil, false, err
+		}
 	}
-	sealed, err := store.Seal(ctx, tx, s, keyContext(id), secret.FromBytes(der))
-	clear(der)
-	if err != nil {
+	if err := store.RecordSealed(ctx, tx, keyContext(id), sealed); err != nil {
 		return nil, false, err
 	}
 	var raw []byte

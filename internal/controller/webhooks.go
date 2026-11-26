@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -72,6 +73,9 @@ type attempt struct {
 	// res is what a Discord post or edit answered (D170); key is the alert's, "" for another event.
 	res webhook.Result
 	key string
+	// skipped is an attempt that could not be prepared because the KEK's key service is down: it is
+	// neither sent nor recorded, so it is not a failure of the endpoint and is tried again.
+	skipped bool
 }
 
 func deliverWebhooks(ctx context.Context, o WebhookOptions, l lease.Lease) error {
@@ -103,8 +107,20 @@ func deliverWebhooks(ctx context.Context, o WebhookOptions, l lease.Lease) error
 		return nil
 	}
 	var wg sync.WaitGroup
+	outage := false
 	for _, a := range work {
+		if outage { // the pass stops at the first outage: each item would wait out Transit's timeout
+			a.skipped = true
+			continue
+		}
 		d, err := delivery(ctx, c, o, a, now, private, own)
+		if keyServiceDown(err) {
+			outage, a.skipped = true, true
+			if o.Logger != nil {
+				o.Logger.WarnContext(ctx, "webhook deliveries wait for the key service", "webhook", a.hook.ID, "event", a.event.ID, "err", err)
+			}
+			continue
+		}
 		if err != nil {
 			a.err, a.sent = err, now
 			if o.Logger != nil && !errors.Is(err, errDropped) {
@@ -119,6 +135,10 @@ func deliverWebhooks(ctx context.Context, o WebhookOptions, l lease.Lease) error
 		})
 	}
 	wg.Wait()
+	work = slices.DeleteFunc(work, func(a *attempt) bool { return a.skipped })
+	if len(work) == 0 {
+		return nil
+	}
 	return store.WriteTx(ctx, o.DB, func(tx *ent.Tx) error {
 		if err := o.Leases.Fence(ctx, tx, l); err != nil {
 			return err
@@ -215,7 +235,7 @@ func delivery(ctx context.Context, c *ent.Client, o WebhookOptions, a *attempt, 
 		if h.URLEnc == nil || len(*h.URLEnc) == 0 {
 			return webhook.Delivery{}, errors.New("a chat endpoint without its URL")
 		}
-		target, err := o.Sealer.Open(secret.Context{Table: "webhooks", Column: "url_enc", RowID: h.ID}, *h.URLEnc)
+		target, err := o.Sealer.Open(ctx, secret.Context{Table: "webhooks", Column: "url_enc", RowID: h.ID}, *h.URLEnc)
 		if err != nil {
 			return webhook.Delivery{}, err
 		}
@@ -237,13 +257,13 @@ func delivery(ctx context.Context, c *ent.Client, o WebhookOptions, a *attempt, 
 		}
 		return d, nil
 	}
-	cur, err := o.Sealer.Open(secret.Context{Table: "webhooks", Column: "secret_enc", RowID: h.ID}, h.SecretEnc)
+	cur, err := o.Sealer.Open(ctx, secret.Context{Table: "webhooks", Column: "secret_enc", RowID: h.ID}, h.SecretEnc)
 	if err != nil {
 		return webhook.Delivery{}, err
 	}
 	secrets := []secret.Value{cur}
 	if h.PreviousSecretEnc != nil && h.PreviousUntil != nil && now.Before(*h.PreviousUntil) {
-		prev, err := o.Sealer.Open(secret.Context{Table: "webhooks", Column: "previous_secret_enc", RowID: h.ID}, *h.PreviousSecretEnc)
+		prev, err := o.Sealer.Open(ctx, secret.Context{Table: "webhooks", Column: "previous_secret_enc", RowID: h.ID}, *h.PreviousSecretEnc)
 		if err != nil {
 			return webhook.Delivery{}, err
 		}

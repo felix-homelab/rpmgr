@@ -69,6 +69,7 @@ rpmgr <command>
 | [`rpmgr backup`](#rpmgr-backup) | Write a consistent backup of the controller |
 | [`rpmgr restore`](#rpmgr-restore) | Restore the controller from a backup |
 | [`rpmgr migrate`](#rpmgr-migrate) | Apply database migrations |
+| [`rpmgr migrate-db`](#rpmgr-migrate-db) | Copy a stopped controller's database between SQLite and PostgreSQL |
 | [`rpmgr ca`](#rpmgr-ca) | Administer the internal CA on the controller host |
 | [`rpmgr kek`](#rpmgr-kek) | Administer the key-encryption key on the controller host |
 | [`rpmgr user`](#rpmgr-user) | Administer users on the controller host |
@@ -601,6 +602,20 @@ rpmgr migrate [flags]
 |---|---|---|
 | `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
 
+## rpmgr migrate-db
+
+Copy a stopped controller's database between SQLite and PostgreSQL.
+
+```text
+rpmgr migrate-db [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--from string` |  | the source: a SQLite database file or a boot file (required) |
+| `--no-retire` |  | leave the source usable after the copy, for a test copy |
+| `--to-file string` |  | the target: a boot file whose database section names an empty database (required) |
+
 ## rpmgr ca
 
 Administer the internal CA on the controller host.
@@ -612,7 +627,10 @@ rpmgr ca <command>
 | Command | What it does |
 |---|---|
 | [`rpmgr ca status`](#rpmgr-ca-status) | Show the CA keys and their validity |
-| [`rpmgr ca rotate-intermediate`](#rpmgr-ca-rotate-intermediate) | Rotate the issuing intermediate now |
+| [`rpmgr ca rotate-intermediate`](#rpmgr-ca-rotate-intermediate) | Rotate the issuing intermediate now, or with an offline root ask it for a signature |
+| [`rpmgr ca offline-root`](#rpmgr-ca-offline-root) | Move the root's key into a passphrase file and out of the database |
+| [`rpmgr ca sign-intermediate`](#rpmgr-ca-sign-intermediate) | Sign a request for an intermediate with the offline root, on the offline host |
+| [`rpmgr ca import-intermediate`](#rpmgr-ca-import-intermediate) | Import the intermediate the offline root signed |
 
 ## rpmgr ca status
 
@@ -628,7 +646,7 @@ rpmgr ca status [flags]
 
 ## rpmgr ca rotate-intermediate
 
-Rotate the issuing intermediate now.
+Rotate the issuing intermediate now, or with an offline root ask it for a signature.
 
 ```text
 rpmgr ca rotate-intermediate [flags]
@@ -637,6 +655,52 @@ rpmgr ca rotate-intermediate [flags]
 | Flag | Default | Description |
 |---|---|---|
 | `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
+| `--csr-out string` |  | with an offline root: write the request for its signature to this new file (never overwritten) |
+
+## rpmgr ca offline-root
+
+Move the root's key into a passphrase file and out of the database.
+
+```text
+rpmgr ca offline-root [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
+| `--out string` |  | the file to write, which must not exist; it is created with mode 0600 |
+| `--passphrase-file string` |  | read the passphrase from this file (mode 0600) instead of generating one |
+| `--prompt` |  | ask for the passphrase on the terminal, twice, instead of generating one |
+
+## rpmgr ca sign-intermediate
+
+Sign a request for an intermediate with the offline root, on the offline host.
+
+```text
+rpmgr ca sign-intermediate [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--csr ca rotate-intermediate --csr-out` |  | the request that ca rotate-intermediate --csr-out wrote |
+| `--key-sha256 ca status` |  | the SHA-256 of the key the request must carry, as ca status and \`ca rotate-intermediate --csr-out\` show it; required with --yes |
+| `--out string` |  | the certificate to write, which must not exist |
+| `--passphrase-file string` |  | read the passphrase from this file (mode 0600) instead of asking for it |
+| `--root-file ca offline-root` |  | the root file that ca offline-root wrote |
+| `--yes` |  | sign without asking for a confirmation, on a host where nobody is |
+
+## rpmgr ca import-intermediate
+
+Import the intermediate the offline root signed.
+
+```text
+rpmgr ca import-intermediate [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
+| `--in ca sign-intermediate` |  | the certificate that ca sign-intermediate wrote |
 
 ## rpmgr kek
 
@@ -674,7 +738,8 @@ rpmgr kek rotate [flags]
 | Flag | Default | Description |
 |---|---|---|
 | `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
-| `--previous-file string` |  | the KEK before, in a file of the format of kek.source file, mode 0600 (required) |
+| `--previous-config string` |  | the boot file whose kek section names the KEK before, of any source, to move between a file or credential and Transit |
+| `--previous-file string` |  | the KEK before, in a file of the format of kek.source file, mode 0600 |
 
 ## rpmgr user
 

@@ -40,19 +40,25 @@ func (o *CAOptions) defaults() {
 	}
 }
 
-// CARotation is the singleton job that keeps the CA's keys on schedule (castore.Rotate): it commits a
-// rotation with an audit record in a transaction fenced by its lease, and then reloads the CA.
+// CARotation is the singleton job that keeps the CA's keys on schedule (castore.PlanRotation): it
+// commits a rotation with an audit record in a transaction fenced by its lease, and then reloads
+// the CA.
 func CARotation(o CAOptions) lease.Job {
 	o.defaults()
 	return lease.Job{Name: "ca-rotation", Reason: "rotate the CA's keys on schedule", Every: CARotationEvery,
 		Run: func(ctx context.Context, l lease.Lease) error {
 			var done []string
-			err := store.WriteTx(ctx, o.DB, func(tx *ent.Tx) error {
+			// Planned before the transaction: opening and sealing keys may wait for a key service.
+			plan, err := castore.PlanRotation(ctx, o.DB.ReadClient().CAKey, o.Sealer, o.Now())
+			if err != nil {
+				return err
+			}
+			err = store.WriteTx(ctx, o.DB, func(tx *ent.Tx) error {
 				if err := o.Leases.Fence(ctx, tx, l); err != nil {
 					return err
 				}
 				var err error
-				if done, err = castore.Rotate(ctx, tx, o.Sealer, o.Now()); err != nil {
+				if done, err = plan.Apply(ctx, tx); err != nil {
 					return err
 				}
 				for _, d := range done {
@@ -63,13 +69,34 @@ func CARotation(o CAOptions) lease.Job {
 				}
 				return nil
 			})
-			if err != nil || len(done) == 0 {
+			if err != nil {
 				return err
+			}
+			o.warnSigning(ctx)
+			if len(done) == 0 {
+				return nil
 			}
 			o.Logger.Info("rotated CA keys", "changes", done)
 			_, err = o.CA.Reload(ctx, o.DB, o.Sealer, o.Now)
 			return err
 		}}
+}
+
+// warnSigning logs, on every run, that the next intermediate waits for the signature of an offline
+// root: a warning at first, an error when the active intermediate expires within 30 days or the
+// signed one is not valid now
+// (docs/04-security.md, "Offline root CA").
+func (o *CAOptions) warnSigning(ctx context.Context) {
+	switch a, err := castore.IntermediateSigningAlert(ctx, o.DB, o.Now()); {
+	case err != nil:
+		o.Logger.Error("cannot check whether the intermediate waits for a signature", "error", err)
+	case a == castore.AlertNextNotValid:
+		o.Logger.Error("the signed intermediate is not valid now and is not activated; sign a new request with the offline root")
+	case a == castore.AlertCritical:
+		o.Logger.Error("the intermediate needs the offline root's signature and the active one expires within 30 days")
+	case a == castore.AlertNeedsSigning:
+		o.Logger.Warn("the intermediate needs the offline root's signature")
+	}
 }
 
 // ReloadCA reloads the CA every CAReloadEvery until ctx ends, so that a rotation another replica

@@ -61,7 +61,7 @@ restart ([10](../../10-operations.md#boot-files)).
   interfaces, such as `:7381` or `0.0.0.0:7381`, a public address and any other host name are
   refused, because the listener is never public ([10](../../10-operations.md#ports)).
 - **Paths** are absolute.
-- **Phase 2 values** are refused for now: `database.driver: postgres` and `kek.source: kms`
+- **Phase 2 values** are refused for now: `database.driver: postgres`
   ([13](../../13-roadmap.md#phase-2--production)).
 
 ## Sections every role has
@@ -90,9 +90,16 @@ tracing section is described in [Monitoring](../operations/monitoring.md).
 | `listen.admin` | address | `127.0.0.1:7381` | The admin listener (rules above) |
 | `database.driver` | string | `sqlite` | Only `sqlite` for now |
 | `database.dsn` | path | `/var/lib/rpmgr/controller.db` | The SQLite database file: an absolute path without `?`, `#` or `%`. The revocation log, the audit checkpoints and the `/dl/` mirror live in the same directory |
-| `kek.source` | string | `systemd-credential` | Where the KEK comes from: `systemd-credential` or `file`. A KEK is never read from an environment variable |
+| `kek.source` | string | `systemd-credential` | Where the KEK comes from: `systemd-credential`, `file` or `kms`, a key in Vault or OpenBao Transit. A KEK is never read from an environment variable |
 | `kek.name` | string | `rpmgr-kek` with `systemd-credential` | The name of the systemd credential: 1 to 64 letters, digits, `_`, `.` or `-`. Only with `systemd-credential` |
 | `kek.path` | path | none | The KEK file. Only with `file`, and then required. The file must be a regular file that neither its group nor other users can read or write |
+| `kek.kms.address` | URL | none | With `kms`, required: the address of Vault or OpenBao, `https://` only |
+| `kek.kms.mount` | string | `transit` | The path of the Transit secrets engine |
+| `kek.kms.key` | string | none | With `kms`, required: the name of the Transit key. You create it in Transit, of type `aes256-gcm96` and derived |
+| `kek.kms.ca_file` | path | system roots | PEM certificates that verify the server. The server's certificate is always verified |
+| `kek.kms.token_file` | path | none | A file with a Vault token. Exactly one of `token_file` and `approle` is required with `kms` |
+| `kek.kms.approle.role_id_file`, `kek.kms.approle.secret_id_file` | path | none | The files of an AppRole login, both required with `approle` |
+| `kek.kms.approle.mount` | string | `approle` | The path of the AppRole auth method |
 | `tls.cert_file` | path | none | The certificate chain of the public URL's host, PEM, the certificate first. Goes with `tls.key_file` |
 | `tls.key_file` | path | none | Its private key, PEM |
 | `revocation_log.sink` | path | `""` | A directory, usually on a share, that keeps a copy of the revocation log off the host. It must exist, and the user `rpmgr` must be able to write to it. `rpmgr systemd-unit` makes it writable in the unit, so write the unit again after setting it ([below](#directories-outside-varlibrpmgr)). Empty keeps only the local log ([Backup and restore](../operations/backup-and-restore.md#the-revocation-log-sink)) |
@@ -104,6 +111,16 @@ tracing section is described in [Monitoring](../operations/monitoring.md).
 file itself. `rpmgr controller init` and `rpmgr setup` create the KEK and choose the source by the
 host's systemd version when you do not; the key and its format are described in
 [04](../../04-security.md#secrets-at-rest-and-in-logs).
+
+**A Transit key as the KEK.** With `kms`, the controller never holds the KEK: it asks Transit to wrap
+and unwrap the keys of the stored secrets. Every credential is a file, never a value in the boot
+file or the environment: each file must be a regular file that neither its group nor other users
+can read or write. At start the controller reads the key and **does not start** when Transit cannot
+be reached, the key is missing, of another type or not derived, the credential is refused, or the
+key is not the one that sealed the database. The message names the reason and never a credential.
+Moving between a file or credential and Transit, and rotating the Transit key, are in
+[Rotate the KEK](../../10-operations.md#rotate-the-kek); the key service and its backup are in
+[04](../../04-security.md#kek-in-vault-or-openbao-transit).
 
 **The controller's certificate.** With `tls.cert_file` and `tls.key_file`, the controller serves
 that certificate. If a pair does not load after a change, it keeps the one in use. Without them, a
@@ -132,6 +149,19 @@ kek:
 log:
   level: info
   format: json
+```
+
+Example of the `kek` section with a Transit key, in place of the one above:
+
+```yaml
+kek:
+  source: kms
+  kms:
+    address: https://vault.example.com:8200
+    mount: transit
+    key: rpmgr-kek
+    ca_file: /etc/rpmgr/vault-ca.pem
+    token_file: /etc/rpmgr/vault-token    # or approle: {role_id_file: …, secret_id_file: …}
 ```
 
 ## Gateway
@@ -224,7 +254,7 @@ the connector reach the controller inside the process.
 | `listen.http` | address or `""` | `:80` | The gateway's port 80: ACME HTTP-01, port 80 of `http` routes, and the redirect to HTTPS for the controller's name. `""` turns port 80 off |
 | `listen.admin` | address | `127.0.0.1:7381` | One admin listener that reports the controller, the gateway and the connector |
 | `database.driver`, `database.dsn` | | as for a controller | As for a controller |
-| `kek.source`, `kek.name`, `kek.path` | | as for a controller | As for a controller |
+| `kek.source`, `kek.name`, `kek.path`, `kek.kms` | | as for a controller | As for a controller |
 | `tls.cert_file`, `tls.key_file` | | none | As for a controller |
 | `state_dir` | path | `/var/lib/rpmgr` | The gateway's identity and state go to `<state_dir>/gateway/identity` and `<state_dir>/gateway`, the connector's to `<state_dir>/connector/identity` and `<state_dir>/connector` |
 | `policy_file` | path | `/etc/rpmgr/policy.yaml` | The local policy of the built-in connector `local` |
@@ -308,6 +338,12 @@ Typical messages:
 | `listen.admin: admin address ":7382": want a loopback or private IP address` | The admin listener without an address |
 | `public_url "https://panel.example.com/ui": want https://<host>[:<port>]` | A URL with a path, user, query or fragment |
 | `kek: file needs an absolute path and no name` | `kek.source: file` without `kek.path`, or with `kek.name` |
+| `kek.kms: kek.source kms needs a kms section` | `kek.source: kms` without `kek.kms` |
+| `kek.kms: token_file and approle are exclusive` or `one of token_file and approle is required` | None or both of the two logins |
+| `kek.kms.address "http://…": want https://<host>[:<port>]` | A Transit address that is not `https://` |
+| `controller: kek.source kms: kms: key transit/rpmgr-kek or mount transit not found: …` | The key or the mount does not exist in Transit |
+| `controller: kek.source kms: kms: transit unavailable: …` | Transit cannot be reached; the controller does not start |
+| `controller: the KEK does not open the database's secrets: …` | The Transit key is not the one that sealed the database |
 | `tls: cert_file and key_file go together` | Only one of the two certificate keys |
 | `controller.passthrough: only a gateway forwards to a private controller` | `controller.passthrough` in a connector's file |
 | `firewall.backend "nftables": want ufw, or leave it out` | A firewall other than `ufw` |
