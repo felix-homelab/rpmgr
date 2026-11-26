@@ -168,11 +168,14 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
-	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{Lock: true})
+	db, err := openDatabase(ctx, cfg, o.Getenv, dbOptions{Lock: true})
 	if err != nil {
 		return err
 	}
 	defer func() { _ = db.Close() }()
+	if err := settleLock(ctx, db); err != nil {
+		return err
+	}
 	dir, err := migrations.Dir(db.Dialect)
 	if err != nil {
 		return err
@@ -199,7 +202,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		return explainOpen(err)
 	}
 	td := ca.TrustDomain()
-	stateDir := filepath.Dir(cfg.Database.DSN)
+	stateDir := cfg.State()
 	rl, err := revlog.Open(filepath.Join(stateDir, "revocations.log"), o.Now)
 	if err != nil {
 		return err
@@ -468,7 +471,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_settings_proto.Services().ByName("SettingsService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewSettingsServiceHandler(&apisvc.Settings{DB: db, Sys: sys, Sealer: sealer, Now: o.Now, RevocationLog: shipper.Status,
-				Boot: &apisvc.BootSource{Config: cfg, NodeID: nodeID, ConfigFile: o.ConfigFile, LoadedAt: o.Now()}}, opts...)
+				Boot: &apisvc.BootSource{Config: cfg, NodeID: nodeID, ConfigFile: o.ConfigFile, LoadedAt: o.Now(),
+					PasswordFile: cfg.Database.PasswordFile, PasswordCredential: cfg.Database.PasswordCredential}}, opts...)
 		}); err != nil {
 		return err
 	}
@@ -632,6 +636,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	select {
 	case <-ctx.Done():
 	case result = <-errs:
+	case <-db.LockLost(): // never ready on SQLite
+		result = ErrLockLost
 	}
 	// Drain: agents move to another endpoint, then the servers stop.
 	select {
@@ -658,9 +664,12 @@ func Run(ctx context.Context, o RunOptions) error {
 	shut, cancel := context.WithTimeout(context.Background(), drainWait)
 	defer cancel()
 	_ = web.Shutdown(shut)
-	// The last requests are recorded; a checkpoint covers them.
-	if err := FinalCheckpoints(context.WithoutCancel(sys), cpOpts); err != nil {
-		o.Logger.Error("cannot write the final audit checkpoints", "error", err)
+	// The last requests are recorded; a checkpoint covers them. A controller that lost its lock
+	// writes nothing more: another one may hold it already.
+	if !errors.Is(result, ErrLockLost) {
+		if err := FinalCheckpoints(context.WithoutCancel(sys), cpOpts); err != nil {
+			o.Logger.Error("cannot write the final audit checkpoints", "error", err)
+		}
 	}
 	stop()
 	<-sessionsDone

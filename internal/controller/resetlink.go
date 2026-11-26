@@ -11,7 +11,6 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/config"
-	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 )
 
@@ -33,7 +32,7 @@ func ResetPasswordLink(ctx context.Context, path, email string) (Link, error) {
 	if err != nil {
 		return Link{}, err
 	}
-	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{RefuseRetired: true})
+	db, err := openDatabase(ctx, cfg, nil, dbOptions{RefuseRetired: true})
 	if err != nil {
 		return Link{}, err
 	}

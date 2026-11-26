@@ -87,7 +87,7 @@ func OfflineRoot(ctx context.Context, o OfflineRootOptions) (OfflineRootResult, 
 		return OfflineRootResult{}, err
 	}
 	defer func() { _ = db.Close() }()
-	rl, err := revlog.Open(filepath.Join(filepath.Dir(cfg.Database.DSN), "revocations.log"), o.Now)
+	rl, err := revlog.Open(filepath.Join(cfg.State(), "revocations.log"), o.Now)
 	if err != nil {
 		return OfflineRootResult{}, err
 	}

@@ -24,9 +24,17 @@ import (
 // SetRunTimers shortens the drain wait and the certificate reload interval of Run for one test,
 // which must not run in parallel with others.
 func SetRunTimers(t testing.TB, drain, reload time.Duration) {
-	oldDrain, oldReload := drainWait, webCertReload
-	drainWait, webCertReload = drain, reload
-	t.Cleanup(func() { drainWait, webCertReload = oldDrain, oldReload })
+	oldDrain, oldReload, oldSettle := drainWait, webCertReload, lockSettle
+	drainWait, webCertReload, lockSettle = drain, reload, 0
+	t.Cleanup(func() { drainWait, webCertReload, lockSettle = oldDrain, oldReload, oldSettle })
+}
+
+// SetLockSettle sets how long Run waits after it took the PostgreSQL controller lock, for one
+// test, which must not run in parallel with others.
+func SetLockSettle(t testing.TB, d time.Duration) {
+	old := lockSettle
+	lockSettle = d
+	t.Cleanup(func() { lockSettle = old })
 }
 
 // NoJobs keeps Run from starting its background jobs (alerts, webhooks, DNS, mail, ...) for one

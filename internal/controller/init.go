@@ -96,12 +96,12 @@ func Init(ctx context.Context, o InitOptions) (res InitResult, err error) {
 	}
 	// Deferred before the database's Close, so it runs after it.
 	defer func() {
-		if oerr := o.Own(filepath.Dir(cfg.Database.DSN)); oerr != nil && err == nil {
+		if oerr := o.Own(cfg.State()); oerr != nil && err == nil {
 			res, err = InitResult{}, fmt.Errorf("controller: initialised, but the state directory stays root's; give it to the service user before the first start: %w", oerr)
 		}
 	}()
-	// The database's directory must exist: the installer creates /var/lib/rpmgr with its owner.
-	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{Lock: true})
+	// The state directory must exist: the installer creates /var/lib/rpmgr with its owner.
+	db, err := openDatabase(ctx, cfg, o.Getenv, dbOptions{Lock: true})
 	if err != nil {
 		return InitResult{}, err
 	}

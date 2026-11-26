@@ -61,10 +61,7 @@ func LoadDatabase(path string) (Database, error) {
 	if err := sec.Decode(&d); err != nil {
 		return Database{}, fmt.Errorf("%s: database: %w", path, err)
 	}
-	setDefault(&d.Driver, "sqlite")
-	if d.Driver == "sqlite" {
-		setDefault(&d.DSN, "/var/lib/rpmgr/controller.db")
-	}
+	d.defaults()
 	if err := d.check(); err != nil {
 		return Database{}, fmt.Errorf("%s: %w", path, err)
 	}
@@ -77,6 +74,31 @@ func mustMarshal(n *yaml.Node) []byte {
 		panic(err)
 	}
 	return b
+}
+
+// PostgresStateDir is the state directory of a controller on PostgreSQL, which has no database
+// file to name one: the service's StateDirectory (docs/10-operations.md, "Install").
+const PostgresStateDir = "/var/lib/rpmgr"
+
+// State is the controller's state directory: StateDir if set, else the directory of a SQLite
+// database, else PostgresStateDir.
+func (c Controller) State() string {
+	switch {
+	case c.StateDir != "":
+		return c.StateDir
+	case c.Database.Driver == "postgres":
+		return PostgresStateDir
+	}
+	return filepath.Dir(c.Database.DSN)
+}
+
+// defaults fills what the boot file leaves out: SQLite and its database file. A PostgreSQL
+// database has no default DSN, so a missing one is refused.
+func (d *Database) defaults() {
+	setDefault(&d.Driver, "sqlite")
+	if d.Driver == "sqlite" {
+		setDefault(&d.DSN, "/var/lib/rpmgr/controller.db")
+	}
 }
 
 func (d Database) check() error {
