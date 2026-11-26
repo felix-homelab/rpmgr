@@ -729,8 +729,9 @@ rpmgr ca drop-root [flags]
 | Flag | Default | Description |
 |---|---|---|
 | `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
-| `--force` |  | drop before the overlap has passed; accepted only while no agent lacks the new root |
-| `--strand-stragglers` |  | after the overlap, drop the old root although enabled agents still lack the new one; they have to re-enroll |
+| `--force` |  | drop before the overlap has passed; accepted only while no enabled agent lacks the new root, counting every one seen within the longest a leaf and the Reauth grace reach back, so one that was offline across the switch counts too |
+| `--strand-stragglers` |  | after the overlap, drop the old root although enabled agents still lack the new one; they have to re-enroll, and it asks first |
+| `--yes` |  | do not ask for the confirmation --strand-stragglers needs |
 
 ## rpmgr kek
 

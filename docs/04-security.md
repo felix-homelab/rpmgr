@@ -542,9 +542,16 @@ same trust domain as R1 (the URI SAN `spiffe://<td>`).
    are those of the instance settings when issuing moved, which fix the earliest drop date; a later
    change of the settings can lengthen the overlap but never shorten it. A **straggler** is an enabled
    gateway or connector whose session was seen since issuing moved and whose `Hello` digest is not
-   that of R2 alone or of R2 with R1: it holds no R2, or it announced no `trust.roots`. A drop
-   re-checks the date and the stragglers in its own transaction. The bundle becomes {R2}, R1 is
-   `retired`, and I1 and Y no longer chain to a root of the bundle, so neither is loaded or sent.
+   that of R2 alone or of R2 with R1: it holds no R2, or it announced no `trust.roots`. For
+   `--force`, which drops before the date, the stragglers are counted from further back: every
+   enabled agent seen within the overlap before the drop, so one that was offline across the
+   switch and may still renew through R1 holds a forced drop back. A disabled agent that lacks R2
+   holds nothing back, but `rpmgr ca status` and the drop name it, as it must re-enroll before it
+   can connect again. A drop re-checks the date and the stragglers in its own transaction. The bundle becomes {R2}, R1 is
+   `retired`, and I1 and Y no longer chain to a root of the bundle, so neither is loaded or sent;
+   the keys of R1, I1 and the signing keys that chained to R1 are wiped from the database. The
+   audit entry of the drop records a drop before the date (`--force`) and the enabled agents
+   that `--strand-stragglers` left without R2, by identifier.
    The drop is refused when an active signing key chains to R1 and no next key under I2 can replace
    it. **An agent enrolled during the overlap pins R1**: install commands and `rpmgr ca status`
    show R1's pin until it is dropped, `Enroll` returns the whole bundle, and the agent then holds

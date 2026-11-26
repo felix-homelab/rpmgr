@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
@@ -63,12 +64,27 @@ func holdsNewRoot(digest string, roots []*x509.Certificate) bool {
 
 // Stragglers lists the enabled agents that were seen since `since` and do not hold the new root,
 // from the roots digest of their Hello (docs/04-security.md, "Root rotation"): an agent that never
-// connected, or was not seen since the overlap began, is not one, as it has no session to learn the
-// root in. It reads through tx and needs the system scope.
+// connected, or was not seen since, is not one, as it has no session to learn the root in. It reads
+// through tx and needs the system scope.
 func Stragglers(ctx context.Context, tx *ent.Tx, since time.Time) ([]string, error) {
+	enabled, _, err := lackingNewRoot(ctx, tx, since)
+	return enabled, err
+}
+
+// DisabledStragglers lists the disabled agents, not decommissioned, that were seen since `since` and
+// do not hold the new root. They do not hold the drop back, but they cannot reconnect after it
+// without re-enrolling, so the operator is told.
+func DisabledStragglers(ctx context.Context, tx *ent.Tx, since time.Time) ([]string, error) {
+	_, disabled, err := lackingNewRoot(ctx, tx, since)
+	return disabled, err
+}
+
+// lackingNewRoot lists the gateways and connectors, not decommissioned, with a session seen since `since`
+// whose Hello digest says they do not hold the new root: the enabled ones and the disabled ones, each sorted.
+func lackingNewRoot(ctx context.Context, tx *ent.Tx, since time.Time) (enabled, disabled []string, err error) {
 	bundle, err := castore.BundleOf(ctx, tx.CAKey)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var roots []*x509.Certificate // the issuing root first: BundleOf lists it first
 	for _, c := range bundle {
@@ -78,7 +94,7 @@ func Stragglers(ctx context.Context, tx *ent.Tx, since time.Time) ([]string, err
 	}
 	sessions, err := tx.AgentSession.Query().Where(agentsession.LastSeenAtGTE(since)).All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var lacking []string
 	for _, s := range sessions {
@@ -87,19 +103,33 @@ func Stragglers(ctx context.Context, tx *ent.Tx, since time.Time) ([]string, err
 		}
 	}
 	if len(lacking) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
-	gws, err := tx.Gateway.Query().Where(gateway.IDIn(lacking...), gateway.Enabled(true), gateway.DecommissionedAtIsNil()).IDs(ctx)
+	gws, err := tx.Gateway.Query().Where(gateway.IDIn(lacking...), gateway.DecommissionedAtIsNil()).All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	cons, err := tx.Connector.Query().Where(connector.IDIn(lacking...), connector.Enabled(true), connector.DecommissionedAtIsNil()).IDs(ctx)
+	cons, err := tx.Connector.Query().Where(connector.IDIn(lacking...), connector.DecommissionedAtIsNil()).All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	out := append(gws, cons...)
-	slices.Sort(out)
-	return out, nil
+	for _, g := range gws {
+		if g.Enabled {
+			enabled = append(enabled, g.ID)
+		} else {
+			disabled = append(disabled, g.ID)
+		}
+	}
+	for _, c := range cons {
+		if c.Enabled {
+			enabled = append(enabled, c.ID)
+		} else {
+			disabled = append(disabled, c.ID)
+		}
+	}
+	slices.Sort(enabled)
+	slices.Sort(disabled)
+	return enabled, disabled, nil
 }
 
 // stragglerCount is castore.StragglerCount over Stragglers.
@@ -222,7 +252,14 @@ func applyNewRoot(sys context.Context, db *store.DB, plan *castore.Plan, _ func(
 }
 
 // DropRootResult is what `rpmgr ca drop-root` reports.
-type DropRootResult struct{ Done []string }
+type DropRootResult struct {
+	Done []string
+	// Stranded are the enabled agents the drop left without the new root (--strand-stragglers).
+	Stranded []string
+	// Disabled are the disabled agents, seen within the longest a leaf and the Reauth grace reach back, that
+	// do not hold the new root: they re-enroll before they can connect again.
+	Disabled []string
+}
 
 // DropRoot is `rpmgr ca drop-root`: the old root of a rotation leaves the bundle, which becomes the
 // new root alone. It is refused before the overlap has passed since issuing moved (castore.DropEarlyError,
@@ -241,20 +278,66 @@ func DropRoot(ctx context.Context, path string, force, strand bool, now func() t
 	if err != nil {
 		return res, err
 	}
+	if res.Disabled, err = disabledLacking(sys, db, now(), overlap); err != nil {
+		return res, err
+	}
 	plan, err := castore.PlanDropRoot(sys, db.ReadClient().CAKey, now(), castore.DropOptions{Overlap: overlap, Force: force,
-		Strand: strand, Stragglers: stragglerCount})
+		Strand: strand, Stragglers: stragglerCount, StragglerIDs: Stragglers})
 	if err != nil {
 		return res, err
 	}
-	res.Done, err = applyDrop(sys, db, plan, "local-cli", dropReason(strand))
+	res.Done, err = applyDrop(sys, db, plan, "local-cli", "the old root dropped from the trust bundle")
+	if err == nil {
+		res.Stranded = plan.Stranded()
+	}
 	return res, err
 }
 
-func dropReason(strand bool) string {
-	if strand {
-		return "the old root dropped although agents still lacked the new one (--strand-stragglers)"
+// maxAuditedAgents is how many stranded agents the audit entry of a drop names; it counts the rest.
+const maxAuditedAgents = 20
+
+// dropDetail says in the audit reason of a drop what the operator overrode: a drop before the earliest
+// date (--force) and the agents it left without the new root (--strand-stragglers).
+func dropDetail(plan *castore.DropPlan) string {
+	var parts []string
+	if early, at := plan.Early(); early {
+		parts = append(parts, "before the earliest date "+at.UTC().Format(time.RFC3339)+" (--force)")
 	}
-	return "the old root dropped from the trust bundle"
+	if st := plan.Stranded(); len(st) > 0 {
+		shown := st
+		if len(shown) > maxAuditedAgents {
+			shown = shown[:maxAuditedAgents]
+		}
+		d := fmt.Sprintf("%d enabled agents stranded without the new root (--strand-stragglers): %s", len(st), strings.Join(shown, ", "))
+		if len(st) > len(shown) {
+			d += fmt.Sprintf(" and %d more", len(st)-len(shown))
+		}
+		parts = append(parts, d)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "; " + strings.Join(parts, "; ")
+}
+
+// disabledLacking lists the disabled agents that were seen within the widest window a leaf and the grace
+// reach back and do not hold the new root; nil when no rotation is in its overlap.
+func disabledLacking(sys context.Context, db *store.DB, now time.Time, overlap time.Duration) ([]string, error) {
+	old, err := db.ReadClient().CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusOverlap)).Only(sys)
+	if ent.IsNotFound(err) || err == nil && old.RotatedAt == nil {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	since := castore.StragglersSince(old, now, castore.DropOptions{Force: true, Overlap: overlap})
+	var out []string
+	err = store.ReadTx(sys, db, func(tx *ent.Tx, _ store.Revision) error {
+		var err error
+		out, err = DisabledStragglers(sys, tx, since)
+		return err
+	})
+	return out, err
 }
 
 // applyDrop writes the drop of the old root and its audit entry in a configuration transaction. The
@@ -272,7 +355,7 @@ func applyDrop(sys context.Context, db *store.DB, plan *castore.DropPlan, actor,
 			return nil, err
 		}
 		_, err = audit.Append(sys, tx, audit.Entry{ActorType: audit.ActorSystem, ActorID: actor, Action: "ca.drop_root",
-			TargetType: "ca", Result: audit.Success, Reason: reason})
+			TargetType: "ca", Result: audit.Success, Reason: reason + dropDetail(plan)})
 		return []string{"pki"}, err
 	})
 	return done, err
@@ -291,6 +374,8 @@ type RotationStatus struct {
 	DropAfter    time.Time // when the old root can be dropped
 	Roots        []RotationRoot
 	Stragglers   []string // enabled agents seen since the overlap began that lack the new root
+	// Disabled are the disabled agents, seen since the longest a leaf and the grace reach back, that lack it.
+	Disabled []string
 }
 
 // RotationRoot is a root of the bundle.
@@ -376,5 +461,9 @@ func rotationStatus(sys context.Context, db *store.DB, now time.Time) (RotationS
 		st.Stragglers, err = Stragglers(sys, tx, *old.RotatedAt)
 		return err
 	})
+	if err != nil {
+		return st, err
+	}
+	st.Disabled, err = disabledLacking(sys, db, now, overlap)
 	return st, err
 }

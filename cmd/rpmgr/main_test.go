@@ -377,6 +377,18 @@ func TestLocalAdmin(t *testing.T) {
 	if code, _, stderr := runRpmgr("ca", "drop-root", "--force", "--strand-stragglers", "--config", cfg); code != cli.ExitUsage || !strings.Contains(stderr, "exclude each other") {
 		t.Errorf("ca drop-root --force --strand-stragglers: exit %d, %q", code, stderr)
 	}
+	// --strand-stragglers asks first: a declined question changes nothing, and --yes does not ask (the
+	// drop is then refused as early, which the confirmation must not have pre-empted).
+	origConfirm := confirmPrompt
+	t.Cleanup(func() { confirmPrompt = origConfirm })
+	asked := 0
+	confirmPrompt = func(string) (bool, error) { asked++; return false, nil }
+	if code, _, stderr := runRpmgr("ca", "drop-root", "--strand-stragglers", "--config", cfg); code != cli.ExitError || asked != 1 || !strings.Contains(stderr, "not confirmed") {
+		t.Errorf("a declined ca drop-root --strand-stragglers: exit %d, asked %d, %q", code, asked, stderr)
+	}
+	if code, _, stderr := runRpmgr("ca", "drop-root", "--strand-stragglers", "--yes", "--config", cfg); code != cli.ExitError || asked != 1 || !strings.Contains(stderr, "cannot be dropped before") {
+		t.Errorf("ca drop-root --strand-stragglers --yes: exit %d, asked %d, %q", code, asked, stderr)
+	}
 	if code, _, stderr := runRpmgr("ca", "new-root", "--config", cfg); code != cli.ExitError || !strings.Contains(stderr, "root rotation is in progress") {
 		t.Errorf("a second ca new-root: exit %d, %q", code, stderr)
 	}

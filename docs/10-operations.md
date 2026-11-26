@@ -1490,11 +1490,13 @@ Each runbook: **symptoms → steps → done when**.
      bundle for the overlap (the longest leaf lifetime plus the Reauth grace period, which the
      status shows as a date). The rotation job drops it after that, or run `rpmgr ca drop-root`.
      Before the date it is refused with the date; `--force` before it is accepted only while no
-     agent is a straggler.
+     enabled agent seen within the overlap lacks the new root, an agent that was offline across the
+     switch included. Disabled agents that lack it are named in the status and in the drop.
   5. If the alert "root rotation stalled" fires (the job logs it at each run, `rpmgr ca status`
      names the agents), an enabled agent that was seen cannot or did not take the new root, most
      often because it has no `trust.roots`: update, re-enroll or decommission it, or `rpmgr ca
-     drop-root --strand-stragglers` to drop the old root and leave it to re-enroll. After the
+     drop-root --strand-stragglers` to drop the old root and leave it to re-enroll (it asks
+     first; `--yes` skips the question). After the
      drop, agents that never saw the new root have to re-enroll.
 - **Done when**: the bundle is the new root alone and every agent reports its digest.
 

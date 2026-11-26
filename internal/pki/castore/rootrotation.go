@@ -340,7 +340,12 @@ type DropOptions struct {
 	Force, Strand bool
 	// Stragglers counts the agents that lack the new root.
 	Stragglers StragglerCount
+	// StragglerIDs, when set, lists them too, so that a drop that strands them can record who they were.
+	StragglerIDs StragglerList
 }
+
+// StragglerList is StragglerCount that names the agents.
+type StragglerList func(ctx context.Context, tx *ent.Tx, since time.Time) ([]string, error)
 
 // A DropPlan is the drop of the old root of a rotation. It opens no key, so there is nothing to
 // seal before its transaction; it is a plan so that Apply checks, in its transaction, every premise
@@ -353,7 +358,19 @@ type DropPlan struct {
 	// swaps are the signing keys that chain to the old root and the next ones, issued under the new
 	// intermediate, that replace them with the drop.
 	swaps []signerSwap
+	// early is set when the drop is allowed before the earliest date (Force); earliest is that date.
+	early    bool
+	earliest time.Time
+	// stranded are the agents a drop with Strand leaves without the new root, as Apply found them.
+	stranded []string
 }
+
+// Early reports whether the drop was made before the earliest date, which Force allows, and the date.
+func (p *DropPlan) Early() (bool, time.Time) { return p.early, p.earliest }
+
+// Stranded names the enabled agents the drop left without the new root; it is filled by Apply, when
+// the drop was made with Strand and StragglerIDs was set.
+func (p *DropPlan) Stranded() []string { return p.stranded }
 
 type signerSwap struct{ old, next string }
 
@@ -397,6 +414,7 @@ func (p *DropPlan) check(ctx context.Context, rows []*ent.CAKey, tx *ent.Tx) (*e
 	// leaf lifetime meanwhile does not shorten the overlap that agents were promised.
 	earliest := DropAfter(r1, p.o.Overlap)
 	early := p.now.Before(earliest)
+	p.early, p.earliest = early, earliest
 	if early && !p.o.Force {
 		return nil, &DropEarlyError{Earliest: earliest}
 	}
@@ -406,9 +424,16 @@ func (p *DropPlan) check(ctx context.Context, rows []*ent.CAKey, tx *ent.Tx) (*e
 	if tx == nil || p.o.Stragglers == nil {
 		return r1, nil
 	}
-	n, err := p.o.Stragglers(ctx, tx, *r1.RotatedAt)
+	since := StragglersSince(r1, p.now, p.o)
+	n, err := p.o.Stragglers(ctx, tx, since)
 	if err != nil {
 		return nil, err
+	}
+	p.stranded = nil
+	if n > 0 && p.o.Strand && p.o.StragglerIDs != nil {
+		if p.stranded, err = p.o.StragglerIDs(ctx, tx, since); err != nil {
+			return nil, err
+		}
 	}
 	switch {
 	case n > 0 && p.o.Force:
@@ -459,6 +484,28 @@ func (p *DropPlan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
 		} else if n != 1 {
 			return nil, ErrRotated
 		}
+	}
+	// Nothing signs under the old root any more: its key, that of the intermediate it signed and those of
+	// the signing keys that chained to it are wiped, so that a copy of the database no longer holds them.
+	wipe := []string{r1.ID}
+	for _, sw := range p.swaps {
+		wipe = append(wipe, sw.old)
+	}
+	r1cert, err := x509.ParseCertificate(r1.Certificate)
+	if err != nil {
+		return nil, err
+	}
+	olds, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusRetired)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, o := range olds {
+		if c, err := x509.ParseCertificate(o.Certificate); err == nil && c.CheckSignatureFrom(r1cert) == nil {
+			wipe = append(wipe, o.ID)
+		}
+	}
+	if err := tx.CAKey.Update().Where(cakey.IDIn(wipe...), cakey.KeyEncNotNil()).ClearKeyEnc().Exec(ctx); err != nil {
+		return nil, err
 	}
 	return []string{"old root dropped from the trust bundle"}, nil
 }
@@ -522,4 +569,22 @@ func DropAfter(r *ent.CAKey, overlap time.Duration) time.Time {
 		d = *r.DropAfter
 	}
 	return d
+}
+
+// StragglersSince is the time from which an agent that was seen counts as one that may still need the
+// old root: since issuing moved, and, for a drop with Force, since the longest a leaf and the Reauth
+// grace can reach back, so that an agent that was offline across the switch and may still renew
+// through the old root holds the drop back too. It is the start of the overlap the old root has.
+func StragglersSince(r1 *ent.CAKey, now time.Time, o DropOptions) time.Time {
+	since := *r1.RotatedAt
+	if o.Force {
+		window := o.Overlap
+		if r1.DropAfter != nil && r1.DropAfter.Sub(*r1.RotatedAt) > window {
+			window = r1.DropAfter.Sub(*r1.RotatedAt)
+		}
+		if w := now.Add(-window); w.Before(since) {
+			since = w
+		}
+	}
+	return since
 }

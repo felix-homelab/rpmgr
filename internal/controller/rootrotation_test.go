@@ -425,3 +425,132 @@ func TestDropRootKeepsTheRecordedOverlap(t *testing.T) {
 		t.Fatalf("the drop after the recorded overlap: %v", err)
 	}
 }
+
+// hostAgent records a connector with a session in the database of a host, as fleetAgent does in an env's.
+func hostAgent(t *testing.T, h host, org string, enabled bool, seen time.Time) string {
+	t.Helper()
+	db, err := store.OpenSQLite(context.Background(), h.db, store.SQLiteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	sys := storetest.SystemCtx(t)
+	id := ids.New("con")
+	if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
+		if err := tx.Connector.Create().SetID(id).SetOrgID(org).SetName("con-" + strings.ToLower(id[len(id)-6:])).SetSpiffeID("spiffe://x/" + id).
+			SetPubkeySha256("00").SetEnabled(enabled).Exec(sys); err != nil {
+			return err
+		}
+		return tx.AgentSession.Create().SetID(id).SetOrgID(org).SetSessionEpoch(1).SetControllerNode("ctn_test").SetLastSeenAt(seen).
+			SetConnectedAt(seen).SetRootsDigest("aa").Exec(sys)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+func hostOrg(t *testing.T, h host) string {
+	t.Helper()
+	db, err := store.OpenSQLite(context.Background(), h.db, store.SQLiteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	return storetest.Org(t, db, "org-a")
+}
+
+// TestDropRootForceCountsAnAgentOfflineAcrossTheSwitch: an enabled agent last seen before the switch, within
+// the time its leaf and the Reauth grace reach, holds a --force drop back, though no session was seen since;
+// a disabled one does not, but the status and the drop name it; and the drop that strands agents, or goes
+// early, says so in its audit entry.
+func TestDropRootForceCountsAnAgentOfflineAcrossTheSwitch(t *testing.T) {
+	ctx := context.Background()
+	h, _ := initHost(t)
+	now := time.Now()
+	org := hostOrg(t, h)
+	if _, err := controller.NewRoot(ctx, h.cfg, "", noEnv, func() time.Time { return now }); err != nil {
+		t.Fatal(err)
+	}
+	_ = hostAgent(t, h, org, true, now.Add(-3*rotationDay)) // offline across the switch
+	disabled := hostAgent(t, h, org, false, now.Add(-3*rotationDay))
+	at := func(d time.Duration) func() time.Time { return func() time.Time { return now.Add(d) } }
+
+	rs, err := controller.CARotationStatus(ctx, h.cfg, at(rotationDay))
+	if err != nil || !slices.Equal(rs.Disabled, []string{disabled}) || len(rs.Stragglers) != 0 {
+		t.Fatalf("status: disabled %v, stragglers %v, %v", rs.Disabled, rs.Stragglers, err)
+	}
+	var strag *castore.StragglersError
+	if _, err := controller.DropRoot(ctx, h.cfg, true, false, at(rotationDay)); !errors.As(err, &strag) || !strag.Force || strag.N != 1 {
+		t.Fatalf("--force with an agent that was offline across the switch = %v, want a StragglersError for 1 agent", err)
+	}
+	// Well after the window an agent last seen then is out of reach of its leaf and the grace.
+	if _, err := controller.DropRoot(ctx, h.cfg, true, false, at(60*rotationDay)); err != nil {
+		t.Fatalf("--force after the overlap, with the agent long unseen: %v", err)
+	}
+	if got := auditOf(t, h, "ca.drop_root"); len(got) != 1 || strings.Contains(got[0], "--force") {
+		t.Fatalf("audit of a drop after the earliest date: %v", got)
+	}
+}
+
+// TestDropRootAuditsWhatItOverrode: the audit entry of a drop names a drop before the earliest date, and the
+// agents that --strand-stragglers left without the new root.
+func TestDropRootAuditsWhatItOverrode(t *testing.T) {
+	ctx := context.Background()
+	t.Run("force", func(t *testing.T) {
+		h, _ := initHost(t)
+		now := time.Now()
+		if _, err := controller.NewRoot(ctx, h.cfg, "", noEnv, func() time.Time { return now }); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := controller.DropRoot(ctx, h.cfg, true, false, func() time.Time { return now.Add(rotationDay) }); err != nil {
+			t.Fatal(err)
+		}
+		if got := auditOf(t, h, "ca.drop_root"); len(got) != 1 || !strings.Contains(got[0], "before the earliest date") || !strings.Contains(got[0], "--force") {
+			t.Fatalf("audit of a forced drop: %v", got)
+		}
+		// Nothing signs under the old root any more: the keys of the retired root, intermediate and signing
+		// keys are gone from the database, and the active ones are not.
+		db, err := store.OpenSQLite(ctx, h.db, store.SQLiteOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = db.Close() }()
+		retired, active := 0, 0
+		for _, r := range db.Client().CAKey.Query().AllX(storetest.SystemCtx(t)) {
+			switch {
+			case r.Status == cakey.StatusRetired && r.KeyEnc != nil && len(*r.KeyEnc) != 0:
+				t.Errorf("the key of the retired %s %s is still in the database", r.Kind, r.ID)
+			case r.Status == cakey.StatusRetired:
+				retired++
+			case r.Status == cakey.StatusActive && (r.KeyEnc == nil || len(*r.KeyEnc) == 0):
+				t.Errorf("the key of the active %s %s was wiped", r.Kind, r.ID)
+			case r.Status == cakey.StatusActive:
+				active++
+			}
+		}
+		if retired < 4 || active < 4 {
+			t.Errorf("%d retired and %d active keys; want the old root, intermediate and two signing keys retired, and four active", retired, active)
+		}
+	})
+	t.Run("strand", func(t *testing.T) {
+		h, _ := initHost(t)
+		now := time.Now()
+		org := hostOrg(t, h)
+		if _, err := controller.NewRoot(ctx, h.cfg, "", noEnv, func() time.Time { return now }); err != nil {
+			t.Fatal(err)
+		}
+		late := now.Add(38 * rotationDay)
+		stranded := hostAgent(t, h, org, true, now.Add(5*rotationDay))
+		if _, err := controller.DropRoot(ctx, h.cfg, false, false, func() time.Time { return late }); err == nil {
+			t.Fatal("dropped the old root although an enabled agent lacks the new one")
+		}
+		res, err := controller.DropRoot(ctx, h.cfg, false, true, func() time.Time { return late })
+		if err != nil || !slices.Equal(res.Stranded, []string{stranded}) {
+			t.Fatalf("--strand-stragglers: %+v, %v", res, err)
+		}
+		if got := auditOf(t, h, "ca.drop_root"); len(got) != 1 || !strings.Contains(got[0], stranded) || !strings.Contains(got[0], "--strand-stragglers") ||
+			!strings.Contains(got[0], "1 enabled agents stranded") {
+			t.Fatalf("audit of a stranding drop: %v", got)
+		}
+	})
+}

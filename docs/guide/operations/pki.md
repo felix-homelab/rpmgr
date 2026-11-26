@@ -272,9 +272,11 @@ You can do it by hand:
 sudo rpmgr ca drop-root
 ```
 
-Before the date it refuses and names the date; `--force` is accepted before it only while no agent
-lacks the new root. After the overlap, `--strand-stragglers` drops the old root although some
-agents lack the new one: they have to be enrolled again. After the drop the bundle is the new root
+Before the date it refuses and names the date; `--force` is accepted before it only while no
+enabled agent seen within the overlap lacks the new root, one that was offline across the switch
+included. After the overlap, `--strand-stragglers` drops the old root although some agents lack the
+new one, after asking (`--yes` skips the question): they have to be enrolled again, and the drop
+lists them. Disabled agents that lack the new root are named in `ca status` and in the drop output. After the drop the bundle is the new root
 alone, and agents that were online learn it from their next snapshot. An agent drops a root only
 on a snapshot that is newer than the one it runs and that it can verify without that root, so a
 replayed old snapshot changes nothing.

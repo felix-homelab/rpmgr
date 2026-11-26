@@ -46,25 +46,52 @@ func newRootCommand() *cli.Command {
 
 // dropRootCommand is `rpmgr ca drop-root`.
 func dropRootCommand() *cli.Command {
-	var force, strand bool
+	var force, strand, yes bool
 	return localCommand("drop-root", "drop the old root of a rotation from the trust bundle", func(fs *flag.FlagSet) {
-		fs.BoolVar(&force, "force", false, "drop before the overlap has passed; accepted only while no agent lacks the new root")
-		fs.BoolVar(&strand, "strand-stragglers", false, "after the overlap, drop the old root although enabled agents still lack the new one; they have to re-enroll")
+		fs.BoolVar(&force, "force", false, "drop before the overlap has passed; accepted only while no enabled agent lacks the new root, "+
+			"counting every one seen within the longest a leaf and the Reauth grace reach back, so one that was offline across the switch counts too")
+		fs.BoolVar(&strand, "strand-stragglers", false, "after the overlap, drop the old root although enabled agents still lack the new one; they have to re-enroll, and it asks first")
+		fs.BoolVar(&yes, "yes", false, "do not ask for the confirmation --strand-stragglers needs")
 	}, func(ctx context.Context, env *cli.Env, path string) error {
 		if force && strand {
 			return cli.Usagef("--force and --strand-stragglers exclude each other")
 		}
-		_, err := controller.DropRoot(ctx, path, force, strand, time.Now)
+		if strand && !yes {
+			st, err := controller.CARotationStatus(ctx, path, time.Now)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(env.Stdout, "%d enabled agent(s) seen since the switch do not hold the new root: %s\n"+
+				"Dropping the old root strands them: they cannot connect again until they are re-enrolled.\n",
+				len(st.Stragglers), strings.Join(st.Stragglers, ", "))
+			ok, err := confirmPrompt("Drop the old root anyway")
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return errors.New("the old root was not dropped: not confirmed")
+			}
+		}
+		res, err := controller.DropRoot(ctx, path, force, strand, time.Now)
 		var early *castore.DropEarlyError
 		if errors.As(err, &early) {
-			return fmt.Errorf("%w (--force drops earlier, but only while no agent lacks the new root)", err)
+			return fmt.Errorf("%w (--force drops earlier, but only while no enabled agent seen within the longest a leaf and the Reauth grace reach back lacks the new root)", err)
 		}
 		if err != nil {
 			return err
 		}
-		_, err = fmt.Fprintln(env.Stdout, "The old root is dropped: the bundle is the new root alone. Running controllers load it within a minute and send every agent\n"+
-			"a snapshot that carries it; certificates under the old root stop verifying.")
-		return err
+		if _, err = fmt.Fprintln(env.Stdout, "The old root is dropped: the bundle is the new root alone. Running controllers load it within a minute and send every agent\n"+
+			"a snapshot that carries it; certificates under the old root stop verifying."); err != nil {
+			return err
+		}
+		if n := len(res.Stranded); n > 0 {
+			fmt.Fprintf(env.Stdout, "Stranded, to re-enroll: %d enabled agent(s): %s\n", n, strings.Join(res.Stranded, ", "))
+		}
+		if n := len(res.Disabled); n > 0 {
+			fmt.Fprintf(env.Stdout, "Warning: %d disabled agent(s) do not hold the new root and have to re-enroll before they can connect again: %s\n",
+				n, strings.Join(res.Disabled, ", "))
+		}
+		return nil
 	})
 }
 
@@ -103,6 +130,10 @@ func rotationText(st controller.RotationStatus) string {
 			n, strings.Join(st.Stragglers, ", "))
 	} else {
 		b.WriteString("\n  Every enabled agent seen since holds the new root.")
+	}
+	if n := len(st.Disabled); n > 0 {
+		fmt.Fprintf(&b, "\n  Warning: %d disabled agent(s) do not hold the new root and will have to re-enroll before they connect again: %s",
+			n, strings.Join(st.Disabled, ", "))
 	}
 	return b.String()
 }
