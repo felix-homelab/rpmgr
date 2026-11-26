@@ -79,7 +79,7 @@ func TestCA_OfflineRootCeremony(t *testing.T) {
 	}
 	s1, _ := secret.NewSealer(k1)
 	rctx := secret.Context{Table: "ca_keys", Column: "key_enc", RowID: rootID}
-	if _, err := s1.Open(rctx, oldSealed); err != nil {
+	if _, err := s1.Open(context.Background(), rctx, oldSealed); err != nil {
 		t.Fatalf("the old KEK does not open the sealed key: %v", err)
 	}
 
@@ -243,7 +243,7 @@ func TestCA_OfflineRootCeremony(t *testing.T) {
 		t.Fatal(err)
 	}
 	k2 := writeKEK(t, h.kek, 0o600)
-	if _, _, err := controller.RotateKEK(ctx, h.cfg, prev, noEnv); err != nil {
+	if _, _, err := controller.RotateKEK(ctx, h.cfg, controller.PreviousKEK{File: prev}, noEnv); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(prev); err != nil { // destroyed
@@ -291,7 +291,7 @@ func TestCA_OfflineRootCeremony(t *testing.T) {
 			if name == "the backup's database" {
 				t.Errorf("%s holds the root's key sealed under the old KEK", name)
 			}
-			if _, err := s2.Open(rctx, oldSealed); err == nil {
+			if _, err := s2.Open(context.Background(), rctx, oldSealed); err == nil {
 				t.Errorf("%s: the current KEK opens the old sealed key", name)
 			}
 		}

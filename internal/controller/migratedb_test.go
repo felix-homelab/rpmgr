@@ -53,7 +53,7 @@ func newMigrateHost(t *testing.T) migrateHost {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	sealed, err := sealer.Seal(secret.Context{Table: "instance_secrets", Column: "value_enc", RowID: "canary"}, secret.New(canary))
+	sealed, err := sealer.Seal(context.Background(), secret.Context{Table: "instance_secrets", Column: "value_enc", RowID: "canary"}, secret.New(canary))
 	if err != nil {
 		t.Fatal(err)
 	}
