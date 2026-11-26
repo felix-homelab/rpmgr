@@ -50,9 +50,11 @@ fi
 # on PostgreSQL and internal/apisvc has so many API tests that they exceeded the limit of 20
 # minutes per package without a failing test (#905, #896, #1120). The parts are the heavy lines of
 # the shards. The limit stays 20 minutes per go test run; a test that hangs still fails, only later.
+# internal/controller is dealt as three parts here since the PostgreSQL backup tests (#688): its
+# second of two parts ran into the limit on a runner.
 module=$(go list -m)
 SHARD_HEAVY='/internal/(controller|apisvc)(#[0-9]+/[0-9]+)?$'
-list=$(sort <<<"$all" | split_expand "$module/internal/controller=2" "$module/internal/apisvc=2")
+list=$(sort <<<"$all" | split_expand "$module/internal/controller=3" "$module/internal/apisvc=2")
 mapfile -t pkgs < <(shard_select "$shard" <<<"$list")
 echo "== database test packages (shard ${shard:-all}): ${pkgs[*]}"
 timeout=20m
