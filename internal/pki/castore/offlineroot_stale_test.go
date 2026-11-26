@@ -132,6 +132,41 @@ func TestRootExportPlansTwice(t *testing.T) {
 	})
 }
 
+// A root that is no longer active after the plan is not taken offline, and the lock that makes
+// exports and requests take turns does not make it active again.
+func TestRootExportPlanRootNotActive(t *testing.T) {
+	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *castore.CA) {
+		sys := storetest.SystemCtx(t)
+		s := sealer(t, kek)
+		plan, err := castore.PlanRootExport(sys, db.ReadClient().CAKey, s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		root := rootRow(t, db)
+		if err := db.Client().CAKey.UpdateOneID(root.ID).SetStatus(cakey.StatusRetired).Exec(sys); err != nil {
+			t.Fatal(err)
+		}
+		files := 0
+		err = store.WriteTx(sys, db, func(tx *ent.Tx) error {
+			_, err := plan.Apply(sys, tx, rootPass, func(f []byte) ([]byte, error) { files++; return f, nil })
+			return err
+		})
+		if !errors.Is(err, castore.ErrRotated) {
+			t.Fatalf("Apply for a root that is not active = %v, want ErrRotated", err)
+		}
+		if files != 0 {
+			t.Errorf("%d files written, want 0", files)
+		}
+		got := rootRow(t, db)
+		if got.Status != cakey.StatusRetired {
+			t.Errorf("the root is %s again, want retired", got.Status)
+		}
+		if keyOffline(got) {
+			t.Error("the root's key was taken out of the database")
+		}
+	})
+}
+
 // Of two requests planned while none waits, the first is written; the second is stale and writes
 // nothing, so that exactly one request waits.
 func TestSigningRequestPlansTwice(t *testing.T) {

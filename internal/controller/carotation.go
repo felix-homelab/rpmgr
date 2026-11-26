@@ -40,8 +40,9 @@ func (o *CAOptions) defaults() {
 	}
 }
 
-// CARotation is the singleton job that keeps the CA's keys on schedule (castore.Rotate): it commits a
-// rotation with an audit record in a transaction fenced by its lease, and then reloads the CA.
+// CARotation is the singleton job that keeps the CA's keys on schedule (castore.PlanRotation): it
+// commits a rotation with an audit record in a transaction fenced by its lease, and then reloads
+// the CA.
 func CARotation(o CAOptions) lease.Job {
 	o.defaults()
 	return lease.Job{Name: "ca-rotation", Reason: "rotate the CA's keys on schedule", Every: CARotationEvery,
