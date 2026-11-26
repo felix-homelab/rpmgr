@@ -10,29 +10,24 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 )
 
-// Seal encrypts v for column c.Column of row c.RowID in table c.Table and records the KEK version
-// in secrets_meta, in tx, the transaction that writes the sealed value (docs/04-security.md,
-// "Secrets at rest and in logs").
-func Seal(ctx context.Context, tx *ent.Tx, s *secret.Sealer, c secret.Context, v secret.Value) ([]byte, error) {
-	sealed, err := s.Seal(ctx, c, v)
-	if err != nil {
-		return nil, err
-	}
+// RecordSealed records the KEK version of a value that was sealed with Sealer.Seal for c, in tx,
+// the transaction that writes the sealed value (docs/04-security.md, "Secrets at rest and in
+// logs"). Seal before the transaction and record inside it: with a key service as the KEK, a seal
+// can take as long as Transit does, and a write transaction on SQLite holds the single writer for
+// all of it.
+func RecordSealed(ctx context.Context, tx *ent.Tx, c secret.Context, sealed []byte) error {
 	version, err := secret.KEKVersion(sealed)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	n, err := tx.SecretMeta.Update().
 		Where(secretmeta.TableName(c.Table), secretmeta.RowID(c.RowID), secretmeta.ColumnName(c.Column)).
 		SetKekVersion(version).Save(ctx)
-	if err != nil {
-		return nil, err
+	if err != nil || n > 0 {
+		return err
 	}
-	if n == 0 {
-		err = tx.SecretMeta.Create().SetTableName(c.Table).SetRowID(c.RowID).SetColumnName(c.Column).
-			SetKekVersion(version).Exec(ctx)
-	}
-	return sealed, err
+	return tx.SecretMeta.Create().SetTableName(c.Table).SetRowID(c.RowID).SetColumnName(c.Column).
+		SetKekVersion(version).Exec(ctx)
 }
 
 // ForgetSealed drops the record of a sealed value whose row is deleted, so that a KEK rotation

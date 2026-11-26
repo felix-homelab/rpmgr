@@ -88,8 +88,13 @@ func (p *Pki) RotateIntermediate(ctx context.Context, _ *connect.Request[rpmgrv1
 	*connect.Response[rpmgrv1.RotateIntermediateResponse], error) {
 	sys := store.CarryTxHook(p.Sys, ctx)
 	var row *ent.CAKey
-	err := store.WriteTx(sys, p.DB, func(tx *ent.Tx) error {
-		if err := castore.RotateIntermediate(sys, tx, p.Sealer, p.now()); err != nil {
+	// Planned before the transaction: opening and sealing keys may wait for a key service.
+	plan, err := castore.PlanIntermediateRotation(sys, p.DB.ReadClient().CAKey, p.Sealer, p.now())
+	if err != nil {
+		return nil, storeError(err)
+	}
+	err = store.WriteTx(sys, p.DB, func(tx *ent.Tx) error {
+		if _, err := plan.Apply(sys, tx); err != nil {
 			return err
 		}
 		var err error

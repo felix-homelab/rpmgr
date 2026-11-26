@@ -20,6 +20,13 @@ const (
 // SetInstanceSecret stores a secret of the instance settings under the KEK, replacing its value;
 // an empty value removes it. ctx must carry the system scope.
 func SetInstanceSecret(ctx context.Context, db *store.DB, sealer *secret.Sealer, name string, v secret.Value) error {
+	var sealed []byte
+	if !v.IsZero() { // sealed before the transaction: it may wait for a key service
+		var err error
+		if sealed, err = sealer.Seal(ctx, secretContext(name), v); err != nil {
+			return err
+		}
+	}
 	return store.WriteTx(ctx, db, func(tx *ent.Tx) error {
 		if err := tx.InstanceSecret.DeleteOneID(name).Exec(ctx); err != nil && !ent.IsNotFound(err) {
 			return err
@@ -28,8 +35,7 @@ func SetInstanceSecret(ctx context.Context, db *store.DB, sealer *secret.Sealer,
 			return store.ForgetSealed(ctx, tx, secretContext(name))
 		}
 		// Recorded in secrets_meta, so a KEK rotation finds it.
-		sealed, err := store.Seal(ctx, tx, sealer, secretContext(name), v)
-		if err != nil {
+		if err := store.RecordSealed(ctx, tx, secretContext(name), sealed); err != nil {
 			return err
 		}
 		return tx.InstanceSecret.Create().SetID(name).SetValueEnc(sealed).SetUpdatedAt(time.Now()).Exec(ctx)

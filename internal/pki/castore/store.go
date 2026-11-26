@@ -15,7 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -96,19 +95,18 @@ func InitCA(ctx context.Context, tx *ent.Tx, s *secret.Sealer, td string, now ti
 	return nil
 }
 
+// saveKey seals a key and saves it in tx: at init, when no other writer exists. Rotation seals
+// before its transaction (Plan).
 func saveKey(ctx context.Context, tx *ent.Tx, s *secret.Sealer, kind cakey.Kind, kp pki.KeyPair, status cakey.Status) error {
-	id := ids.New("cak")
-	der, err := x509.MarshalPKCS8PrivateKey(kp.Key)
+	k, err := sealNew(ctx, s, kind, kp, status)
 	if err != nil {
 		return err
 	}
-	sealed, err := store.Seal(ctx, tx, s, keyContext(id), secret.FromBytes(der))
-	clear(der)
-	if err != nil {
+	if err := store.RecordSealed(ctx, tx, keyContext(k.id), k.sealed); err != nil {
 		return err
 	}
-	return tx.CAKey.Create().SetID(id).SetKind(kind).SetAlgorithm(keyAlgorithm).
-		SetPublicKey(kp.Cert.RawSubjectPublicKeyInfo).SetCertificate(kp.Cert.Raw).SetKeyEnc(sealed).
+	return tx.CAKey.Create().SetID(k.id).SetKind(kind).SetAlgorithm(keyAlgorithm).
+		SetPublicKey(kp.Cert.RawSubjectPublicKeyInfo).SetCertificate(kp.Cert.Raw).SetKeyEnc(k.sealed).
 		SetNotBefore(kp.Cert.NotBefore).SetNotAfter(kp.Cert.NotAfter).SetStatus(status).Exec(ctx)
 }
 

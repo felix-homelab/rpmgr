@@ -469,8 +469,22 @@ func (m *Manager) record(w wanted, cert *certmagic.Certificate, attempt error) e
 		key = signer
 	}
 	var changed bool
+	// A new or changed certificate has its key sealed before the transaction, which a key service
+	// may hold up; the write checks that the row is still the one it was sealed for.
+	var sk *certs.SealedKey
+	if cert != nil {
+		old, err := certs.ACMEOf(m.o.Sys, m.o.DB.ReadClient().Certificate, w.org, w.name)
+		if err != nil {
+			return errors.Join(attempt, err)
+		}
+		if old == nil || !sameItem(old, cert) {
+			if sk, err = certs.SealACMEKey(m.o.Sys, m.o.DB.ReadClient().Certificate, m.o.Sealer, w.org, w.name, key); err != nil {
+				return errors.Join(attempt, err)
+			}
+		}
+	}
 	write := func(tx *ent.Tx) ([]string, error) {
-		row, ch, err := certs.RecordACME(m.o.Sys, tx, m.o.Sealer, w.org, w.name, chain, key, attempt)
+		row, ch, err := certs.RecordACMESealed(m.o.Sys, tx, sk, w.org, w.name, chain, key, attempt)
 		if err != nil {
 			return nil, err
 		}

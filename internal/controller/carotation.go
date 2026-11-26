@@ -47,12 +47,17 @@ func CARotation(o CAOptions) lease.Job {
 	return lease.Job{Name: "ca-rotation", Reason: "rotate the CA's keys on schedule", Every: CARotationEvery,
 		Run: func(ctx context.Context, l lease.Lease) error {
 			var done []string
-			err := store.WriteTx(ctx, o.DB, func(tx *ent.Tx) error {
+			// Planned before the transaction: opening and sealing keys may wait for a key service.
+			plan, err := castore.PlanRotation(ctx, o.DB.ReadClient().CAKey, o.Sealer, o.Now())
+			if err != nil {
+				return err
+			}
+			err = store.WriteTx(ctx, o.DB, func(tx *ent.Tx) error {
 				if err := o.Leases.Fence(ctx, tx, l); err != nil {
 					return err
 				}
 				var err error
-				if done, err = castore.Rotate(ctx, tx, o.Sealer, o.Now()); err != nil {
+				if done, err = plan.Apply(ctx, tx); err != nil {
 					return err
 				}
 				for _, d := range done {

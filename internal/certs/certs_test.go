@@ -387,3 +387,59 @@ func TestRecordACME(t *testing.T) {
 		}
 	})
 }
+
+// TestRecordACMESealed: a key sealed before the transaction is written for the row it was sealed
+// for, a first certificate and a renewal alike; a key sealed for another row, because the row was
+// created or replaced meanwhile, is refused with ErrStaleKey and changes nothing, and so is a
+// certificate that needs a key that was not sealed.
+func TestRecordACMESealed(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		storetest.Init(t, db)
+		sys := storetest.SystemCtx(t)
+		org := storetest.Org(t, db, "org-a")
+		s := sealer(t)
+		root := ca(t, "root", nil)
+		leaf := issue(t, leafTmpl("app.example.com"), ecKey(t), &root)
+		chain := []*x509.Certificate{leaf.cert, root.cert}
+		write := func(sk *certs.SealedKey) (*ent.Certificate, error) {
+			var row *ent.Certificate
+			err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
+				var err error
+				row, _, err = certs.RecordACMESealed(sys, tx, sk, org, "app.example.com", chain, leaf.key, nil)
+				return err
+			})
+			return row, err
+		}
+		sk, err := certs.SealACMEKey(sys, db.Client().Certificate, s, org, "app.example.com", leaf.key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		other, err := certs.SealACMEKey(sys, db.Client().Certificate, s, org, "app.example.com", leaf.key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := write(nil); !errors.Is(err, certs.ErrStaleKey) {
+			t.Fatalf("a first certificate without a sealed key: %v", err)
+		}
+		row, err := write(sk)
+		if err != nil || row.ID != sk.ID {
+			t.Fatalf("first certificate: %v %+v", err, row)
+		}
+		if got, err := certs.Item(context.Background(), row, s); err != nil || len(got) == 0 {
+			t.Fatalf("the sealed key does not open: %v", err)
+		}
+		// The row exists now: a key sealed for the ID that was free is stale.
+		renewed := issue(t, leafTmpl("app.example.com"), ecKey(t), &root)
+		chain, leaf = []*x509.Certificate{renewed.cert, root.cert}, renewed
+		if _, err := write(other); !errors.Is(err, certs.ErrStaleKey) {
+			t.Fatalf("a key sealed for another row: %v", err)
+		}
+		fresh, err := certs.SealACMEKey(sys, db.Client().Certificate, s, org, "app.example.com", renewed.key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if row, err := write(fresh); err != nil || row.ID != sk.ID {
+			t.Fatalf("renewal: %v %+v", err, row)
+		}
+	})
+}
