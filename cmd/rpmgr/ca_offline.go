@@ -162,7 +162,7 @@ func offlineRootCommand() *cli.Command {
 
 // signIntermediateCommand is `rpmgr ca sign-intermediate`; it needs no boot file.
 func signIntermediateCommand() *cli.Command {
-	var rootFile, csr, out, passFile, keyHash string
+	var rootFile, csr, out, passFile, keyHash, kind string
 	var yes bool
 	return &cli.Command{
 		Name:    "sign-intermediate",
@@ -174,6 +174,7 @@ func signIntermediateCommand() *cli.Command {
 			fs.StringVar(&passFile, "passphrase-file", "", "read the passphrase from this file (mode 0600) instead of asking for it")
 			fs.StringVar(&keyHash, "key-sha256", "", "the SHA-256 of the key the request must carry, as `ca status` and `ca rotate-intermediate --csr-out` show it; required with --yes")
 			fs.BoolVar(&yes, "yes", false, "sign without asking for a confirmation, on a host where nobody is")
+			fs.StringVar(&kind, "kind", "intermediate", "intermediate, or cross-root for the request of a new root that ca new-root --csr-out wrote")
 		},
 		NoArgEcho: true,
 		Run: func(_ context.Context, env *cli.Env, _ []string) error {

@@ -1469,18 +1469,33 @@ Each runbook: **symptoms → steps → done when**.
 
 ### Rotate the root
 
-- **Steps** ([04](04-security.md#root-rotation)): `rpmgr ca new-root` (with an offline root,
-  `--csr-out`, then sign the cross-certificate offline with `rpmgr ca sign-intermediate --kind
-  cross-root` (the flag comes with `ca new-root`, slice 8.14), the new intermediate's key with the
-  same command, and import both with `rpmgr ca import-intermediate`). Issuing moves to the new root
-  at once and every chain carries both intermediates, so agents that know only the old root keep
-  verifying. Watch Settings → PKI and `rpmgr ca status` until no agent is a straggler; leave the old
-  root in the bundle for the overlap (the longest leaf lifetime plus the Reauth grace period).
-  `rpmgr ca drop-root` before then is refused with the date it is allowed. If the alert "root
-  rotation stalled" fires, an enabled agent cannot or did not take the new root, most often because
-  it has no `trust.roots`: update, re-enroll or decommission it, or `rpmgr ca drop-root
-  --strand-stragglers` to drop the old root and leave it to re-enroll. After the drop, agents that
-  never saw the new root have to re-enroll.
+- **Steps** ([04](04-security.md#root-rotation)):
+  1. Run `rpmgr ca new-root` on the controller host. With the old root online it makes the new root
+     and its intermediate, signs the cross-certificate and the intermediate's certificate and
+     moves issuing at once; it prints the new pin, which is for after the drop: until then install
+     commands and `rpmgr ca status` keep the old pin, so that agents enrolled meanwhile hold both
+     roots.
+  2. With the old root **offline** it needs `--csr-out <file>` and stops after it wrote the two
+     requests, `<file>` and `<file>.intermediate`. On the offline host run `rpmgr ca
+     sign-intermediate --kind cross-root --csr <file>` and `rpmgr ca sign-intermediate --csr
+     <file>.intermediate`, each with the key hash `new-root` printed, bring both certificates
+     back and run `rpmgr ca import-intermediate --in <certificate>` for each. The rotation job moves
+     issuing within the hour; `rpmgr ca status` says what still waits. The old root's key is never
+     in the database for this.
+  3. Every chain from then carries both intermediates, so agents that know only the old root keep
+     verifying, and the trust bundle holds both roots, so connected agents learn the new one. The
+     gateways and the controller trust the new root at once, **with no restart**. Do not rotate
+     the intermediate until the old root is dropped; the command is refused.
+  4. Watch `rpmgr ca status` until no enabled agent is a straggler; leave the old root in the
+     bundle for the overlap (the longest leaf lifetime plus the Reauth grace period, which the
+     status shows as a date). The rotation job drops it after that, or run `rpmgr ca drop-root`.
+     Before the date it is refused with the date; `--force` before it is accepted only while no
+     agent is a straggler.
+  5. If the alert "root rotation stalled" fires (the job logs it at each run, `rpmgr ca status`
+     names the agents), an enabled agent that was seen cannot or did not take the new root, most
+     often because it has no `trust.roots`: update, re-enroll or decommission it, or `rpmgr ca
+     drop-root --strand-stragglers` to drop the old root and leave it to re-enroll. After the
+     drop, agents that never saw the new root have to re-enroll.
 - **Done when**: the bundle is the new root alone and every agent reports its digest.
 
 ### Root compromise

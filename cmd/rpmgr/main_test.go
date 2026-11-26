@@ -362,6 +362,24 @@ func TestLocalAdmin(t *testing.T) {
 			}
 		}
 	}
+	// The root rotation: new-root moves issuing at once, status shows it, an early drop names the date.
+	if code, stdout, stderr := runRpmgr("ca", "new-root", "--config", cfg); code != cli.ExitOK || !strings.Contains(stdout, "The new root issues from now on") ||
+		!strings.Contains(stdout, "New root pin: sha256:") {
+		t.Errorf("ca new-root: exit %d, %q (stderr %q)", code, stdout, stderr)
+	}
+	if code, stdout, _ := runRpmgr("ca", "status", "--config", cfg); code != cli.ExitOK || !strings.Contains(stdout, "Root rotation: issuing moved to the new root") ||
+		!strings.Contains(stdout, "can be dropped from") {
+		t.Errorf("ca status in the overlap: exit %d, %q", code, stdout)
+	}
+	if code, _, stderr := runRpmgr("ca", "drop-root", "--config", cfg); code != cli.ExitError || !strings.Contains(stderr, "cannot be dropped before") {
+		t.Errorf("an early ca drop-root: exit %d, %q", code, stderr)
+	}
+	if code, _, stderr := runRpmgr("ca", "drop-root", "--force", "--strand-stragglers", "--config", cfg); code != cli.ExitUsage || !strings.Contains(stderr, "exclude each other") {
+		t.Errorf("ca drop-root --force --strand-stragglers: exit %d, %q", code, stderr)
+	}
+	if code, _, stderr := runRpmgr("ca", "new-root", "--config", cfg); code != cli.ExitError || !strings.Contains(stderr, "root rotation is in progress") {
+		t.Errorf("a second ca new-root: exit %d, %q", code, stderr)
+	}
 	missing := filepath.Join(t.TempDir(), "none.yaml")
 	for _, args := range [][]string{{"ca", "status"}, {"kek", "status"}, {"migrate"}, {"kek", "rotate", "--previous-file", "x"}} {
 		if code, _, stderr := runRpmgr(append(args, "--config", missing)...); code != cli.ExitError || !strings.Contains(stderr, "none.yaml") {
@@ -411,7 +429,7 @@ func TestMigrateDB(t *testing.T) {
 func TestControllerBootDefault(t *testing.T) {
 	commands := [][]string{{"backup", "--out", filepath.Join(t.TempDir(), "b")}, {"restore", "--in", filepath.Join(t.TempDir(), "b")},
 		{"restore", "confirm"}, {"user", "reset-password"}, {"migrate"}, {"ca", "status"}, {"ca", "rotate-intermediate"},
-		{"kek", "status"}, {"kek", "rotate", "--previous-file", filepath.Join(t.TempDir(), "k")}}
+		{"ca", "new-root"}, {"ca", "drop-root"}, {"kek", "status"}, {"kek", "rotate", "--previous-file", filepath.Join(t.TempDir(), "k")}}
 	t.Cleanup(func() { bootDir = "/etc/rpmgr" })
 	for _, tc := range []struct {
 		present []string
