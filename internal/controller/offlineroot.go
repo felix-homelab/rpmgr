@@ -91,11 +91,19 @@ func OfflineRoot(ctx context.Context, o OfflineRootOptions) (OfflineRootResult, 
 	if err != nil {
 		return OfflineRootResult{}, err
 	}
+	if err := pki.CheckPassphrase(passphrase); err != nil {
+		return OfflineRootResult{}, err
+	}
+	// The key is opened before the transaction: opening may wait for a key service.
+	plan, err := castore.PlanRootExport(sys, db.ReadClient().CAKey, sealer)
+	if err != nil {
+		return OfflineRootResult{}, err
+	}
 	var created, marked bool
 	err = store.WriteTx(sys, db, func(tx *ent.Tx) error {
 		created, marked = false, false
 		var err error
-		res.RootExport, err = castore.ExportRootOffline(sys, tx, sealer, passphrase, func(file []byte) ([]byte, error) {
+		res.RootExport, err = plan.Apply(sys, tx, passphrase, func(file []byte) ([]byte, error) {
 			if err := writeNew(o.Out, file, 0o600); err != nil {
 				return nil, err
 			}
@@ -273,22 +281,36 @@ func RequestIntermediate(ctx context.Context, path, out string, getenv func(stri
 	defer func() { _ = db.Close() }()
 	var csr []byte
 	var hash string
-	err = store.WriteTx(sys, db, func(tx *ent.Tx) error {
-		var err error
-		if csr, err = castore.RequestIntermediateSigning(sys, tx, sealer, now()); err != nil {
-			return err
+	// The key is made and sealed before the transaction: sealing may wait for a key service. If a
+	// request was made meanwhile, plan again: the one that waits is returned.
+	for attempt := 0; ; attempt++ {
+		var plan *castore.Plan
+		if plan, err = castore.PlanSigningRequest(sys, db.ReadClient().CAKey, sealer, now()); err != nil {
+			return "", err
 		}
+		csr = plan.CSR()
 		if hash, err = requestKeyHash(csr); err != nil {
-			return err
+			return "", err
 		}
-		_, err = audit.Append(sys, tx, audit.Entry{ActorType: audit.ActorSystem, ActorID: "local-cli", Action: "ca.request_intermediate",
-			TargetType: "ca", TargetID: hash, Result: audit.Success, Reason: "a request for the offline root to sign the next intermediate"})
-		return err
-	})
+		err = store.WriteTx(sys, db, func(tx *ent.Tx) error { return applyRequest(sys, tx, plan, hash) })
+		if !errors.Is(err, castore.ErrRotated) || attempt == 2 {
+			break
+		}
+	}
 	if err != nil {
 		return "", err
 	}
 	return hash, writeNew(out, csr, 0o644)
+}
+
+// applyRequest writes the plan of a request, and the audit entry of the call, in tx.
+func applyRequest(ctx context.Context, tx *ent.Tx, plan *castore.Plan, hash string) error {
+	if _, err := plan.Apply(ctx, tx); err != nil {
+		return err
+	}
+	_, err := audit.Append(ctx, tx, audit.Entry{ActorType: audit.ActorSystem, ActorID: "local-cli", Action: "ca.request_intermediate",
+		TargetType: "ca", TargetID: hash, Result: audit.Success, Reason: "a request for the offline root to sign the next intermediate"})
+	return err
 }
 
 // requestKeyHash is the SHA-256 of the key a request (PEM) asks to have signed.

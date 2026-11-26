@@ -43,7 +43,7 @@ var (
 // signature becomes critical.
 const IntermediateSigningCritical = 30 * 24 * time.Hour
 
-// RootExport is what ExportRootOffline reports, for the caller's audit record and its marker.
+// RootExport is what RootExportPlan.Apply reports, for the caller's audit record and its marker.
 type RootExport struct {
 	Pin           string // the root's pin
 	PublicKeyHash string // SHA-256 of the root's public key, hexadecimal
@@ -52,15 +52,45 @@ type RootExport struct {
 	KEK string
 }
 
-// ExportRootOffline takes the root's key out of the database, in tx. It seals the key and the
-// certificate in an age file under passphrase and hands the file to persist, which must write it
-// where the operator chose and return what it reads back from the medium (it must read the file
-// again, not return its argument); the file read back must open with
-// passphrase to the key of the root in ca_keys. Only then is key_enc set to null. It refuses a root
-// that is offline already (ErrRootOffline). It needs the system scope. The caller records the
-// audit entry and the marker in the same transaction, and, as the sealed key may remain in free
-// pages and in backups, rotates the KEK afterwards.
-func ExportRootOffline(ctx context.Context, tx *ent.Tx, s *secret.Sealer, passphrase string,
+// A RootExportPlan is the root's key opened before the transaction that takes it out: opening the
+// key may wait for a key service, which a write transaction must not.
+type RootExportPlan struct {
+	id     string
+	keyEnc []byte // the sealed key the plan opened, to tell that the row is the same one
+	root   pki.KeyPair
+	kek    string
+}
+
+// PlanRootExport opens the key of the active root, which c reads, for ExportRootOffline's Apply. It
+// refuses a root that is offline already (ErrRootOffline).
+func PlanRootExport(ctx context.Context, c *ent.CAKeyClient, s *secret.Sealer) (*RootExportPlan, error) {
+	row, err := c.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusActive)).Only(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if keyOffline(row) {
+		return nil, ErrRootOffline
+	}
+	root, err := openKey(ctx, s, row)
+	if err != nil {
+		return nil, err
+	}
+	kek, err := secret.KEKVersion(*row.KeyEnc)
+	if err != nil {
+		return nil, err
+	}
+	return &RootExportPlan{id: row.ID, keyEnc: bytes.Clone(*row.KeyEnc), root: root, kek: kek}, nil
+}
+
+// Apply takes the root's key out of the database, in tx. It seals the key and the certificate in an
+// age file under passphrase and hands the file to persist, which must write it where the operator
+// chose and return what it reads back from the medium (it must read the file again, not return its
+// argument); the file read back must open with passphrase to the key of the root in ca_keys. Only
+// then is key_enc set to null. It refuses a root that is offline already (ErrRootOffline) and fails
+// with ErrRotated when the root's key is not the one the plan opened. It needs the system scope. The
+// caller records the audit entry and the marker in the same transaction, and, as the sealed key may
+// remain in free pages and in backups, rotates the KEK afterwards.
+func (p *RootExportPlan) Apply(ctx context.Context, tx *ent.Tx, passphrase string,
 	persist func(file []byte) (readBack []byte, err error)) (RootExport, error) {
 	if err := pki.CheckPassphrase(passphrase); err != nil {
 		return RootExport{}, err
@@ -72,14 +102,10 @@ func ExportRootOffline(ctx context.Context, tx *ent.Tx, s *secret.Sealer, passph
 	if keyOffline(row) {
 		return RootExport{}, ErrRootOffline
 	}
-	root, err := openKey(s, row)
-	if err != nil {
-		return RootExport{}, err
+	if row.ID != p.id || !bytes.Equal(*row.KeyEnc, p.keyEnc) {
+		return RootExport{}, ErrRotated
 	}
-	kek, err := secret.KEKVersion(*row.KeyEnc)
-	if err != nil {
-		return RootExport{}, err
-	}
+	root := p.root
 	file, err := pki.SealRootFile(root, passphrase)
 	if err != nil {
 		return RootExport{}, err
@@ -97,7 +123,7 @@ func ExportRootOffline(ctx context.Context, tx *ent.Tx, s *secret.Sealer, passph
 		return RootExport{}, err
 	}
 	sum := sha256.Sum256(back)
-	return RootExport{Pin: pki.RootPin(root.Cert), PublicKeyHash: pki.PublicKeyHash(row.PublicKey), FileSHA256: hex.EncodeToString(sum[:]), KEK: kek}, nil
+	return RootExport{Pin: pki.RootPin(root.Cert), PublicKeyHash: pki.PublicKeyHash(row.PublicKey), FileSHA256: hex.EncodeToString(sum[:]), KEK: p.kek}, nil
 }
 
 // ApplyRootOffline is what a restore does with the marker `root_offline`: it sets key_enc to null
@@ -157,27 +183,52 @@ func RootKeyResidue(ctx context.Context, db *store.DB) (kek string, unknown bool
 	return kek, false, nil
 }
 
-// RequestIntermediateSigning makes the next intermediate when the root is offline: a new key,
-// sealed with status next, no certificate and its request in csr. It returns the request (PEM).
-// One request waits at a time: a second call returns the one that waits. With an online root it
-// returns ErrRootOnline; the intermediate is then signed at once. It needs the system scope.
-func RequestIntermediateSigning(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) ([]byte, error) {
-	root, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusActive)).Only(ctx)
+// PlanSigningRequest works out the request for the offline root to sign the next intermediate: a
+// new key, sealed with status next, no certificate and its request in csr. The key is made and
+// sealed here, outside the transaction, because sealing may wait for a key service; Apply writes it
+// and CSR returns the request (PEM). One request waits at a time: when one waits already, the plan
+// writes nothing and CSR returns that one. With an online root it returns ErrRootOnline; the
+// intermediate is then signed at once. Apply fails with ErrRotated if the keys changed meanwhile,
+// as another request first. It needs the system scope.
+func PlanSigningRequest(ctx context.Context, c *ent.CAKeyClient, s *secret.Sealer, now time.Time) (*Plan, error) {
+	rows, err := readActive(ctx, c)
 	if err != nil {
 		return nil, err
+	}
+	p := &Plan{seen: keysSeen(rows)}
+	var root *ent.CAKey
+	for _, r := range rows {
+		switch {
+		case r.Kind == cakey.KindRoot && r.Status == cakey.StatusActive:
+			root = r
+		case r.Kind == cakey.KindIntermediate && r.Status == cakey.StatusNext && len(r.Certificate) == 0:
+			p.csr = r.Csr
+		}
+	}
+	if root == nil {
+		return nil, fmt.Errorf("pki: the database holds no active root")
 	}
 	if !keyOffline(root) {
 		return nil, ErrRootOnline
 	}
-	if err := lockRoot(ctx, tx, root.ID); err != nil {
+	if p.csr != nil {
+		return p, nil
+	}
+	nk, err := newSigningRequest(ctx, s, now)
+	if err != nil {
 		return nil, err
 	}
-	if p, err := pendingIntermediate(ctx, tx); err != nil || p != nil {
-		if p != nil {
-			return p.Csr, nil
-		}
-		return nil, err
-	}
+	p.lock, p.csr = root.ID, nk.request.csr
+	p.steps = []planStep{{done: "intermediate needs signing", create: nk}}
+	return p, nil
+}
+
+// CSR is the request (PEM) of a plan of PlanSigningRequest, which is the one that waits when the
+// plan writes nothing.
+func (p *Plan) CSR() []byte { return p.csr }
+
+// newSigningRequest makes the key of the next intermediate and its request, and seals the key.
+func newSigningRequest(ctx context.Context, s *secret.Sealer, now time.Time) (*newKey, error) {
 	key, csr, err := pki.NewIntermediateRequest()
 	if err != nil {
 		return nil, err
@@ -186,22 +237,13 @@ func RequestIntermediateSigning(ctx context.Context, tx *ent.Tx, s *secret.Seale
 	if err != nil {
 		return nil, err
 	}
-	der, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		return nil, err
-	}
-	id, err := sealNew(ctx, tx, s, der)
-	if err != nil {
-		return nil, err
-	}
-	// Not before and not after hold the validity the root will most likely give; the certificate's
-	// replace them at the import.
-	return csr, tx.CAKey.Create().SetID(id.id).SetKind(cakey.KindIntermediate).SetAlgorithm(keyAlgorithm).
-		SetPublicKey(pub).SetCsr(csr).SetKeyEnc(id.sealed).SetNotBefore(now).SetNotAfter(now.Add(pki.IntermediateLifetime)).
-		SetStatus(cakey.StatusNext).Exec(ctx)
+	k := &newKey{id: ids.New("cak"), kind: cakey.KindIntermediate, status: cakey.StatusNext,
+		request: &signingRequest{pub: pub, csr: csr, notBefore: now, notAfter: now.Add(pki.IntermediateLifetime)}}
+	k.sealed, err = sealKey(ctx, s, k.id, key)
+	return k, err
 }
 
-// ErrRootOnline is returned by RequestIntermediateSigning when the root's key is in the database.
+// ErrRootOnline is returned by PlanSigningRequest when the root's key is in the database.
 var ErrRootOnline = errors.New("pki: the root is online and signs the intermediate itself")
 
 // lockRoot makes concurrent requests take turns. PostgreSQL runs at READ COMMITTED, so two
@@ -275,7 +317,7 @@ func ImportIntermediate(ctx context.Context, tx *ent.Tx, der []byte, now time.Ti
 		if len(r.Certificate) == 0 || !notValidAt(r, now) {
 			continue
 		}
-		// Like replaceIntermediate: only while it is still next.
+		// Only while it is still next.
 		n, err := tx.CAKey.Update().Where(cakey.ID(r.ID), cakey.StatusEQ(cakey.StatusNext)).SetStatus(cakey.StatusRetired).Save(ctx)
 		if err != nil {
 			return err
@@ -354,19 +396,6 @@ func NextIntermediateKeyHash(ctx context.Context, db *store.DB) (string, error) 
 		}
 	}
 	return pki.PublicKeyHash(pick.PublicKey), nil
-}
-
-type sealedKey struct {
-	id     string
-	sealed []byte
-}
-
-// sealNew seals a private key (PKCS #8, cleared afterwards) under a new row ID.
-func sealNew(ctx context.Context, tx *ent.Tx, s *secret.Sealer, der []byte) (sealedKey, error) {
-	id := ids.New("cak")
-	sealed, err := store.Seal(ctx, tx, s, keyContext(id), secret.FromBytes(der))
-	clear(der)
-	return sealedKey{id: id, sealed: sealed}, err
 }
 
 // keyOffline reports whether the row holds no private key. Ent reads a null key_enc as a pointer to

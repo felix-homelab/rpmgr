@@ -24,14 +24,22 @@ func TestPkiStatusWithPendingIntermediate(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	plan, err := castore.PlanRootExport(e.sys, e.db.ReadClient().CAKey, e.sealer)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error {
-		_, err := castore.ExportRootOffline(e.sys, tx, e.sealer, "correct horse battery staple 42", func(f []byte) ([]byte, error) { return f, nil })
+		_, err := plan.Apply(e.sys, tx, "correct horse battery staple 42", func(f []byte) ([]byte, error) { return f, nil })
 		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
+	reqPlan, err := castore.PlanSigningRequest(e.sys, e.db.ReadClient().CAKey, e.sealer, e.clock)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error {
-		_, err := castore.RequestIntermediateSigning(e.sys, tx, e.sealer, e.clock)
+		_, err := reqPlan.Apply(e.sys, tx)
 		return err
 	}); err != nil {
 		t.Fatal(err)

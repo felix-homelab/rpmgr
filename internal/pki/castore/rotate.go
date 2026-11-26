@@ -4,6 +4,7 @@ package castore
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -67,6 +68,10 @@ func RotateIntermediate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now t
 type Plan struct {
 	seen  string
 	steps []planStep
+	// lock is the root that Apply locks first, when a step makes a request for a signature.
+	lock string
+	// csr is the request (PEM) of a PlanSigningRequest: the new one, or the one that waits.
+	csr []byte
 }
 
 type planStep struct {
@@ -81,6 +86,14 @@ type newKey struct {
 	status cakey.Status
 	kp     pki.KeyPair
 	sealed []byte
+	// request is set for a next intermediate that waits for the offline root's signature: it has no
+	// certificate, and the key and the validity it is expected to get are in pub, csr and the times.
+	request *signingRequest
+}
+
+type signingRequest struct {
+	pub, csr            []byte
+	notBefore, notAfter time.Time
 }
 
 // keysSeen names the active and next keys of rows, to tell a changed set.
@@ -96,16 +109,23 @@ func readActive(ctx context.Context, c *ent.CAKeyClient) ([]*ent.CAKey, error) {
 	return c.Query().Where(cakey.StatusIn(cakey.StatusActive, cakey.StatusNext)).Order(ent.Asc(cakey.FieldID)).All(ctx)
 }
 
-// sealNew makes a key record for kp, sealing its private key with s.
+// sealNew makes a key record for kp, sealing its private key with s. It runs before the
+// transaction that writes the record.
 func sealNew(ctx context.Context, s *secret.Sealer, kind cakey.Kind, kp pki.KeyPair, status cakey.Status) (*newKey, error) {
 	k := &newKey{id: ids.New("cak"), kind: kind, status: status, kp: kp}
-	der, err := x509.MarshalPKCS8PrivateKey(kp.Key)
+	var err error
+	k.sealed, err = sealKey(ctx, s, k.id, kp.Key)
+	return k, err
+}
+
+// sealKey seals the private key of the row id (PKCS #8, cleared afterwards).
+func sealKey(ctx context.Context, s *secret.Sealer, id string, key *ecdsa.PrivateKey) ([]byte, error) {
+	der, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
 		return nil, err
 	}
-	k.sealed, err = s.Seal(ctx, keyContext(k.id), secret.FromBytes(der))
-	clear(der)
-	return k, err
+	defer clear(der)
+	return s.Seal(ctx, keyContext(id), secret.FromBytes(der))
 }
 
 // PlanRotation works out Rotate from the keys c reads, which may be outside a transaction.
@@ -140,21 +160,53 @@ func plan(ctx context.Context, c *ent.CAKeyClient, s *secret.Sealer, now time.Ti
 		return nil, err
 	}
 	old := active[cakey.KindIntermediate]
+	rootOffline := keyOffline(active[cakey.KindRoot])
+	halfLife := !now.Before(old.NotBefore.Add(old.NotAfter.Sub(old.NotBefore) / 2))
 	var inter pki.KeyPair
-	if forceIntermediate || !now.Before(old.NotBefore.Add(old.NotAfter.Sub(old.NotBefore)/2)) {
-		rootKP, err := openKey(ctx, s, active[cakey.KindRoot])
-		if err != nil {
+	switch {
+	case forceIntermediate && rootOffline:
+		return nil, ErrRootOffline
+	case !forceIntermediate && !halfLife:
+		inter, err = openKey(ctx, s, old)
+	case rootOffline:
+		// An offline root cannot sign: ask for a signature, and go on with the old intermediate until
+		// the signed one is imported and valid.
+		n := next[cakey.KindIntermediate]
+		switch {
+		case n == nil:
+			var nk *newKey
+			if nk, err = newSigningRequest(ctx, s, now); err != nil {
+				return nil, err
+			}
+			p.lock = active[cakey.KindRoot].ID
+			p.csr = nk.request.csr
+			p.steps = append(p.steps, planStep{done: "intermediate needs signing", create: nk})
+			inter, err = openKey(ctx, s, old)
+		case len(n.Certificate) == 0, now.Before(n.NotBefore) || !now.Before(n.NotAfter):
+			// It still waits for its signature, or the signed one is not valid now: never make an
+			// intermediate active that issues leaves nobody accepts. IntermediateSigningAlert says so, on
+			// Settings -> PKI and in the log of every run; this is no change, so no audit entry each hour.
+			inter, err = openKey(ctx, s, old)
+		default:
+			if inter, err = openKey(ctx, s, n); err == nil {
+				p.steps = append(p.steps, planStep{done: "intermediate replaced by the signed next one", retire: old.ID, promote: n.ID})
+			}
+		}
+	default:
+		var rootKP pki.KeyPair
+		if rootKP, err = openKey(ctx, s, active[cakey.KindRoot]); err != nil {
 			return nil, err
 		}
 		if inter, err = pki.NewIntermediate(rootKP, now); err != nil {
 			return nil, err
 		}
-		nk, err := sealNew(ctx, s, cakey.KindIntermediate, inter, cakey.StatusActive)
-		if err != nil {
+		var nk *newKey
+		if nk, err = sealNew(ctx, s, cakey.KindIntermediate, inter, cakey.StatusActive); err != nil {
 			return nil, err
 		}
 		p.steps = append(p.steps, planStep{done: "intermediate rotated", retire: old.ID, create: nk})
-	} else if inter, err = openKey(ctx, s, old); err != nil {
+	}
+	if err != nil {
 		return nil, err
 	}
 	if forceIntermediate {
@@ -197,6 +249,13 @@ func plan(ctx context.Context, c *ent.CAKeyClient, s *secret.Sealer, now time.Ti
 // while it is still active, so of two rotations at once one fails with ErrRotated instead of
 // leaving two active intermediates.
 func (p *Plan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
+	if p.lock != "" {
+		// PostgreSQL runs at READ COMMITTED: two requests could both find none waiting. Taking the root's
+		// row lock first makes them take turns, and the second then sees the first's request.
+		if err := lockRoot(ctx, tx, p.lock); err != nil {
+			return nil, err
+		}
+	}
 	rows, err := readActive(ctx, tx.CAKey)
 	if err != nil {
 		return nil, err
@@ -224,10 +283,16 @@ func (p *Plan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
 			if err := store.RecordSealed(ctx, tx, keyContext(k.id), k.sealed); err != nil {
 				return nil, err
 			}
-			err := tx.CAKey.Create().SetID(k.id).SetKind(k.kind).SetAlgorithm(keyAlgorithm).
-				SetPublicKey(k.kp.Cert.RawSubjectPublicKeyInfo).SetCertificate(k.kp.Cert.Raw).SetKeyEnc(k.sealed).
-				SetNotBefore(k.kp.Cert.NotBefore).SetNotAfter(k.kp.Cert.NotAfter).SetStatus(k.status).Exec(ctx)
-			if err != nil {
+			c := tx.CAKey.Create().SetID(k.id).SetKind(k.kind).SetAlgorithm(keyAlgorithm).SetKeyEnc(k.sealed).SetStatus(k.status)
+			if r := k.request; r != nil {
+				// Not before and not after hold the validity the root will most likely give; the
+				// certificate's replace them at the import.
+				c.SetPublicKey(r.pub).SetCsr(r.csr).SetNotBefore(r.notBefore).SetNotAfter(r.notAfter)
+			} else {
+				c.SetPublicKey(k.kp.Cert.RawSubjectPublicKeyInfo).SetCertificate(k.kp.Cert.Raw).
+					SetNotBefore(k.kp.Cert.NotBefore).SetNotAfter(k.kp.Cert.NotAfter)
+			}
+			if err := c.Exec(ctx); err != nil {
 				return nil, err
 			}
 		}

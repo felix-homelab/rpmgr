@@ -57,9 +57,12 @@ func TestCARotation(t *testing.T) {
 func TestCARotationOfflineRoot(t *testing.T) {
 	db := storetest.Migrated(t, store.SQLite)
 	e := startSessions(t, db, "0.1.0", 0)
+	plan, err := castore.PlanRootExport(e.sys, db.ReadClient().CAKey, e.sealer)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := store.WriteTx(e.sys, db, func(tx *ent.Tx) error {
-		_, err := castore.ExportRootOffline(e.sys, tx, e.sealer, "correct horse battery staple 42",
-			func(f []byte) ([]byte, error) { return f, nil })
+		_, err := plan.Apply(e.sys, tx, "correct horse battery staple 42", func(f []byte) ([]byte, error) { return f, nil })
 		return err
 	}); err != nil {
 		t.Fatal(err)
@@ -147,8 +150,12 @@ func TestCARotationSignedIntermediateNotValid(t *testing.T) {
 	e := startSessions(t, db, "0.1.0", 0)
 	const pass = "correct horse battery staple 42"
 	var file []byte
+	plan, err := castore.PlanRootExport(e.sys, db.ReadClient().CAKey, e.sealer)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := store.WriteTx(e.sys, db, func(tx *ent.Tx) error {
-		_, err := castore.ExportRootOffline(e.sys, tx, e.sealer, pass, func(f []byte) ([]byte, error) { file = bytes.Clone(f); return f, nil })
+		_, err := plan.Apply(e.sys, tx, pass, func(f []byte) ([]byte, error) { file = bytes.Clone(f); return f, nil })
 		return err
 	}); err != nil {
 		t.Fatal(err)
@@ -159,9 +166,13 @@ func TestCARotationSignedIntermediateNotValid(t *testing.T) {
 	}
 	var csr []byte
 	first := e.ca.Intermediate()
+	reqPlan, err := castore.PlanSigningRequest(e.sys, db.ReadClient().CAKey, e.sealer, first.NotBefore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	csr = reqPlan.CSR()
 	if err := store.WriteTx(e.sys, db, func(tx *ent.Tx) error {
-		var err error
-		csr, err = castore.RequestIntermediateSigning(e.sys, tx, e.sealer, first.NotBefore)
+		_, err := reqPlan.Apply(e.sys, tx)
 		return err
 	}); err != nil {
 		t.Fatal(err)
