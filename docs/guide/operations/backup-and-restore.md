@@ -49,6 +49,13 @@ Back up the KEK separately and keep it apart from this archive: without it the a
 - **Never overwrites:** `--out` must name a file that does not exist; a failed backup leaves
   nothing behind.
 - **Audited:** the backup is recorded in the audit log with the actor `local-cli`.
+- **On PostgreSQL:** the same command copies the database into a SQLite file inside one snapshot
+  transaction, so the archive holds one consistent state even while the controller writes. The
+  archive is the same as on SQLite, and so is its restore. A database that `rpmgr migrate-db`
+  retired is refused. A PostgreSQL controller keeps its revocation log and audit checkpoints in
+  `/var/lib/rpmgr`, which the backup reads them from. The backup does not replace the PostgreSQL
+  server's own backups, which you keep as well
+  ([10](../../10-operations.md#backup-and-restore)).
 - **The boot file:** `--config <file>`, default `$RPMGR_CONFIG`, else
   `/etc/rpmgr/controller.yaml`, else `/etc/rpmgr/all-in-one.yaml`.
 - **In a container:** run it inside, into the state volume, and copy it out:
@@ -182,12 +189,32 @@ re-enroll agents enrolled after the backup.
 |---|---|
 | `--in <file>` | Required. The archive of `rpmgr backup` |
 | `--revocation-log <dir or file>` | A revocation-log sink directory, or a controller's `revocations.log`. Repeat it for each. Default: the state directory's `revocations.log` |
+| `--replaces <boot file>` | For a restore into a new PostgreSQL database: the boot file of the database it replaces. The restore refuses while a controller holds that database's lock. Without it, stop every controller yourself first |
 | `--config <file>` | The boot file, as for `rpmgr backup` |
 
 The restore refuses to run while a controller holds the database. It prepares everything next to
 the live files and renames them into place only when every step succeeded, so a failed restore
 changes nothing. The replaced files stay in `/var/lib/rpmgr` with the suffix
 `.before-restore-<time>`; delete them once the restored controller runs.
+
+### Into PostgreSQL
+
+When the boot file names a PostgreSQL database, the restore does not replace it: it needs an
+**empty** database that was made for the restore, and it fills it. The restore never drops or
+empties a database, and the database it replaces stays yours to retire. An archive from SQLite
+restores into PostgreSQL and the other way round.
+
+```sh
+sudo rpmgr restore --in /root/rpmgr-20261015T0300.tar --replaces /etc/rpmgr/controller.yaml.old
+```
+
+The boot file of the new database is `--config`. The restore takes that database's controller
+lock, so it refuses while any controller runs on it. The lock is per database, so a controller on
+the **old** database is not seen unless `--replaces` names it; the restore then refuses while it
+holds its lock, and warns when `rpmgr migrate-db` retired that database. A new database gets a new
+epoch like any restore. The restore prepares everything first and fills the database in one
+transaction, so a failed restore leaves it without a row, and the logs in the state directory
+stay as they were.
 
 ### On a new host
 

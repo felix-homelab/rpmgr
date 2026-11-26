@@ -822,10 +822,13 @@ service that still runs the previous binary, with the command that restarts it.
   in the backup stay envelope-encrypted, and the copier never opens them.
   - **The archive:** one tar file, mode 0600, with `controller.db`, `revocations.log`,
     `audit-checkpoints.log` (both without a line still being written) and `backup.json` (format,
-    version, time, trust domain, `db_epoch` and, from Phase 2, `source_dialect`). `controller.db`
-    is a SQLite database also when the source is PostgreSQL, at the schema version of the source.
+    version, time, trust domain, `db_epoch` and, from Phase 2, `source_dialect`, `sqlite` or
+    `postgres`). `controller.db` is a SQLite database also when the source is PostgreSQL, at the
+    schema version of the source.
     With replicas, `revocations.log` is the log of the host the command runs on, and
-    `audit-checkpoints.log` is written from the table ([04](04-security.md#audit-log)).
+    `audit-checkpoints.log` is written from the table ([04](04-security.md#audit-log)). A
+    PostgreSQL controller keeps both logs in `/var/lib/rpmgr`, which the command reads them
+    from. A database that `rpmgr migrate-db` retired is refused.
   - **Other PostgreSQL backups** (a dump, a physical backup) are the operator's own and keep their
     place next to this one, but a database restored from one skips the restore's steps below: the
     new `db_epoch`, the invalidations and the revocations applied again. `rpmgr restore` takes
@@ -856,15 +859,18 @@ service that still runs the previous binary, with the command that restarts it.
   random UUIDv7, as at init, so restoring the same backup twice never reuses an epoch. Agents accept
   the restored, lower revisions only together with the new epoch
   ([03](03-connections.md#revisions-and-ordering)). The boot file decides the dialect of the
-  result: a SQLite file, or, on PostgreSQL, an **empty** database that was made for it, which the
-  copier fills and the restore's steps change in **one transaction**; the restore never drops or
-  empties a database, and the old one stays the operator's to retire. **The controller lock is per
-  database**, so a restore into a new database would not stop replicas still running on the old
-  one: `--replaces <boot file>` names the old database, and the restore refuses while its
-  controller lock is held or `controller_nodes` there has a live row; without it the restore
-  cannot tell, so **stop every replica yourself first**. Before it commits, the restore compares
-  the KEK identifiers in the archive's `secrets_meta` with the boot file's `kek` section and
-  refuses when that KEK cannot open them, naming both.
+  result: a SQLite file, or, on PostgreSQL, an **empty** database that was made for it. The restore
+  does its steps (migrations, the new `db_epoch`, the invalidations and the revocations applied
+  again) on a staged SQLite copy of the archive's database, then the copier fills the empty
+  database with it in **one transaction**; the restore never drops or empties a database, and the
+  old one stays the operator's to retire. An archive from either dialect restores into either.
+  **The controller lock is per database**, so a restore into a new database would not stop replicas
+  still running on the old one: `--replaces <boot file>` names the old database, and the restore
+  refuses while its controller lock is held, or [T] `controller_nodes` there has a live row (slice
+  9.2); it warns when `migrate-db` retired that database. Without it the restore cannot tell, so
+  **stop every replica yourself first**. [T] Before it commits, the restore compares the KEK
+  identifiers in the archive's `secrets_meta` with the boot file's `kek` section and refuses when
+  that KEK cannot open them, naming both.
 - **Relying parties never shrink their deny-list across epochs**: agents merge deny-list updates by
   union and drop an entry only after its own expiry, never because of a version number or a new
   `db_epoch`, so certificates revoked after the backup stay denied on every gateway, connector and
