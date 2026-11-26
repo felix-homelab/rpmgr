@@ -144,16 +144,15 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	roots := x509.NewCertPool()
-	roots.AddCert(c.CA.Root())
 	so := controller.SessionsOptions{DB: c.DB, CA: c.CA, Node: nodeID, Version: c.opts.Version,
 		Sys: c.Sys, Now: c.opts.Now, Admission: c.opts.Admission, RevisionCheck: 50 * time.Millisecond, RevLog: c.RevLog, Sealer: c.sealer,
 		Logger: c.Logs.Logger()}
 	if len(c.opts.Sources) > 0 {
-		so.Compiler = &snapshot.Compiler{Sources: c.opts.Sources, Endpoints: controller.AgentEndpoints(url), Offer: snapshot.ReleaseOfferAt(url), Roots: c.CA.TrustRoots, Log: c.Logs.Logger()}
+		so.Compiler = &snapshot.Compiler{Sources: c.opts.Sources, Endpoints: controller.AgentEndpoints(url), Offer: snapshot.ReleaseOfferAt(url), Roots: func(ctx context.Context, tx *ent.Tx) ([][]byte, error) { return castore.TrustRootsOf(ctx, tx.CAKey) }, Log: c.Logs.Logger()}
 	}
 	sessions := controller.NewSessions(so)
-	cfg := pki.AgentEndpointConfig(pki.NewHolder(node), roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway},
+	// The roots follow the CA, as the controller's do, so that a root rotation needs no restart.
+	cfg := pki.AgentEndpointConfigFollowing(pki.NewHolder(node), c.CA.RootsPool, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway},
 		Denied: sessions.Denied}, nil, controller.ReauthChecks(c.DB, c.Sys))
 	split := controller.NewSplitter(td, ln.Addr())
 	agents := controller.NewAgentServer(cfg, td)
@@ -166,7 +165,7 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 	enrollment.Logger = c.Logs.Logger()
 	agentv1.RegisterEnrollmentServer(agents, enrollment)
 	mux := http.NewServeMux()
-	mux.Handle("/.well-known/rpmgr/trust-bundle", enroll.TrustBundleHandler(c.CA.Root()))
+	mux.Handle("/.well-known/rpmgr/trust-bundle", enroll.TrustBundleHandlerFunc(c.CA.Roots))
 	uiCert, uiRoots := webCertificate(t)
 	web := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = agents.Serve(split.Agents()) }()

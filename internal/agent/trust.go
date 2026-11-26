@@ -133,10 +133,22 @@ func (t *trustSet) Pool() *x509.CertPool {
 // Digest is the roots digest of Hello, of the roots as they are now.
 func (t *trustSet) Digest() []byte { return pki.RootsDigest(t.Certs()) }
 
-// Offer takes the trust roots of an authenticated Welcome or snapshot. Roots that fail the rule,
-// and an offer past the limits, are logged and ignored; the caller never rejects its message for
-// them. It reports whether the set grew.
-func (t *trustSet) Offer(source string, der [][]byte) bool {
+// Offer takes the trust roots of an authenticated Welcome: it adds roots and never drops one, as a
+// Welcome carries no revision that orders it against an older one. Roots that fail the rule, and an
+// offer past the limits, are logged and ignored; the caller never rejects its message for them. It
+// reports whether the set changed.
+func (t *trustSet) Offer(source string, der [][]byte) bool { return t.offer(source, der, nil, false) }
+
+// OfferNewer is Offer for the bundle of a snapshot that is newer than the one that runs, which verified
+// as a whole: besides adding roots it drops a held root that the bundle no longer lists, but only when
+// verifiedBy reports that the message verifies with the roots that are kept alone, so that a root
+// that vouched for nothing the bundle says cannot be used to drop the others, and a bundle never
+// leaves the agent without a root (docs/04-security.md, "Root rotation"). A nil verifiedBy adds only.
+func (t *trustSet) OfferNewer(source string, der [][]byte, verifiedBy func(kept []*x509.Certificate) bool) bool {
+	return t.offer(source, der, verifiedBy, verifiedBy != nil)
+}
+
+func (t *trustSet) offer(source string, der [][]byte, verifiedBy func([]*x509.Certificate) bool, mayDrop bool) bool {
 	if len(der) == 0 {
 		return false
 	}
@@ -148,7 +160,11 @@ func (t *trustSet) Offer(source string, der [][]byte) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	next := acceptRoots(t.certs, t.td, offered, t.now())
-	if len(next) == len(t.certs) {
+	added := len(next) != len(t.certs)
+	if mayDrop {
+		next = t.keep(source, next, offered, verifiedBy)
+	}
+	if !added && len(next) == len(t.certs) {
 		// Warn only of a certificate that signed itself and is not held: a cross-certificate and a
 		// root held are the steady state of a rotation.
 		for _, c := range offered {
@@ -172,8 +188,31 @@ func (t *trustSet) Offer(source string, der [][]byte) bool {
 		pool.AddCert(c)
 	}
 	t.certs, t.pool = next, pool
-	t.log.Info("trusting a new root", "source", source, "roots", len(next))
+	t.log.Info("the trusted roots changed", "source", source, "roots", len(next))
 	return true
+}
+
+// keep returns the roots of held that the offered bundle still lists, in order, or held itself when
+// dropping is not allowed: the bundle lists none of them, or verifiedBy refuses the roots that remain.
+// Only a root that is held and listed with its own public key stays, so a drop never adds anything.
+func (t *trustSet) keep(source string, held, offered []*x509.Certificate, verifiedBy func([]*x509.Certificate) bool) []*x509.Certificate {
+	listed := func(h *x509.Certificate) bool {
+		return slices.ContainsFunc(offered, func(o *x509.Certificate) bool {
+			return bytes.Equal(o.RawSubject, o.RawIssuer) && bytes.Equal(o.RawSubjectPublicKeyInfo, h.RawSubjectPublicKeyInfo)
+		})
+	}
+	kept := slices.DeleteFunc(slices.Clone(held), func(h *x509.Certificate) bool { return !listed(h) })
+	switch {
+	case len(kept) == len(held):
+		return held
+	case len(kept) == 0:
+		t.log.Warn("ignoring a trust bundle that lists none of the roots held", "source", source)
+		return held
+	case !verifiedBy(kept):
+		t.log.Warn("not dropping a root: the message does not verify with the roots the bundle keeps", "source", source)
+		return held
+	}
+	return kept
 }
 
 func holdsKey(held []*x509.Certificate, c *x509.Certificate) bool {
