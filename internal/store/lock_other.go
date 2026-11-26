@@ -10,3 +10,6 @@ import "errors"
 func lockFile(string) (func() error, error) {
 	return nil, errors.New("store: the controller lock needs Linux or macOS")
 }
+
+// syscallNoFollow is not available here.
+const syscallNoFollow = 0

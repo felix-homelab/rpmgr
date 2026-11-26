@@ -97,7 +97,7 @@ func TestDNSTokenJob(t *testing.T) {
 	c := db.Client()
 	add := func(name, tok string, edit func(*ent.DNSProviderCreate)) string {
 		id := ids.New("dnp")
-		sealed, err := sealer.Seal(providers.SecretContext(id), secret.New(tok))
+		sealed, err := sealer.Seal(context.Background(), providers.SecretContext(id), secret.New(tok))
 		if err != nil {
 			t.Fatal(err)
 		}

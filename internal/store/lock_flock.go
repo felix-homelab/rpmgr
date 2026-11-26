@@ -11,10 +11,13 @@ import (
 	"syscall"
 )
 
-// lockFile takes an exclusive, non-blocking flock on path, creating it with mode 0600. The lock is
+// syscallNoFollow makes an open fail on a link instead of following it.
+const syscallNoFollow = syscall.O_NOFOLLOW
+
+// lockFile takes an exclusive, non-blocking flock on path, creating it with mode 0600 and never through a link. The lock is
 // released when the returned function runs, or when the process ends, also by SIGKILL.
 func lockFile(path string) (func() error, error) {
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600) //nolint:gosec // G304: next to the operator's database
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|syscall.O_NOFOLLOW, 0o600) //nolint:gosec // G304: next to the operator's database
 	if err != nil {
 		return nil, fmt.Errorf("store: lock file: %w", err)
 	}

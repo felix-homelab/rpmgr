@@ -387,7 +387,8 @@ var (
 		{Name: "kind", Type: field.TypeEnum, Enums: []string{"root", "intermediate", "config_signing", "audit_checkpoint"}},
 		{Name: "algorithm", Type: field.TypeString},
 		{Name: "public_key", Type: field.TypeBytes},
-		{Name: "certificate", Type: field.TypeBytes},
+		{Name: "certificate", Type: field.TypeBytes, Nullable: true},
+		{Name: "csr", Type: field.TypeBytes, Nullable: true},
 		{Name: "key_enc", Type: field.TypeBytes, Nullable: true},
 		{Name: "not_before", Type: field.TypeTime},
 		{Name: "not_after", Type: field.TypeTime},
@@ -1237,6 +1238,8 @@ var (
 		{Name: "db_epoch", Type: field.TypeString},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "restore_review_since", Type: field.TypeTime, Nullable: true},
+		{Name: "retired_at", Type: field.TypeTime, Nullable: true},
+		{Name: "retired_to", Type: field.TypeString, Nullable: true},
 	}
 	// InstanceTable holds the schema information for the "instance" table.
 	InstanceTable = &schema.Table{

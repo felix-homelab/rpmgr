@@ -233,10 +233,12 @@ func createGateway(ctx context.Context, cfg config.AllInOne, endpoint string, ho
 
 // RunOptions configure Run.
 type RunOptions struct {
-	Config  config.AllInOne
-	Version string
-	Getenv  func(string) string
-	Logger  *slog.Logger
+	Config config.AllInOne
+	// ConfigFile is the path Config was read from, shown in the boot settings.
+	ConfigFile string
+	Version    string
+	Getenv     func(string) string
+	Logger     *slog.Logger
 	// DrainPeriod is the gateway's; 0 is gateway.DrainPeriod.
 	DrainPeriod time.Duration
 	// Listening, if set, is called once the controller, the gateway and the connector run.
@@ -342,7 +344,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	port80 := controller.RedirectHandler(public)
 	gwListening, conListening := make(chan struct{}), make(chan struct{})
 	ctl := &ctlHolder{reg: reg, ready: readiness("controller"), poke: checks.Poke, mem: mem, gone: make(chan error, 1),
-		opts: controller.RunOptions{Config: cfg.Controller(), Version: o.Version, Sources: routes.Sources(), Getenv: o.Getenv,
+		opts: controller.RunOptions{Config: cfg.Controller(), ConfigFile: o.ConfigFile, Version: o.Version, Sources: routes.Sources(), Getenv: o.Getenv,
 			Logger: o.Logger.With("role", "controller"), ACMERoots: o.ACMERoots, Port80: func(h http.Handler) { port80 = h },
 			ACMEAfter: gwListening, SelfUpdate: true}}
 	names := &follower{run: func(ctx context.Context) {

@@ -108,6 +108,12 @@ func certsPEM(certs []*x509.Certificate) []byte {
 // WriteAtomic writes data to a temporary file in path's directory with mode, syncs it and renames
 // it over path.
 func WriteAtomic(path string, data []byte, mode os.FileMode) error {
+	return writeAtomic(path, data, mode, nil)
+}
+
+// writeAtomic is WriteAtomic with beforeRename, if set, run after the file is synced and before the
+// rename; its error abandons the write.
+func writeAtomic(path string, data []byte, mode os.FileMode, beforeRename func() error) error {
 	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
 	if err != nil {
 		return err
@@ -128,6 +134,11 @@ func WriteAtomic(path string, data []byte, mode os.FileMode) error {
 	}
 	if err := f.Close(); err != nil {
 		return err
+	}
+	if beforeRename != nil {
+		if err := beforeRename(); err != nil {
+			return err
+		}
 	}
 	return os.Rename(tmp, path)
 }

@@ -12,6 +12,10 @@ Changes to the design documents are not recorded here: see the git history and t
 
 **Upgrade notes** ([Upgrades](docs/guide/install/upgrades.md)):
 
+- A SQLite database whose path is a symbolic link is now locked under the name of the file it points
+  to (`<file>.lock`), not under the link's. A controller of an earlier release that is still
+  running locks the old name, so stop it before you upgrade or run `rpmgr restore`, `rpmgr migrate`
+  or `rpmgr migrate-db` against such a database.
 - After the first start of this release, secrets are written in a new format that an older release
   cannot read. Take a backup of the database and the KEK before you upgrade; without it there is no
   way back to the older release.
@@ -22,6 +26,33 @@ Changes to the design documents are not recorded here: see the git history and t
   release cannot read a padded name, so upgrade every controller replica promptly and do not
   downgrade after the first new entry.
 
+### Added
+
+- The controller can keep its key-encryption key in a key of Vault or OpenBao Transit:
+  `kek.source: kms` with the new `kek.kms` section in the boot file
+  ([Boot files](docs/guide/reference/boot-files.md#controller)). The controller reads the key at
+  start and does not start when Transit cannot be reached, the key is missing, of another type or
+  not derived, or the credential is refused; `/readyz` and the new `rpmgr_kms_up` and
+  `rpmgr_kms_requests_total` metrics report Transit. `rpmgr kek rotate` re-wraps every value to the
+  latest version of a Transit key after you rotated it there, and `rpmgr kek rotate
+  --previous-config <boot file>` moves the KEK between a file or credential and Transit, in either
+  direction ([Rotate the KEK](docs/10-operations.md#rotate-the-kek)).
+- The root CA's key can leave the controller. `rpmgr ca offline-root --out <file>` moves it into a
+  file that a passphrase protects and removes it from the database; `rpmgr ca sign-intermediate`
+  signs the next issuing intermediate on the offline host, and `rpmgr ca import-intermediate`
+  imports it. `rpmgr ca rotate-intermediate --csr-out <file>` asks the offline root for that
+  signature, and without `--csr-out` it, and Settings → PKI, refuse to rotate while the root is
+  offline. `rpmgr ca status` shows whether the root is offline and warns until the KEK is rotated,
+  and a restore of an older backup takes the key out again. (#694)
+- Settings → PKI and `rpmgr ca status` alert when the next intermediate waits for the offline root's
+  signature, in time before the active one expires, and when the signed one is not valid now. With
+  the root offline, the page says so and leaves out the rotation button. (#694)
+- The Settings page shows the Instance Admin the controller's boot settings, read-only: the
+  database driver (for PostgreSQL its server, database, user and TLS mode), the kind of KEK
+  source, the listen addresses and the revocation-log sink. The API method `GetBootSettings`
+  returns them to the Instance Admin only; no secret, DSN or path of a secret file is ever
+  returned.
+
 ### Changed
 
 - The keys that authenticate the API's page tokens and the previews of gateway pages are random and
@@ -31,6 +62,11 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Fixed
 
+- A webhook endpoint is no longer counted as failing, or disabled after three days, while the key
+  service that holds the KEK (Vault or OpenBao Transit) is unreachable: the delivery waits and is
+  tried again at the next pass, within the 24 hours in which an event is delivered; one that is
+  still waiting after that is dropped. Storing a secret, rotating a webhook secret and rotating the CA's keys no longer hold the
+  database's write lock while they wait for the key service.
 - A controller that stops no longer logs an `ACME job` warning, `context canceled`. The job read
   the database under the controller's system context, which ends a moment before the job's own, so
   a pass that began in that gap failed as if it were an error. It now reads under the job's
@@ -64,6 +100,11 @@ Changes to the design documents are not recorded here: see the git history and t
   that are already verified.
 
 ### Added
+
+- `rpmgr migrate-db` copies a stopped controller's database into an empty one, from SQLite to
+  PostgreSQL or back, with the secrets still sealed and the database epoch kept. It retires the
+  source, which no controller then starts on, unless you pass `--no-retire`
+  ([guide](docs/guide/operations/sqlite-and-postgresql.md)). (#687)
 
 - The zone page now changes the zone's settings: whether it publishes route hostnames, allows
   proxied names and wildcards, and its delete threshold. Before, that took `rpmgr update zone` or

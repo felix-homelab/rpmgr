@@ -22,6 +22,10 @@ const (
 	FieldCreatedAt = "created_at"
 	// FieldRestoreReviewSince holds the string denoting the restore_review_since field in the database.
 	FieldRestoreReviewSince = "restore_review_since"
+	// FieldRetiredAt holds the string denoting the retired_at field in the database.
+	FieldRetiredAt = "retired_at"
+	// FieldRetiredTo holds the string denoting the retired_to field in the database.
+	FieldRetiredTo = "retired_to"
 	// Table holds the table name of the instance in the database.
 	Table = "instance"
 )
@@ -33,6 +37,8 @@ var Columns = []string{
 	FieldDbEpoch,
 	FieldCreatedAt,
 	FieldRestoreReviewSince,
+	FieldRetiredAt,
+	FieldRetiredTo,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -89,4 +95,14 @@ func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByRestoreReviewSince orders the results by the restore_review_since field.
 func ByRestoreReviewSince(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRestoreReviewSince, opts...).ToFunc()
+}
+
+// ByRetiredAt orders the results by the retired_at field.
+func ByRetiredAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRetiredAt, opts...).ToFunc()
+}
+
+// ByRetiredTo orders the results by the retired_to field.
+func ByRetiredTo(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRetiredTo, opts...).ToFunc()
 }

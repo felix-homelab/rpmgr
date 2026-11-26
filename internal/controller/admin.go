@@ -26,6 +26,9 @@ type Readiness struct {
 	dir migrate.Dir
 	sys context.Context
 
+	// KMS, if set, makes the controller not ready while Transit is down.
+	KMS *kmsHealth
+
 	mu      sync.Mutex
 	checked time.Time
 	err     error
@@ -39,6 +42,9 @@ func NewReadiness(db *store.DB, dir migrate.Dir, sys context.Context) *Readiness
 
 // Ready returns why the controller is not ready, or nil.
 func (r *Readiness) Ready(ctx context.Context) error {
+	if err := r.KMS.Ready(ctx); err != nil {
+		return err
+	}
 	if err := store.ReadTx(r.sys, r.db, func(*ent.Tx, store.Revision) error { return ctx.Err() }); err != nil {
 		return fmt.Errorf("database: %w", err)
 	}

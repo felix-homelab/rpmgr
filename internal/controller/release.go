@@ -476,11 +476,14 @@ func ImportRelease(ctx context.Context, path, dir, version string, roots []relea
 	if !release.Releasable(version) {
 		return nil, release.ErrDevelopment
 	}
-	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{})
+	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{RefuseRetired: true})
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = db.Close() }()
+	if err := refuseRetired(ctx, db); err != nil {
+		return nil, err
+	}
 	sys, err := authz.System(ctx, "local-cli", "rpmgr release import "+version, audit.SystemScopes(db))
 	if err != nil {
 		return nil, err

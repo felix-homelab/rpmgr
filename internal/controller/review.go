@@ -28,11 +28,14 @@ func ConfirmRestore(ctx context.Context, path, org string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{})
+	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{RefuseRetired: true})
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = db.Close() }()
+	if err := refuseRetired(ctx, db); err != nil {
+		return nil, err
+	}
 	sys, err := authz.System(ctx, "local-cli", "rpmgr restore confirm", audit.SystemScopes(db))
 	if err != nil {
 		return nil, err

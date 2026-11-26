@@ -15,7 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -96,19 +95,18 @@ func InitCA(ctx context.Context, tx *ent.Tx, s *secret.Sealer, td string, now ti
 	return nil
 }
 
+// saveKey seals a key and saves it in tx: at init, when no other writer exists. Rotation seals
+// before its transaction (Plan).
 func saveKey(ctx context.Context, tx *ent.Tx, s *secret.Sealer, kind cakey.Kind, kp pki.KeyPair, status cakey.Status) error {
-	id := ids.New("cak")
-	der, err := x509.MarshalPKCS8PrivateKey(kp.Key)
+	k, err := sealNew(ctx, s, kind, kp, status)
 	if err != nil {
 		return err
 	}
-	sealed, err := store.Seal(ctx, tx, s, keyContext(id), secret.FromBytes(der))
-	clear(der)
-	if err != nil {
+	if err := store.RecordSealed(ctx, tx, keyContext(k.id), k.sealed); err != nil {
 		return err
 	}
-	return tx.CAKey.Create().SetID(id).SetKind(kind).SetAlgorithm(keyAlgorithm).
-		SetPublicKey(kp.Cert.RawSubjectPublicKeyInfo).SetCertificate(kp.Cert.Raw).SetKeyEnc(sealed).
+	return tx.CAKey.Create().SetID(k.id).SetKind(kind).SetAlgorithm(keyAlgorithm).
+		SetPublicKey(kp.Cert.RawSubjectPublicKeyInfo).SetCertificate(kp.Cert.Raw).SetKeyEnc(k.sealed).
 		SetNotBefore(kp.Cert.NotBefore).SetNotAfter(kp.Cert.NotAfter).SetStatus(status).Exec(ctx)
 }
 
@@ -146,7 +144,7 @@ func (ca *CA) Reload(ctx context.Context, db *store.DB, s *secret.Sealer, now fu
 	if old := ca.state(); old != nil && old.keys == keys.String() {
 		return false, nil
 	}
-	st, err := loadState(rows, s, now)
+	st, err := loadState(ctx, rows, s, now)
 	if err != nil {
 		return false, err
 	}
@@ -155,7 +153,7 @@ func (ca *CA) Reload(ctx context.Context, db *store.DB, s *secret.Sealer, now fu
 	return true, nil
 }
 
-func loadState(rows []*ent.CAKey, s *secret.Sealer, now func() time.Time) (*caState, error) {
+func loadState(ctx context.Context, rows []*ent.CAKey, s *secret.Sealer, now func() time.Time) (*caState, error) {
 	active := map[cakey.Kind]*ent.CAKey{}
 	var older, nextSigner, retiredSigners []*x509.Certificate
 	for _, r := range rows {
@@ -165,6 +163,9 @@ func loadState(rows []*ent.CAKey, s *secret.Sealer, now func() time.Time) (*caSt
 			}
 			active[r.Kind] = r
 			continue
+		}
+		if len(r.Certificate) == 0 {
+			continue // a next intermediate that waits for the signature of an offline root
 		}
 		c, err := x509.ParseCertificate(r.Certificate)
 		if err != nil {
@@ -193,7 +194,7 @@ func loadState(rows []*ent.CAKey, s *secret.Sealer, now func() time.Time) (*caSt
 	for kind, dst := range map[cakey.Kind]*pki.KeyPair{
 		cakey.KindIntermediate: &inter, cakey.KindConfigSigning: &st.configSigner, cakey.KindAuditCheckpoint: &st.auditSigner,
 	} {
-		if *dst, err = openKey(s, active[kind]); err != nil {
+		if *dst, err = openKey(ctx, s, active[kind]); err != nil {
 			return nil, err
 		}
 	}
@@ -211,15 +212,15 @@ func loadState(rows []*ent.CAKey, s *secret.Sealer, now func() time.Time) (*caSt
 }
 
 // openKey opens a sealed key and checks it against its certificate.
-func openKey(s *secret.Sealer, r *ent.CAKey) (pki.KeyPair, error) {
+func openKey(ctx context.Context, s *secret.Sealer, r *ent.CAKey) (pki.KeyPair, error) {
 	cert, err := x509.ParseCertificate(r.Certificate)
 	if err != nil {
 		return pki.KeyPair{}, fmt.Errorf("pki: certificate of the %s key: %w", r.Kind, err)
 	}
-	if r.KeyEnc == nil {
+	if keyOffline(r) {
 		return pki.KeyPair{}, fmt.Errorf("pki: the %s key is offline", r.Kind)
 	}
-	v, err := s.Open(keyContext(r.ID), *r.KeyEnc)
+	v, err := s.Open(ctx, keyContext(r.ID), *r.KeyEnc)
 	if err != nil {
 		return pki.KeyPair{}, fmt.Errorf("pki: open the %s key: %w", r.Kind, err)
 	}

@@ -51,7 +51,7 @@ func checkDNSTokens(ctx context.Context, o DNSTokenOptions, l lease.Lease) error
 		dial = providers.Dial
 	}
 	for _, r := range rows {
-		tok, err := o.Sealer.Open(providers.SecretContext(r.ID), r.CredentialEnc)
+		tok, err := o.Sealer.Open(ctx, providers.SecretContext(r.ID), r.CredentialEnc)
 		if err != nil {
 			// The error comes from the KEK's unsealing and names no secret.
 			o.warn(ctx, "a dns provider's token cannot be opened", r.ID, "err", err)

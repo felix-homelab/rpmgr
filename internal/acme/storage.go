@@ -70,13 +70,16 @@ func valueContext(key string) secret.Context {
 }
 
 // Store implements certmagic.Storage.
-func (s *Storage) Store(_ context.Context, key string, value []byte) error {
+func (s *Storage) Store(ctx context.Context, key string, value []byte) error {
 	if key == "" {
 		return errors.New("acme: an empty storage key")
 	}
+	sealed, err := s.sealer.Seal(ctx, valueContext(key), secret.FromBytes(value))
+	if err != nil {
+		return err
+	}
 	write := func(tx *ent.Tx) error {
-		sealed, err := store.Seal(s.sys, tx, s.sealer, valueContext(key), secret.FromBytes(value))
-		if err != nil {
+		if err := store.RecordSealed(s.sys, tx, valueContext(key), sealed); err != nil {
 			return err
 		}
 		n, err := tx.ACMEStorage.Update().Where(acmestorage.ID(key)).SetValueEnc(sealed).SetSize(len(value)).
@@ -86,7 +89,7 @@ func (s *Storage) Store(_ context.Context, key string, value []byte) error {
 		}
 		return tx.ACMEStorage.Create().SetID(key).SetValueEnc(sealed).SetSize(len(value)).SetModifiedAt(s.now()).Exec(s.sys)
 	}
-	err := store.WriteTx(s.sys, s.db, write)
+	err = store.WriteTx(s.sys, s.db, write)
 	if store.IsUniqueViolation(err) { // another replica created the key at the same moment
 		err = store.WriteTx(s.sys, s.db, write)
 	}
@@ -105,7 +108,7 @@ func prefixed(prefix string) predicate.ACMEStorage {
 }
 
 // Load implements certmagic.Storage; a missing key wraps fs.ErrNotExist, as certmagic requires.
-func (s *Storage) Load(_ context.Context, key string) ([]byte, error) {
+func (s *Storage) Load(ctx context.Context, key string) ([]byte, error) {
 	var out []byte
 	err := store.ReadTx(s.sys, s.db, func(tx *ent.Tx, _ store.Revision) error {
 		row, err := tx.ACMEStorage.Get(s.sys, key)
@@ -115,7 +118,7 @@ func (s *Storage) Load(_ context.Context, key string) ([]byte, error) {
 		if err != nil {
 			return err
 		}
-		v, err := s.sealer.Open(valueContext(key), row.ValueEnc)
+		v, err := s.sealer.Open(ctx, valueContext(key), row.ValueEnc)
 		if err != nil {
 			return err
 		}

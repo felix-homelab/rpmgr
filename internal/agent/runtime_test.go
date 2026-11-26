@@ -470,8 +470,8 @@ func TestRuntime_ResignedSameRevision(t *testing.T) {
 	}
 }
 
-// TestRuntime_TrustRootsInert: until agents take new roots, trust roots in Welcome and in a snapshot
-// change nothing: the snapshot is applied, never rejected for them, and no roots file is written.
+// TestRuntime_TrustRootsInert: a runtime without OnTrustRoots, as the role tests build it, takes no
+// roots from Welcome or a snapshot: the snapshot is applied, never rejected for them, and no roots file is written.
 func TestRuntime_TrustRootsInert(t *testing.T) {
 	e := newRTEnv(t)
 	f := &fakeApplier{}

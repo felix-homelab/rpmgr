@@ -103,8 +103,9 @@ func Enroll(ctx context.Context, o EnrollOptions) (Identity, error) {
 	if err := pki.VerifySigner(signing[0], signing[1:], root, pki.PurposeConfigSigning, o.Now()); err != nil {
 		return Identity{}, fmt.Errorf("agent: the controller's signing certificate: %w", err)
 	}
-	offered, err := parseDER(resp.GetTrustBundle())
-	if err != nil {
+	// Roots past the limits are ignored; the agent keeps the pinned root and enrolls.
+	offered, err := parseOffered(resp.GetTrustBundle())
+	if err != nil && checkRootLimits(resp.GetTrustBundle()) == nil {
 		return Identity{}, err
 	}
 	ident := Identity{AgentID: id.ID, Kind: string(id.Kind), TrustDomain: td, Endpoints: resp.GetControllerEndpoints(),
@@ -112,7 +113,7 @@ func Enroll(ctx context.Context, o EnrollOptions) (Identity, error) {
 	if resp.GetAgentId() != id.ID {
 		return Identity{}, errors.New("agent: the response's agent ID is not the certificate's")
 	}
-	if err := writeIdentity(o.IdentityDir, key, chain, acceptRoots(root, offered), signing, ident); err != nil {
+	if err := writeIdentity(o.IdentityDir, key, chain, acceptRoots([]*x509.Certificate{root}, td, offered, o.Now()), signing, ident); err != nil {
 		return Identity{}, err
 	}
 	return ident, nil
@@ -200,19 +201,6 @@ func checkChain(der [][]byte, root *x509.Certificate, td string, key *ecdsa.Priv
 		return nil, pki.Identity{}, err
 	}
 	return chain, id, nil
-}
-
-// acceptRoots keeps the pinned root, and of the roots the authenticated response offers only those
-// the pinned root cross-signed (docs/04-security.md, "Join command").
-func acceptRoots(pinned *x509.Certificate, offered []*x509.Certificate) []*x509.Certificate {
-	out := []*x509.Certificate{pinned}
-	for _, c := range offered {
-		if c.Equal(pinned) || !c.IsCA || c.CheckSignatureFrom(pinned) != nil {
-			continue
-		}
-		out = append(out, c)
-	}
-	return out
 }
 
 func parseDER(ders [][]byte) ([]*x509.Certificate, error) {

@@ -463,8 +463,8 @@ Rules:
   same bytes. **Certificates with identical raw DER count once**, in the list and in the digest.
   Outside a rotation the list is one certificate. The field goes only to an agent that announced
   `trust.roots`; one without it keeps the root it has and shows as a straggler of a rotation
-  ([04](04-security.md#root-rotation)). Agents announce `trust.roots` **from slice 8.13 (#696)
-  on**, because the capability promises that they can take part in a root rotation.
+  ([04](04-security.md#root-rotation)). Agents announce `trust.roots` because the capability
+  promises that they can take part in a root rotation.
 - **The digest.** `Hello.roots_digest` (field 10) is the SHA-256 over the agent's trusted
   self-signed roots in the order above, each contributing `uvarint(len(DER)) ‖ DER`.
   **Cross-certificates do not count toward the digest.** The controller computes the same digest of
@@ -477,10 +477,17 @@ Rules:
   stays the same.
 - **What an agent does with them** is in [04](04-security.md#root-rotation): it keeps an offered
   root only when a cross-certificate from a root it trusts verifies. A root that fails the rule is
-  ignored and logged, and never rejects the snapshot that carried it.
+  ignored and logged, and never rejects the snapshot that carried it. The agent checks the limits
+  below on the DER bytes **before** it parses anything and ignores an offer that exceeds them,
+  whole. It keeps one root per public key, so the limit counts keys. It reads the digest it sends
+  in `Hello` again from the roots it holds; a root learned from a `Welcome` or from a snapshot
+  ends the control session once, so that the reconnect's `Hello` reports the new set; it cannot
+  loop, because the controller sends roots in `Welcome` only while the digest differs.
 - **Limits** are in the table below. The roots count toward the control message limit of 4 MiB
   ([Framing](#framing)): a snapshot that with its roots exceeds it fails to compile as any
-  oversized snapshot does.
+  oversized snapshot does. A snapshot whose roots cannot be encoded is compiled without them and
+  the error is logged, as `Welcome` is sent. An agent reads a missing `trust_roots` as no
+  information, never as an empty bundle, and keeps the roots it holds.
 
 ### Revisions and ordering
 
@@ -1641,7 +1648,7 @@ sequenceDiagram
 | Controller lock check (PostgreSQL, Phase 2) | every 5 s, each check at most 5 s | The lock ends with its connection ([06](06-data-model.md#connecting-to-postgresql-phase-2)); the connection has `idle_session_timeout` 0 and TCP keepalives; a loss is acted on at once, and the **stop bound** is 10 s (an interval and a check); a controller that has just taken the lock waits one stop bound before its first write |
 | Controller node heartbeat (HA, Phase 2) | every 10 s; a node is live for 30 s after it; a row with no backlog is removed after 24 h | The singleton job lease's TTL, so a dead replica is not live for longer than its jobs wait ([06](06-data-model.md#system)) |
 | Controller-to-controller connection (HA, Phase 2) | dial and handshake 5 s; HTTP/2 `PING` after 15 s without activity, answered within 10 s, as the TCP fallback; a forwarded operation carries the caller's deadline | A dead peer is noticed within 25 s, and the operation fails with the caller's deadline ([10](10-operations.md#high-availability)) |
-| Transit request (Phase 2) | 10 s per request, the answer at most 64 KiB; a connection error, a 429 or a 5xx is tried again at most 3 times, after 0.5 s, 1 s and 2 s, `Retry-After` honoured up to 5 s; the token is renewed at half its lease and read again at the first 403 | A key service that is down for seconds does not stop the controller, and one that is down for longer does so visibly ([04](04-security.md#secrets-at-rest-and-in-logs)) |
+| Transit request (Phase 2) | 10 s per request, the answer at most 64 KiB; a connection error, a 429 or a 5xx is tried again at most 3 times, after 0.5 s, 1 s and 2 s, `Retry-After` honoured up to 5 s, a certificate that does not verify not at all; no redirect is followed; an AppRole login is tried at most once in 30 s and is not repeated on a 5xx, since each one uses a secret ID and starts a lease; the token is renewed at half its lease and read again at the first 403 | A key service that is down for seconds does not stop the controller, and one that is down for longer does so visibly ([04](04-security.md#secrets-at-rest-and-in-logs)) |
 | Revocation-log sink (Phase 2) | an object store request 10 s; shipping every 10 s lists only what follows the verified prefix a replica caches, and reads the whole sink once, at start | A tick costs one request when nothing happened ([04](04-security.md#revocation-log)) |
 | Database password file (Phase 2) | at most 4 KiB, one non-empty line | A password and nothing else ([06](06-data-model.md#connecting-to-postgresql-phase-2)) |
 | Database copy (Phase 2) | batches of 1 000 rows, in one transaction on the target for the whole copy | Bounds the memory of the copier, not the time ([06](06-data-model.md#copying-a-database)) |

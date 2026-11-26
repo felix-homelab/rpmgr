@@ -4,6 +4,7 @@ package settings_test
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"sync"
 	"testing"
@@ -117,7 +118,7 @@ func TestInstanceKey(t *testing.T) {
 		// A key rewrapped under a new KEK is the same key.
 		next := testKEK(t)
 		rotated, _ := secret.NewSealer(next, kek)
-		re, err := rotated.Rewrap(secret.Context{Table: "instance_secrets", Column: "value_enc", RowID: settings.PageTokenKey}, row.ValueEnc)
+		re, err := rotated.Rewrap(context.Background(), secret.Context{Table: "instance_secrets", Column: "value_enc", RowID: settings.PageTokenKey}, row.ValueEnc)
 		if err != nil {
 			t.Fatal(err)
 		}

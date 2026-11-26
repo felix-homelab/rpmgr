@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -32,6 +33,12 @@ type SQLiteOptions struct {
 	// on the same database refuses to start (one controller per SQLite database). Administration
 	// commands that run next to a controller leave it off.
 	Lock bool
+	// RefuseRetired makes every write transaction check that `rpmgr migrate-db` has not retired the
+	// database, for commands that take no controller lock.
+	RefuseRetired bool
+	// Create creates the file with mode 0600 if it does not exist, after the lock is taken, and
+	// reports it in DB.Created; it never follows a link or replaces a file.
+	Create bool
 }
 
 // DB is an opened database. On SQLite, Writer is the single writer connection and Reader a pool of
@@ -42,6 +49,9 @@ type DB struct {
 	Writer  *sql.DB
 	Reader  *sql.DB
 	unlock  func() error
+	// Created is whether OpenSQLite created the file (SQLiteOptions.Create).
+	Created       bool
+	refuseRetired bool
 	// lockLost is closed when the PostgreSQL session that holds the controller lock ends.
 	lockLost <-chan struct{}
 
@@ -62,7 +72,26 @@ func (db *DB) ReadClient() *ent.Client { return db.readClient }
 // HoldLock takes the controller lock of the SQLite database at path without opening it, for an
 // administration command that replaces the database, such as a restore: no controller can start
 // on it while the lock is held. It returns ErrLocked while a controller runs.
-func HoldLock(path string) (func() error, error) { return lockFile(path + ".lock") }
+func HoldLock(path string) (func() error, error) { return lockFile(ResolvePath(path) + ".lock") }
+
+// HoldLockNoFollow is HoldLock for a restore, which treats every link in the state directory as
+// hostile: it names the lock file after the path as given, without resolving the path's links; the
+// lock file itself is never opened through a link, which holds for every lock.
+func HoldLockNoFollow(path string) (func() error, error) { return lockFile(path + ".lock") }
+
+// ResolvePath follows the symbolic links of a SQLite database's path, also when the file does not
+// exist yet (then those of its directory), so that every command derives the same lock file and
+// write-ahead log names for one database, whatever name reaches it. A path that cannot be resolved
+// is returned as it is.
+func ResolvePath(path string) string {
+	if r, err := filepath.EvalSymlinks(path); err == nil {
+		return r
+	}
+	if r, err := filepath.EvalSymlinks(filepath.Dir(path)); err == nil {
+		return filepath.Join(r, filepath.Base(path))
+	}
+	return path
+}
 
 // ErrLocked is returned when another controller holds the database.
 var ErrLocked = errors.New("store: another controller is using this database")
@@ -79,6 +108,11 @@ func OpenSQLite(ctx context.Context, path string, o SQLiteOptions) (*DB, error) 
 	if path == "" || strings.ContainsAny(path, "?#%") {
 		return nil, fmt.Errorf("store: SQLite path %q: must not be empty or contain '?', '#' or '%%'", path)
 	}
+	if o.Create { // the file itself is never resolved: a link there is refused below
+		path = filepath.Join(ResolvePath(filepath.Dir(path)), filepath.Base(path))
+	} else {
+		path = ResolvePath(path)
+	}
 	db := &DB{Dialect: SQLite, Path: path, unlock: func() error { return nil }}
 	if o.Lock {
 		unlock, err := lockFile(path + ".lock")
@@ -86,6 +120,27 @@ func OpenSQLite(ctx context.Context, path string, o SQLiteOptions) (*DB, error) 
 			return nil, err
 		}
 		db.unlock = unlock
+	}
+	db.refuseRetired = o.RefuseRetired
+	if o.Create {
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL|syscallNoFollow, 0o600) //nolint:gosec // G304: the operator's database
+		switch {
+		case err == nil:
+			db.Created = true
+			_ = f.Close()
+		case !errors.Is(err, os.ErrExist):
+			_ = db.Close()
+			return nil, fmt.Errorf("store: create %s: %w", path, err)
+		default: // it exists: anything but a regular file, a link included, is refused
+			fi, err := os.Lstat(path)
+			if err == nil && !fi.Mode().IsRegular() {
+				err = errors.New("it exists and is not a regular file")
+			}
+			if err != nil {
+				_ = db.Close()
+				return nil, fmt.Errorf("store: create %s: %w", path, err)
+			}
+		}
 	}
 	var err error
 	if db.Writer, err = openPool(ctx, sqliteDSN(path, o.BusyTimeout, false), 1); err != nil {

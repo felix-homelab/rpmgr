@@ -35,7 +35,7 @@ func TestAuditSink_KEKRotation(t *testing.T) {
 	old, _ := secret.NewKEK([]byte("0123456789abcdef0123456789abcdef"))
 	rotating, _ := secret.NewSealer(next, old)
 	ctx := secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: s.ID}
-	rewrapped, err := rotating.Rewrap(ctx, *s.SecretEnc)
+	rewrapped, err := rotating.Rewrap(context.Background(), ctx, *s.SecretEnc)
 	if err != nil || string(rewrapped) == string(*s.SecretEnc) {
 		t.Fatalf("rewrap: %v", err)
 	}
