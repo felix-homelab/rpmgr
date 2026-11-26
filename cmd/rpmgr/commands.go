@@ -279,7 +279,7 @@ func backupCommand() *cli.Command {
 // restoreCommand is `rpmgr restore`: the controller's database and logs from a backup, with the
 // revocations since applied again (docs/10-operations.md, "Backup and restore").
 func restoreCommand() *cli.Command {
-	var configPath, in, stage string
+	var configPath, in, stage, replaces string
 	var logs []string
 	var dnsDisabled bool
 	return &cli.Command{
@@ -290,6 +290,7 @@ func restoreCommand() *cli.Command {
 			fs.Func("revocation-log", "the revocation-log sink directory, or a replica's revocations.log; repeat for each (default the state directory's revocations.log)",
 				func(s string) error { logs = append(logs, s); return nil })
 			fs.StringVar(&stage, "stage-dir", "", "where the restore does its SQLite work: a directory you own with mode 0700 that no one else can write (default a new private directory under the temporary one); the root updater passes /var/lib/rpmgr-update/restore")
+			fs.StringVar(&replaces, "replaces", "", "the boot file of the database a restore into a new PostgreSQL database replaces: the restore refuses while a controller holds its lock; without it, stop every controller yourself first")
 			fs.BoolVar(&dnsDisabled, "dns-disabled", false, "set every managed DNS zone to disabled instead of held, for a copy that must never touch production DNS")
 			fs.StringVar(&configPath, "config", "", bootFlagHelp)
 		},
@@ -298,7 +299,7 @@ func restoreCommand() *cli.Command {
 				return cli.Usagef("restore needs --in")
 			}
 			r, err := controller.Restore(ctx, controller.RestoreOptions{ConfigPath: controllerBoot(configPath, env.Getenv),
-				Archive: in, RevocationLogs: logs, StageDir: stage, DNSDisabled: dnsDisabled})
+				Archive: in, RevocationLogs: logs, StageDir: stage, DNSDisabled: dnsDisabled, Replaces: replaces, Getenv: env.Getenv})
 			if err != nil {
 				return err
 			}
@@ -306,9 +307,11 @@ func restoreCommand() *cli.Command {
 				"Applied %d revocations since the backup again; %d of them name something the backup does not hold.\n"+
 				"Every session, enrollment token, reset link and open invitation of the backup is invalidated.\n"+
 				"%s"+
+				"%s"+
 				"The replaced files are kept with the suffix %s. Start one controller, check /readyz, then the others;\n"+
 				"re-enroll agents enrolled after the backup.\n",
-				r.TrustDomain, r.Backup.UTC().Format(time.RFC3339), r.NewEpoch, r.OldEpoch, r.Reapplied, r.Unknown, dnsNote(r, dnsDisabled), r.Previous)
+				r.TrustDomain, r.Backup.UTC().Format(time.RFC3339), r.NewEpoch, r.OldEpoch, r.Reapplied, r.Unknown, dnsNote(r, dnsDisabled),
+				pgNote(r), r.Previous)
 			if err == nil && len(r.RootKeysDropped) > 0 {
 				_, err = fmt.Fprintf(env.Stdout, "\nThe backup still held the key of the root %s. It is restored without it, as the revocation log's\n"+
 					"root_offline marker says; the root signs only from its offline file.\n", strings.Join(r.RootKeysDropped, ", "))
@@ -328,6 +331,18 @@ func restoreCommand() *cli.Command {
 		},
 		Sub: []*cli.Command{restoreConfirm()},
 	}
+}
+
+// pgNote says what a restore into PostgreSQL left alone.
+func pgNote(r controller.RestoreResult) string {
+	if r.Dialect != "postgres" {
+		return ""
+	}
+	note := "The PostgreSQL database was empty and now holds the restore; the database it replaces is untouched, and retiring it is yours.\n"
+	if r.ReplacesRetired != "" {
+		note += fmt.Sprintf("WARNING: the database --replaces names was retired by migrate-db to %s; the controller to stop is the one that runs there.\n", r.ReplacesRetired)
+	}
+	return note
 }
 
 // dnsNote says what became of the managed DNS zones, if there are any.

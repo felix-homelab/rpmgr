@@ -175,3 +175,11 @@ func SetEffectiveUID(t testing.TB, uid int) {
 	effectiveUID = func() int { return uid }
 	t.Cleanup(func() { effectiveUID = os.Geteuid })
 }
+
+// SetPostgresStateDir sets the state directory that a PostgreSQL controller's backup and restore
+// use for one test, which must not run in parallel with others.
+func SetPostgresStateDir(t testing.TB, dir string) {
+	old := postgresStateDir
+	postgresStateDir = dir
+	t.Cleanup(func() { postgresStateDir = old })
+}

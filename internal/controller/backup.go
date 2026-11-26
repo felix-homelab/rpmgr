@@ -16,7 +16,9 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
+	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/store"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
 )
 
 // The files of a backup archive (docs/10-operations.md, "Backup and restore").
@@ -34,14 +36,18 @@ type BackupInfo struct {
 	Created     time.Time `json:"created"`
 	TrustDomain string    `json:"trust_domain"`
 	DBEpoch     string    `json:"db_epoch"`
+	// SourceDialect is the engine the backup was taken from, sqlite or postgres; controller.db is
+	// SQLite either way. Archives of earlier releases have none and came from SQLite.
+	SourceDialect string `json:"source_dialect,omitempty"`
 }
 
 // Backup is `rpmgr backup`: one archive, mode 0600, of a consistent copy of the controller's
-// database (VACUUM INTO, while the controller keeps running) and of its revocation log and audit
+// database (VACUUM INTO on SQLite; on PostgreSQL the copier of migrate-db inside one snapshot
+// transaction; either while the controller keeps running) and of its revocation log and audit
 // checkpoints, which live outside the database. Secrets in the database stay envelope-encrypted;
 // the KEK is not in it. It is local administration, audited as local-cli.
 func Backup(ctx context.Context, path, out, version string, now func() time.Time) (BackupInfo, error) {
-	cfg, err := loadController(path)
+	d, err := bootDatabase(path)
 	if err != nil {
 		return BackupInfo{}, err
 	}
@@ -49,7 +55,7 @@ func Backup(ctx context.Context, path, out, version string, now func() time.Time
 	if err != nil {
 		return BackupInfo{}, err
 	}
-	info, err := backup(ctx, cfg.Database.DSN, f, version, now)
+	info, err := backup(ctx, d, f, version, now)
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
@@ -63,53 +69,52 @@ func Backup(ctx context.Context, path, out, version string, now func() time.Time
 // BackupTo is `rpmgr backup --out -`: the same archive, written to w, which the root updater reads
 // from a backup run as the service user, so that root opens nothing in the state directory.
 func BackupTo(ctx context.Context, path string, w io.Writer, version string, now func() time.Time) (BackupInfo, error) {
-	cfg, err := loadController(path)
+	d, err := bootDatabase(path)
 	if err != nil {
 		return BackupInfo{}, err
 	}
-	return backup(ctx, cfg.Database.DSN, w, version, now)
+	return backup(ctx, d, w, version, now)
 }
 
-func backup(ctx context.Context, dsn string, w io.Writer, version string, now func() time.Time) (BackupInfo, error) {
-	if root, err := os.OpenRoot(filepath.Dir(dsn)); err == nil {
-		// Run by root, SQLite would follow a link the service user planted for a journal name.
-		err = refuseLinks(root, filepath.Base(dsn), filepath.Base(dsn)+"-wal", filepath.Base(dsn)+"-shm")
-		_ = root.Close()
-		if err != nil {
-			return BackupInfo{}, err
+func backup(ctx context.Context, d config.Database, w io.Writer, version string, now func() time.Time) (BackupInfo, error) {
+	state := stateDir(d)
+	if d.Driver != "postgres" {
+		if root, err := os.OpenRoot(state); err == nil {
+			// Run by root, SQLite would follow a link the service user planted for a journal name.
+			err = refuseLinks(root, filepath.Base(d.DSN), filepath.Base(d.DSN)+"-wal", filepath.Base(d.DSN)+"-shm")
+			_ = root.Close()
+			if err != nil {
+				return BackupInfo{}, err
+			}
 		}
 	}
-	db, err := store.OpenSQLite(ctx, dsn, store.SQLiteOptions{})
+	tmp, err := os.MkdirTemp(state, ".backup-")
 	if err != nil {
 		return BackupInfo{}, err
 	}
-	defer func() { _ = db.Close() }()
-	sys, err := authz.System(ctx, "local-cli", "rpmgr backup", audit.SystemScopes(db))
-	if err != nil {
-		return BackupInfo{}, err
-	}
-	inst, err := db.Client().Instance.Get(sys, 1)
-	if err != nil {
-		return BackupInfo{}, fmt.Errorf("controller: the database holds no installation: %w", err)
-	}
-	tmp, err := os.MkdirTemp(filepath.Dir(dsn), ".backup-")
-	if err != nil {
-		return BackupInfo{}, err
-	}
-	copyPath := filepath.Join(tmp, BackupDatabase)
 	defer func() {
-		_ = os.Remove(copyPath)
+		if es, err := os.ReadDir(tmp); err == nil {
+			for _, e := range es {
+				_ = os.Remove(filepath.Join(tmp, e.Name()))
+			}
+		}
 		_ = os.Remove(tmp)
 	}()
-	if err := db.VacuumInto(ctx, copyPath); err != nil {
+	copyPath := filepath.Join(tmp, BackupDatabase)
+	var inst *ent.Instance
+	if d.Driver == "postgres" {
+		inst, err = snapshotPostgres(ctx, d, tmp, copyPath)
+	} else {
+		inst, err = snapshotSQLite(ctx, d.DSN, copyPath)
+	}
+	if err != nil {
 		return BackupInfo{}, err
 	}
-	info := BackupInfo{Format: 1, Version: version, Created: now().UTC(), TrustDomain: inst.TrustDomain, DBEpoch: inst.DbEpoch}
+	info := BackupInfo{Format: 1, Version: version, Created: now().UTC(), TrustDomain: inst.TrustDomain, DBEpoch: inst.DbEpoch, SourceDialect: dialectOf(d)}
 	meta, err := json.MarshalIndent(info, "", "  ")
 	if err != nil {
 		return BackupInfo{}, err
 	}
-	state := filepath.Dir(dsn)
 	tw := tar.NewWriter(w)
 	if err := addBytes(tw, BackupMeta, append(meta, '\n'), info.Created); err != nil {
 		return BackupInfo{}, err
@@ -133,6 +138,68 @@ func backup(ctx context.Context, dsn string, w io.Writer, version string, now fu
 		}
 	}
 	return info, tw.Close()
+}
+
+func dialectOf(d config.Database) string {
+	if d.Driver == "postgres" {
+		return "postgres"
+	}
+	return "sqlite"
+}
+
+// snapshotSQLite writes a consistent copy of the SQLite database at dsn to copyPath and returns
+// its installation.
+func snapshotSQLite(ctx context.Context, dsn, copyPath string) (*ent.Instance, error) {
+	db, err := store.OpenSQLite(ctx, dsn, store.SQLiteOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = db.Close() }()
+	sys, err := authz.System(ctx, "local-cli", "rpmgr backup", audit.SystemScopes(db))
+	if err != nil {
+		return nil, err
+	}
+	inst, err := db.Client().Instance.Get(sys, 1)
+	if err != nil {
+		return nil, fmt.Errorf("controller: the database holds no installation: %w", err)
+	}
+	return inst, db.VacuumInto(ctx, copyPath)
+}
+
+// snapshotPostgres copies a PostgreSQL database into a SQLite file at copyPath, through the copier
+// of `migrate-db` and inside one snapshot transaction (REPEATABLE READ, READ ONLY), so the copy
+// holds one revision whatever a running controller writes meanwhile. It takes no controller lock
+// and writes nothing to the database. The work file lives in tmp; the finished copy is a single
+// file.
+func snapshotPostgres(ctx context.Context, d config.Database, tmp, copyPath string) (*ent.Instance, error) {
+	src, err := store.OpenPostgres(ctx, d.DSN, store.PostgresOptions{PasswordFile: d.PasswordFile, PasswordCredential: d.PasswordCredential})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = src.Close() }()
+	if err := checkSource(ctx, src); err != nil {
+		return nil, err
+	}
+	work, err := store.OpenSQLite(ctx, filepath.Join(tmp, "work.db"), store.SQLiteOptions{Create: true})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = work.Close() }()
+	if err := migrateEmptyTarget(ctx, work); err != nil {
+		return nil, err
+	}
+	if _, err := store.CopyDatabase(ctx, src, work, store.CopyOptions{}); err != nil {
+		return nil, err
+	}
+	sys, err := authz.System(ctx, "local-cli", "rpmgr backup", audit.SystemScopes(work))
+	if err != nil {
+		return nil, err
+	}
+	inst, err := work.Client().Instance.Get(sys, 1)
+	if err != nil {
+		return nil, fmt.Errorf("controller: the database holds no installation: %w", err)
+	}
+	return inst, work.VacuumInto(ctx, copyPath)
 }
 
 func addBytes(tw *tar.Writer, name string, b []byte, mod time.Time) error {

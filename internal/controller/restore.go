@@ -18,6 +18,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
+	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/dns/apply"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/pki/castore"
@@ -55,11 +56,20 @@ type RestoreOptions struct {
 	// production DNS (docs/15-dns.md, "Held zones and plan approval"). Otherwise every zone starts
 	// held.
 	DNSDisabled bool
-	Now         func() time.Time
+	// Replaces names the database that the restored one takes the place of, a boot file or a SQLite
+	// file, when the boot file names a new PostgreSQL database: the controller lock is per
+	// database, so only this tells the restore whether a controller still runs on the old one. The
+	// restore takes its lock exclusively, refusing while a controller holds it, and does nothing
+	// else to it. Without it the operator has stopped every controller. It has no use on SQLite,
+	// where the restore replaces the database in place.
+	Replaces string
+	Getenv   func(string) string // default os.Getenv
+	Now      func() time.Time
 }
 
 // RestoreResult is what a restore reports.
 type RestoreResult struct {
+	Dialect     string // the restored database's engine, sqlite or postgres
 	TrustDomain string
 	Backup      time.Time // when the backup was taken
 	OldEpoch    string    // the backup's
@@ -69,7 +79,7 @@ type RestoreResult struct {
 	// Unknown counts those of them whose subject the backup does not hold, as one created after
 	// it; a revoked certificate or identity among them stays on the deny-list all the same.
 	Unknown  int
-	Previous string // the suffix of the replaced database and logs, which stay in the state directory
+	Previous string // the suffix of the replaced logs, and on SQLite database, which stay in the state directory
 	// Review lists why the revocations since the backup may be incomplete. Then the restore failed
 	// closed and the instance is in restore review.
 	Review []string
@@ -80,6 +90,9 @@ type RestoreResult struct {
 	// held the key of and the restore took offline again, as the revocation log's `root_offline`
 	// marker says (docs/04-security.md, "Offline root CA").
 	RootKeysDropped []string
+	// ReplacesRetired is where `migrate-db` moved the database named by RestoreOptions.Replaces, when
+	// it did: its controller is not the one the restore replaces.
+	ReplacesRetired string
 }
 
 // ErrControllerRunning is returned by Restore while a controller holds the database.
@@ -148,20 +161,47 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 	if o.Now == nil {
 		o.Now = time.Now
 	}
-	cfg, err := loadController(o.ConfigPath)
+	if o.Getenv == nil {
+		o.Getenv = os.Getenv
+	}
+	d, err := bootDatabase(o.ConfigPath)
 	if err != nil {
 		return RestoreResult{}, err
 	}
-	dsn := cfg.Database.DSN
-	state := filepath.Dir(dsn)
-	unlock, err := store.HoldLockNoFollow(dsn)
-	if errors.Is(err, store.ErrLocked) {
-		return RestoreResult{}, ErrControllerRunning
+	dsn := d.DSN
+	state := stateDir(d)
+	var res RestoreResult
+	var pg *store.DB
+	if d.Driver == "postgres" {
+		// The controller lock of the target database, exclusive, held to the end: a controller, which
+		// holds it shared or exclusive, makes the restore refuse.
+		pg, err = store.OpenPostgres(ctx, dsn, store.PostgresOptions{
+			PasswordFile: d.PasswordFile, PasswordCredential: d.PasswordCredential, Getenv: o.Getenv, Lock: true})
+		if errors.Is(err, store.ErrLocked) {
+			return RestoreResult{}, ErrControllerRunning
+		}
+		if err != nil {
+			return RestoreResult{}, err
+		}
+		defer func() { _ = pg.Close() }()
+		if o.Replaces != "" {
+			old, retired, lerr := lockReplaced(ctx, o, d)
+			if lerr != nil {
+				return RestoreResult{}, lerr
+			}
+			defer func() { _ = old.Close() }()
+			res.ReplacesRetired = retired
+		}
+	} else {
+		unlock, err := store.HoldLockNoFollow(dsn)
+		if errors.Is(err, store.ErrLocked) {
+			return RestoreResult{}, ErrControllerRunning
+		}
+		if err != nil {
+			return RestoreResult{}, err
+		}
+		defer func() { _ = unlock() }()
 	}
-	if err != nil {
-		return RestoreResult{}, err
-	}
-	defer func() { _ = unlock() }()
 	a, err := readArchive(o.Archive)
 	if err != nil {
 		return RestoreResult{}, err
@@ -176,26 +216,39 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 		return RestoreResult{}, err
 	}
 	defer func() { _ = root.Close() }()
-	live := []string{filepath.Base(dsn), BackupRevocations, BackupCheckpoints}
-	stage, done, err := stagingDir(o.StageDir, live...)
+	// Files of the state directory that the restore replaces. A SQLite database is the first of
+	// them, with its journal files; a PostgreSQL database is not a file, so the restored one is
+	// staged under the archive's name and filled in through the copier.
+	live := []string{BackupRevocations, BackupCheckpoints}
+	staged0 := BackupDatabase
+	hasFile := d.Driver != "postgres"
+	if hasFile {
+		live = append([]string{filepath.Base(dsn)}, live...)
+		staged0 = live[0]
+	}
+	stage, done, err := stagingDir(o.StageDir, append([]string{staged0}, live...)...)
 	if err != nil {
 		return RestoreResult{}, err
 	}
 	defer done()
+	suffixes := func(i int) []string {
+		if i == 0 && hasFile {
+			return []string{"", "-wal", "-shm"}
+		}
+		return []string{""}
+	}
 	var names []string
 	for i, n := range live {
-		for _, s := range []string{"", "-wal", "-shm"} {
-			if i == 0 || s == "" {
-				names = append(names, n+s)
-			}
+		for _, s := range suffixes(i) {
+			names = append(names, n+s)
 		}
 	}
 	if err := refuseLinks(root, names...); err != nil {
 		return RestoreResult{}, err
 	}
 	staged := func(name string) string { return filepath.Join(stage, name) }
-	for i, b := range [][]byte{a.db, a.revs, a.cpoints} {
-		if err := stageFile(staged(live[i]), b); err != nil {
+	for n, b := range map[string][]byte{staged0: a.db, BackupRevocations: a.revs, BackupCheckpoints: a.cpoints} {
+		if err := stageFile(staged(n), b); err != nil {
 			return RestoreResult{}, err
 		}
 	}
@@ -208,8 +261,8 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 	if err != nil {
 		return RestoreResult{}, err
 	}
-	res := RestoreResult{TrustDomain: a.info.TrustDomain, Backup: a.info.Created, OldEpoch: a.info.DBEpoch, Review: review}
-	if err := prepare(ctx, staged(live[0]), staged(BackupRevocations), a.info, newer, o.Now, o.DNSDisabled, &res); err != nil {
+	res.Dialect, res.TrustDomain, res.Backup, res.OldEpoch, res.Review = dialectOf(d), a.info.TrustDomain, a.info.Created, a.info.DBEpoch, review
+	if err := prepare(ctx, staged(staged0), staged(BackupRevocations), a.info, newer, o.Now, o.DNSDisabled, &res); err != nil {
 		return RestoreResult{}, err
 	}
 
@@ -222,8 +275,8 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 			_ = root.Remove(m.tmp)
 		}
 	}()
-	for _, n := range live {
-		for _, s := range []string{"", "-wal", "-shm"} {
+	for i, n := range live {
+		for _, s := range suffixes(i) {
 			if _, err := os.Lstat(staged(n + s)); err != nil {
 				if errors.Is(err, os.ErrNotExist) && s != "" {
 					continue
@@ -238,10 +291,17 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 			moves = append(moves, move{tmp, n + s})
 		}
 	}
+	if pg != nil {
+		// Everything is ready, and nothing in the state directory has changed yet: the copier fills
+		// the empty database in one transaction, or leaves it as it was.
+		if err := restorePostgres(ctx, pg, staged(staged0)); err != nil {
+			return RestoreResult{}, err
+		}
+	}
 	res.Previous = ".before-restore-" + o.Now().UTC().Format("20060102T150405Z")
 	hook("moving")
-	for _, n := range live {
-		for _, s := range []string{"", "-wal", "-shm"} {
+	for i, n := range live {
+		for _, s := range suffixes(i) {
 			if err := root.Rename(n+s, n+s+res.Previous); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return RestoreResult{}, err
 			}
@@ -258,12 +318,63 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 	return res, ownLike(state, state)
 }
 
+// lockReplaced opens the database that the restore replaces with its controller lock, exclusively,
+// which the caller keeps until the restore ends: a controller on it, or a replica, makes the restore
+// refuse. It returns where `migrate-db` moved that database, if it did. The database it names is
+// never the target.
+func lockReplaced(ctx context.Context, o RestoreOptions, target config.Database) (*store.DB, string, error) {
+	old, err := endpoint(o.Replaces)
+	if err != nil {
+		return nil, "", err
+	}
+	if sameDatabase(old, target) {
+		return nil, "", fmt.Errorf("%w: --replaces names the database the restore fills", ErrSameDatabase)
+	}
+	db, err := openMigrateEnd(ctx, old, o.Getenv, false)
+	if errors.Is(err, ErrStopController) {
+		return nil, "", fmt.Errorf("%w (the database --replaces names)", ErrControllerRunning)
+	}
+	if err != nil {
+		return nil, "", fmt.Errorf("controller: the database --replaces names: %w", err)
+	}
+	inst, err := db.ReadClient().Instance.Query().Only(migrateScope(ctx))
+	if err != nil || inst.RetiredAt == nil { // no installation to read, or one that is not retired
+		return db, "", nil
+	}
+	if inst.RetiredTo == nil {
+		return db, "an unknown boot file", nil
+	}
+	return db, *inst.RetiredTo, nil
+}
+
+// restorePostgres copies the prepared SQLite database at path into the empty, migrated PostgreSQL
+// database pg, which the caller holds the controller lock of, in one transaction. A target that
+// holds a row is refused (store.ErrTargetNotEmpty) and one at another schema version is refused
+// (store.ErrSchemaMismatch); either way the target is left as it was.
+func restorePostgres(ctx context.Context, pg *store.DB, path string) error {
+	if err := migrateEmptyTarget(ctx, pg); err != nil {
+		return fmt.Errorf("controller: the target database: %w", err)
+	}
+	src, err := store.OpenSQLite(ctx, path, store.SQLiteOptions{})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = src.Close() }()
+	hook("copying to postgres")
+	copyCtx, cancel := untilLost(ctx, pg)
+	defer cancel(nil)
+	if _, err := store.CopyDatabase(copyCtx, src, pg, store.CopyOptions{}); err != nil {
+		return errors.Join(fmt.Errorf("controller: restoring into PostgreSQL: %w", err), context.Cause(copyCtx))
+	}
+	return nil
+}
+
 // localLog is the name, in the staging directory, of the state directory's revocation log as it was
 // when the restore began.
 const localLog = "local-" + BackupRevocations
 
-// restoreHook, if set, runs at the steps of Restore, "staged", "copying", "moving" and
-// "installing": a test plants a link there, as the service user could.
+// restoreHook, if set, runs at the steps of Restore, "staged", "copying", "copying to postgres"
+// (only there), "moving" and "installing": a test plants a link there, as the service user could.
 var restoreHook func(step string)
 
 func hook(step string) {
