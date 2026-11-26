@@ -165,7 +165,7 @@ func (p *Pki) now() time.Time {
 }
 
 // caKeyOf is a key of the CA as the API shows it, with the time the schedule replaces it if it is
-// active (castore.Rotate).
+// active (castore.PlanRotation).
 func caKeyOf(r *ent.CAKey) (*rpmgrv1.CAKey, error) {
 	cert, err := x509.ParseCertificate(r.Certificate)
 	if err != nil {

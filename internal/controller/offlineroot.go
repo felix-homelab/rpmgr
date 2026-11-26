@@ -148,8 +148,8 @@ func OfflineRoot(ctx context.Context, o OfflineRootOptions) (OfflineRootResult, 
 		_ = os.Remove(o.Out) // the root stays online, so a file that holds its key is of no use
 	}
 	if errors.Is(err, castore.ErrRotated) {
-		return OfflineRootResult{}, fmt.Errorf("controller: the root's key changed while the ceremony was planned (another "+
-			"`ca offline-root` or a KEK rotation ran meanwhile), so nothing was taken offline and no file was written: look at `rpmgr ca status`, "+
+		return OfflineRootResult{}, fmt.Errorf("controller: the root's key changed while the ceremony was planned (a KEK "+
+			"rotation re-wrapped it meanwhile), so nothing was taken offline and no file was written: look at `rpmgr ca status`, "+
 			"then run the command again if the root is still online: %w", err)
 	}
 	if err != nil {
