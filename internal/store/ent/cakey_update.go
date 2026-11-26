@@ -106,6 +106,38 @@ func (_u *CAKeyUpdate) SetNillableStatus(v *cakey.Status) *CAKeyUpdate {
 	return _u
 }
 
+// SetCrossCertificate sets the "cross_certificate" field.
+func (_u *CAKeyUpdate) SetCrossCertificate(v []byte) *CAKeyUpdate {
+	_u.mutation.SetCrossCertificate(v)
+	return _u
+}
+
+// ClearCrossCertificate clears the value of the "cross_certificate" field.
+func (_u *CAKeyUpdate) ClearCrossCertificate() *CAKeyUpdate {
+	_u.mutation.ClearCrossCertificate()
+	return _u
+}
+
+// SetRotatedAt sets the "rotated_at" field.
+func (_u *CAKeyUpdate) SetRotatedAt(v time.Time) *CAKeyUpdate {
+	_u.mutation.SetRotatedAt(v)
+	return _u
+}
+
+// SetNillableRotatedAt sets the "rotated_at" field if the given value is not nil.
+func (_u *CAKeyUpdate) SetNillableRotatedAt(v *time.Time) *CAKeyUpdate {
+	if v != nil {
+		_u.SetRotatedAt(*v)
+	}
+	return _u
+}
+
+// ClearRotatedAt clears the value of the "rotated_at" field.
+func (_u *CAKeyUpdate) ClearRotatedAt() *CAKeyUpdate {
+	_u.mutation.ClearRotatedAt()
+	return _u
+}
+
 // Mutation returns the CAKeyMutation object of the builder.
 func (_u *CAKeyUpdate) Mutation() *CAKeyMutation {
 	return _u.mutation
@@ -186,6 +218,18 @@ func (_u *CAKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(cakey.FieldStatus, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.CrossCertificate(); ok {
+		_spec.SetField(cakey.FieldCrossCertificate, field.TypeBytes, value)
+	}
+	if _u.mutation.CrossCertificateCleared() {
+		_spec.ClearField(cakey.FieldCrossCertificate, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.RotatedAt(); ok {
+		_spec.SetField(cakey.FieldRotatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.RotatedAtCleared() {
+		_spec.ClearField(cakey.FieldRotatedAt, field.TypeTime)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -282,6 +326,38 @@ func (_u *CAKeyUpdateOne) SetNillableStatus(v *cakey.Status) *CAKeyUpdateOne {
 	if v != nil {
 		_u.SetStatus(*v)
 	}
+	return _u
+}
+
+// SetCrossCertificate sets the "cross_certificate" field.
+func (_u *CAKeyUpdateOne) SetCrossCertificate(v []byte) *CAKeyUpdateOne {
+	_u.mutation.SetCrossCertificate(v)
+	return _u
+}
+
+// ClearCrossCertificate clears the value of the "cross_certificate" field.
+func (_u *CAKeyUpdateOne) ClearCrossCertificate() *CAKeyUpdateOne {
+	_u.mutation.ClearCrossCertificate()
+	return _u
+}
+
+// SetRotatedAt sets the "rotated_at" field.
+func (_u *CAKeyUpdateOne) SetRotatedAt(v time.Time) *CAKeyUpdateOne {
+	_u.mutation.SetRotatedAt(v)
+	return _u
+}
+
+// SetNillableRotatedAt sets the "rotated_at" field if the given value is not nil.
+func (_u *CAKeyUpdateOne) SetNillableRotatedAt(v *time.Time) *CAKeyUpdateOne {
+	if v != nil {
+		_u.SetRotatedAt(*v)
+	}
+	return _u
+}
+
+// ClearRotatedAt clears the value of the "rotated_at" field.
+func (_u *CAKeyUpdateOne) ClearRotatedAt() *CAKeyUpdateOne {
+	_u.mutation.ClearRotatedAt()
 	return _u
 }
 
@@ -395,6 +471,18 @@ func (_u *CAKeyUpdateOne) sqlSave(ctx context.Context) (_node *CAKey, err error)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(cakey.FieldStatus, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.CrossCertificate(); ok {
+		_spec.SetField(cakey.FieldCrossCertificate, field.TypeBytes, value)
+	}
+	if _u.mutation.CrossCertificateCleared() {
+		_spec.ClearField(cakey.FieldCrossCertificate, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.RotatedAt(); ok {
+		_spec.SetField(cakey.FieldRotatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.RotatedAtCleared() {
+		_spec.ClearField(cakey.FieldRotatedAt, field.TypeTime)
 	}
 	_node = &CAKey{config: _u.config}
 	_spec.Assign = _node.assignValues
