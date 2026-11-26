@@ -106,6 +106,13 @@ func caCommand() *cli.Command {
 				fmt.Fprintf(env.Stdout, "\nWARNING: the root's sealed key may still be recoverable from free pages, the write-ahead log and older backups,\n"+
 					"and KEK %s opens it. Rotate the KEK and destroy that one (docs/10-operations.md, \"Take the root offline\").\n", kek)
 			}
+			warnings, err := controller.CAStatusWarnings(ctx, path)
+			if err != nil {
+				return err
+			}
+			for _, w := range warnings {
+				fmt.Fprintf(env.Stdout, "\nWARNING: %s.\n", w)
+			}
 			fmt.Fprintln(env.Stdout)
 			return writeCAKeys(env, st.GetKeys())
 		}),

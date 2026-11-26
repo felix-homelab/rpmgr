@@ -409,14 +409,19 @@ only on a host the operator chooses, in a ceremony.
   or an environment variable. The file is created with mode 0600 and an existing file is never
   overwritten.
 - **`rpmgr ca offline-root --out <file>`** runs on the controller host, needs the KEK and is audited
-  as `local-cli`. It writes the file, reads it back, decrypts it with the passphrase and compares
-  the key's public half with `ca_keys`; only then, in one transaction, does it set `key_enc` to
+  as `local-cli`. It writes the file, fsyncs it and its directory, reads it again from disk, decrypts it with the
+  passphrase and compares the key with `ca_keys`: that proves the file decrypts and matches, and
+  the check on the offline host proves the medium ([Take the root offline](10-operations.md#take-the-root-offline)); only then, in one transaction, does it set `key_enc` to
   null, record `ca.root_offline` in the audit log and append the **durable marker** `root_offline`
   to the revocation log, naming the root's public-key hash and the KEK that sealed the key. It
   prints the root's pin, the file's SHA-256 and what is left to do: move the file to offline media,
   delete every other copy and keep the passphrase apart from the media, as for the release keys
   ([ADR-0021](adr/0021-offline-file-release-keys.md)). It refuses a root that is offline already, an
-  existing file, and a short or wrong passphrase. Controllers that run keep serving: they need the
+  existing file, and a short or wrong passphrase. A failure before the marker is logged removes the
+  file and changes nothing. Once the marker may be in the log (the append, or the commit after it,
+  failed) the file is **kept**, because a restore would take the key out of the database, and the
+  generated passphrase is shown with the error, as it exists nowhere else; `rpmgr ca status` warns
+  while a marker names a root whose key is still in the database. Controllers that run keep serving: they need the
   root only to sign an intermediate, and they reload keys every minute.
 - **Residue.** Setting `key_enc` to null does not erase the sealed key: free pages, dead tuples,
   the write-ahead log, point-in-time copies and **every backup made before** still hold it under
@@ -430,8 +435,10 @@ only on a host the operator chooses, in a ceremony.
   entry. Archives made before the rotation can no longer be opened, which is the
   point.
 - **A restore does not bring the root back.** The marker is re-applied from the log as other
-  entries are: the restore sets `key_enc` of that root to null. An archive that still holds the key
-  is restored without it, and the restore says that the archive held it.
+  entries are: the restore sets `key_enc` of that root to null. It applies the markers of
+  the archive's own log too, because a backup can hold the database from before the ceremony's
+  commit and the log from after it. An archive that still holds the key is restored without it, and
+  the restore says that the archive held it.
 - **Signing.** `rpmgr ca sign-intermediate --root-file <file> --csr <file> --out <file>` runs on any
   host that has the binary and needs no database, KEK or controller. It decrypts the file, checks
   the request's signature and key (ECDSA P-256), **shows the subject, the key's SHA-256, the

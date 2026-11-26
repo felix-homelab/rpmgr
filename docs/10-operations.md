@@ -1463,8 +1463,8 @@ Each runbook: **symptoms → steps → done when**.
 
 - **Steps** ([04](04-security.md#root-rotation)): `rpmgr ca new-root` (with an offline root,
   `--csr-out`, then sign the cross-certificate offline with `rpmgr ca sign-intermediate --kind
-  cross-root`, the new intermediate's key with the same command, and import both with `rpmgr ca
-  import-intermediate`). Issuing moves to the new root at once and every chain carries both
+  cross-root` (the flag comes with `ca new-root`, slice 8.14), the new intermediate's key with the
+  same command, and import both with `rpmgr ca import-intermediate`). Issuing moves to the new root at once and every chain carries both
   intermediates, so agents that know only the old root keep verifying. Watch Settings → PKI and
   `rpmgr ca status` until no agent is a straggler; leave the old root in the bundle for the overlap
   (the longest leaf lifetime plus the Reauth grace period). `rpmgr ca drop-root` before then is

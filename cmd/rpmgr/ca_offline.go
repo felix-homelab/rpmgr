@@ -24,27 +24,37 @@ import (
 // maxPassphraseFile bounds a passphrase file.
 const maxPassphraseFile = 1024
 
+// The terminal of the prompts and how a secret is read from it; a test replaces them.
+var (
+	openTTY      = func() (*os.File, error) { return os.OpenFile("/dev/tty", os.O_RDWR, 0) }
+	readPassword = func(fd int) ([]byte, error) { return term.ReadPassword(fd) }
+)
+
+// askSecret writes prompt on the terminal and reads the answer with echo off.
+func askSecret(tty *os.File, prompt string) (string, error) {
+	if _, err := fmt.Fprint(tty, prompt); err != nil {
+		return "", err
+	}
+	fd := int(tty.Fd()) //nolint:gosec // G115: a file descriptor fits in an int
+	b, err := readPassword(fd)
+	defer clear(b)
+	_, _ = fmt.Fprintln(tty)
+	return string(b), err
+}
+
 // passphrasePrompt asks for the passphrase on the terminal with echo off, twice when it is a new
 // one; a test replaces it.
 var passphrasePrompt = func(twice bool) (string, error) {
-	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	tty, err := openTTY()
 	if err != nil {
 		return "", errors.New("no passphrase: use --passphrase-file, or run on a terminal")
 	}
 	defer func() { _ = tty.Close() }()
-	ask := func(prompt string) (string, error) {
-		if _, err := fmt.Fprint(tty, prompt); err != nil {
-			return "", err
-		}
-		b, err := term.ReadPassword(int(tty.Fd())) //nolint:gosec // G115: a file descriptor fits in an int
-		_, _ = fmt.Fprintln(tty)
-		return string(b), err
-	}
-	p, err := ask("Passphrase: ")
+	p, err := askSecret(tty, "Passphrase: ")
 	if err != nil || !twice {
 		return p, err
 	}
-	again, err := ask("Passphrase again: ")
+	again, err := askSecret(tty, "Passphrase again: ")
 	if err != nil {
 		return "", err
 	}
@@ -111,10 +121,15 @@ func offlineRootCommand() *cli.Command {
 		}
 		r, err := controller.OfflineRoot(ctx, controller.OfflineRootOptions{ConfigPath: path, Out: out, Passphrase: pass, Getenv: env.Getenv})
 		if err != nil {
+			if r.Passphrase != "" {
+				// The file was kept and opens only with the generated passphrase, which is nowhere else.
+				fmt.Fprintf(env.Stderr, "The file %s was kept. Its generated passphrase, shown once and stored nowhere, is:\n  %s\n"+
+					"Write it down: without it the file cannot be opened.\n", out, r.Passphrase)
+			}
 			return err
 		}
-		fmt.Fprintf(env.Stdout, "The root's key is in %s (mode 0600), read back from the medium and compared with the database,\n"+
-			"and gone from the database.\nRoot pin:     %s\nFile SHA-256: %s\n", out, r.Pin, r.FileSHA256)
+		fmt.Fprintf(env.Stdout, "The root's key is in %s (mode 0600). The file was read again, decrypted and compared with the database,\n"+
+			"and the key is gone from the database; opening it on the offline host (rpmgr ca sign-intermediate) proves the medium.\nRoot pin:     %s\nFile SHA-256: %s\n", out, r.Pin, r.FileSHA256)
 		if r.Passphrase != "" {
 			fmt.Fprintf(env.Stdout, "Passphrase:   %s\n\nThis is shown once and stored nowhere. Write it down and keep it apart from the media.\n", r.Passphrase)
 		}
