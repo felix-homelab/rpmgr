@@ -3,6 +3,7 @@
 package controller_test
 
 import (
+	"archive/tar"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -40,8 +41,18 @@ func newPGController(t *testing.T) pgController {
 	}
 	state := filepath.Dir(src.db)
 	controller.SetPostgresStateDir(t, state)
+	// A revocation log and audit checkpoints, so that a test of what a restore leaves alone has
+	// files to compare.
+	writeLog(t, state, 2)
+	if err := os.WriteFile(filepath.Join(state, "audit-checkpoints.log"), []byte("checkpoint-1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	return pgController{migrateHost: src, boot: boot, dsn: dsn, state: state}
 }
+
+func (c pgController) revlog() string { return filepath.Join(c.state, "revocations.log") }
+
+func (c pgController) logs() []string { return []string{c.revlog()} }
 
 func (c pgController) backup(t *testing.T, out string) (controller.BackupInfo, error) {
 	t.Helper()
@@ -323,11 +334,14 @@ func TestRestorePostgres(t *testing.T) {
 	epochs := map[string]bool{info.DBEpoch: true}
 	for name, archive := range map[string]string{"from postgres": fromPG, "from sqlite": fromSQLite, "again": fromPG} {
 		t.Run(name, func(t *testing.T) {
-			boot, res := restoreInto(t, archive)
+			boot, res := restoreInto(t, archive, c.revlog())
 			if res.NewEpoch == "" || epochs[res.NewEpoch] {
 				t.Errorf("the epoch %q after the restore is one that was used: %v", res.NewEpoch, epochs)
 			}
 			epochs[res.NewEpoch] = true
+			if res.Dialect != "postgres" {
+				t.Errorf("the result's dialect %q", res.Dialect)
+			}
 			if res.OldEpoch != info.DBEpoch || res.TrustDomain != info.TrustDomain || res.Previous == "" {
 				t.Errorf("result %+v", res)
 			}
@@ -363,7 +377,7 @@ func TestRestorePostgres_Running(t *testing.T) {
 	if _, err := c.backup(t, archive); err != nil {
 		t.Fatal(err)
 	}
-	log := fileBytes(t, filepath.Join(c.state, "revocations.log"))
+	before := stateDigest(t, c.state)
 	boot, _ := pgDatabase(t)
 	d, err := config.LoadDatabase(boot)
 	if err != nil {
@@ -374,7 +388,7 @@ func TestRestorePostgres_Running(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = controller.Restore(context.Background(), controller.RestoreOptions{ConfigPath: boot, Archive: archive})
+		_, err = controller.Restore(context.Background(), controller.RestoreOptions{ConfigPath: boot, Archive: archive, RevocationLogs: c.logs()})
 		_ = running.Close()
 		if !errors.Is(err, controller.ErrControllerRunning) {
 			t.Errorf("with a controller running (shared %v): %v", shared, err)
@@ -382,14 +396,14 @@ func TestRestorePostgres_Running(t *testing.T) {
 		if n := tableCount(t, boot); n != 0 {
 			t.Errorf("a refused restore left %d tables", n)
 		}
-		if fileBytes(t, filepath.Join(c.state, "revocations.log")) != log {
-			t.Error("a refused restore changed the revocation log")
+		if stateDigest(t, c.state) != before {
+			t.Error("a refused restore changed the state directory")
 		}
 		if left, _ := filepath.Glob(filepath.Join(c.state, "*.before-restore-*")); len(left) > 0 {
 			t.Errorf("a refused restore moved %v aside", left)
 		}
 	}
-	if _, err := controller.Restore(context.Background(), controller.RestoreOptions{ConfigPath: boot, Archive: archive}); err != nil {
+	if _, err := controller.Restore(context.Background(), controller.RestoreOptions{ConfigPath: boot, Archive: archive, RevocationLogs: c.logs()}); err != nil {
 		t.Errorf("with the controller stopped: %v", err)
 	}
 }
@@ -418,7 +432,7 @@ func TestRestorePostgres_FailureChangesNothing(t *testing.T) {
 		}
 	}
 	restore := func(boot, archive string) error {
-		_, err := controller.Restore(context.Background(), controller.RestoreOptions{ConfigPath: boot, Archive: archive})
+		_, err := controller.Restore(context.Background(), controller.RestoreOptions{ConfigPath: boot, Archive: archive, RevocationLogs: c.logs()})
 		return err
 	}
 
@@ -485,7 +499,7 @@ func TestRestorePostgres_FailureChangesNothing(t *testing.T) {
 				cancel()
 			}
 		})
-		_, err := controller.Restore(ctx, controller.RestoreOptions{ConfigPath: boot, Archive: archive})
+		_, err := controller.Restore(ctx, controller.RestoreOptions{ConfigPath: boot, Archive: archive, RevocationLogs: c.logs()})
 		if err == nil {
 			t.Fatal("a cancelled restore succeeded")
 		}
@@ -522,7 +536,7 @@ func TestRestorePostgres_RootMarker(t *testing.T) {
 	if !keyHeld(archiveDB(t, untar(t, archive))) {
 		t.Fatal("the premise: the archive's database holds the key")
 	}
-	boot, res := restoreInto(t, archive)
+	boot, res := restoreInto(t, archive, c.revlog())
 	if len(res.RootKeysDropped) != 1 || res.RootKeysDropped[0] != hash {
 		t.Errorf("result %+v", res)
 	}
@@ -544,7 +558,7 @@ func TestRestorePostgres_Replaces(t *testing.T) {
 	}
 	log := stateDigest(t, c.state)
 	restore := func(boot, replaces string) (controller.RestoreResult, error) {
-		return controller.Restore(ctx, controller.RestoreOptions{ConfigPath: boot, Archive: archive, Replaces: replaces})
+		return controller.Restore(ctx, controller.RestoreOptions{ConfigPath: boot, Archive: archive, RevocationLogs: c.logs(), Replaces: replaces})
 	}
 	d, err := config.LoadDatabase(c.boot)
 	if err != nil {
@@ -592,5 +606,284 @@ func TestRestorePostgres_Replaces(t *testing.T) {
 	res, err = restore(fresh, other)
 	if err != nil || res.ReplacesRetired != moved {
 		t.Errorf("a retired database: %q %v, want %q", res.ReplacesRetired, err, moved)
+	}
+}
+
+// rewriteArchive writes a new archive of the files of an old one, changed by edit.
+func rewriteArchive(t *testing.T, archive string, edit func(files map[string][]byte)) string {
+	t.Helper()
+	files := untar(t, archive)
+	edit(files)
+	out := filepath.Join(t.TempDir(), "edited.backup")
+	f, err := os.OpenFile(out, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tw := tar.NewWriter(f)
+	for name, b := range files {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o600, Size: int64(len(b)), Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write(b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := errors.Join(tw.Close(), f.Close()); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// retiredArchive is archive with its database marked as retired by migrate-db.
+func retiredArchive(t *testing.T, archive string) string {
+	return rewriteArchive(t, archive, func(files map[string][]byte) {
+		p := filepath.Join(t.TempDir(), "retired.db")
+		if err := os.WriteFile(p, files[controller.BackupDatabase], 0o600); err != nil {
+			t.Fatal(err)
+		}
+		db, err := store.OpenSQLite(context.Background(), p, store.SQLiteOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Writer.Exec("UPDATE instance SET retired_at = ?, retired_to = ?", time.Now().UTC(), "/etc/rpmgr/elsewhere.yaml"); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Close(); err != nil {
+			t.Fatal(err)
+		}
+		files[controller.BackupDatabase] = []byte(fileBytes(t, p))
+	})
+}
+
+// TestBackup_StagingIsPrivate: the backup stages its copy in a private directory of its own, not
+// in the state directory, and reads and removes it through a handle on that directory by the names
+// it made. When the directory is replaced by a link to another one meanwhile, the files of that
+// one are neither read nor removed, for either dialect.
+func TestBackup_StagingIsPrivate(t *testing.T) {
+	c := newPGController(t)
+	for name, boot := range map[string]string{"sqlite": c.cfg, "postgres": c.boot} {
+		t.Run(name, func(t *testing.T) {
+			tmp := t.TempDir()
+			t.Setenv("TMPDIR", tmp)
+			victim := filepath.Join(t.TempDir(), "victim")
+			if err := os.Mkdir(victim, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			for _, n := range []string{"controller.db", "work.db", "keep.txt"} {
+				if err := os.WriteFile(filepath.Join(victim, n), []byte("not the backup's: "+n), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var staged string
+			controller.OnBackupStep(t, func(step, dir string) {
+				if step != "snapshotted" {
+					return
+				}
+				staged = dir
+				if filepath.Dir(dir) != tmp {
+					t.Errorf("the staging directory %s is not under the temporary directory %s", dir, tmp)
+				}
+				if st, err := os.Stat(dir); err != nil || st.Mode().Perm() != 0o700 {
+					t.Errorf("the staging directory: %v %v", st, err)
+				}
+				if err := os.Rename(dir, dir+".moved"); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(victim, dir); err != nil {
+					t.Fatal(err)
+				}
+			})
+			out := filepath.Join(t.TempDir(), "rpmgr.backup")
+			info, err := controller.Backup(context.Background(), boot, out, "2.0.0", time.Now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if staged == "" {
+				t.Fatal("the hook did not run")
+			}
+			db := archiveDB(t, untar(t, out))
+			if inst := db.Client().Instance.GetX(storetest.SystemCtx(t), 1); inst.TrustDomain != info.TrustDomain {
+				t.Errorf("the archive holds %+v, not the copy of the database", inst)
+			}
+			for _, n := range []string{"controller.db", "work.db", "keep.txt"} {
+				if got := fileBytes(t, filepath.Join(victim, n)); got != "not the backup's: "+n {
+					t.Errorf("%s of the other directory is now %q", n, got)
+				}
+			}
+			if left, _ := filepath.Glob(filepath.Join(c.state, ".backup-*")); len(left) > 0 {
+				t.Errorf("the state directory holds %v", left)
+			}
+			if es, _ := os.ReadDir(staged + ".moved"); len(es) > 0 {
+				t.Errorf("the staging directory still holds %d files", len(es))
+			}
+		})
+	}
+}
+
+// TestBackup_RetiredMeanwhile: a database that was retired after the first check but before the
+// snapshot is refused as well, for either dialect, as is a retired SQLite database; no archive is
+// written.
+func TestBackup_RetiredMeanwhile(t *testing.T) {
+	c := newPGController(t)
+	out := filepath.Join(t.TempDir(), "rpmgr.backup")
+	controller.OnBackupStep(t, func(step, _ string) {
+		if step != "opened" {
+			return
+		}
+		if _, err := openBoot(t, c.boot).Writer.Exec("UPDATE instance SET retired_at = now(), retired_to = '/etc/rpmgr/elsewhere.yaml'"); err != nil {
+			t.Error(err)
+		}
+	})
+	if _, err := c.backup(t, out); !errors.Is(err, controller.ErrRetired) {
+		t.Errorf("a PostgreSQL database retired meanwhile: %v", err)
+	}
+	if _, err := os.Lstat(out); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a refused backup left its archive: %v", err)
+	}
+	// A SQLite database that a migration retired.
+	h := newMigrateHost(t)
+	boot, _ := pgDatabase(t)
+	if _, err := migrateDB(h.cfg, boot, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.Backup(context.Background(), h.cfg, filepath.Join(t.TempDir(), "x.backup"), "2.0.0", time.Now); !errors.Is(err, controller.ErrRetired) {
+		t.Errorf("a retired SQLite database: %v", err)
+	}
+}
+
+// TestRestore_RetiredArchive: an archive of a retired database is refused with a clear message, into
+// either dialect, and changes nothing.
+func TestRestore_RetiredArchive(t *testing.T) {
+	c := newPGController(t)
+	archive := filepath.Join(t.TempDir(), "rpmgr.backup")
+	if _, err := c.backup(t, archive); err != nil {
+		t.Fatal(err)
+	}
+	bad := retiredArchive(t, archive)
+	before := stateDigest(t, c.state)
+	boot, _ := pgDatabase(t)
+	_, err := controller.Restore(context.Background(), controller.RestoreOptions{ConfigPath: boot, Archive: bad, RevocationLogs: c.logs()})
+	if !errors.Is(err, controller.ErrRetired) || !strings.Contains(err.Error(), "restore an archive of the controller that runs now") {
+		t.Errorf("into PostgreSQL: %v", err)
+	}
+	if n := tableCount(t, boot); n != 0 {
+		t.Errorf("a refused restore left %d tables", n)
+	}
+	if _, err := controller.Restore(context.Background(), controller.RestoreOptions{ConfigPath: c.cfg, Archive: bad}); !errors.Is(err, controller.ErrRetired) {
+		t.Errorf("into SQLite: %v", err)
+	}
+	if stateDigest(t, c.state) != before {
+		t.Error("a refused restore changed the state directory")
+	}
+}
+
+// TestRestorePostgres_FailureAfterTheCommit: when putting the logs in place fails after the database
+// took the restore, the error says so and names what to place by hand, and nothing is deleted. A
+// replaced log of the same name is never overwritten.
+func TestRestorePostgres_FailureAfterTheCommit(t *testing.T) {
+	c := newPGController(t)
+	archive := filepath.Join(t.TempDir(), "rpmgr.backup")
+	if _, err := c.backup(t, archive); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 11, 27, 10, 0, 0, 0, time.UTC)
+	taken := filepath.Join(c.state, "revocations.log.before-restore-20261127T100000Z")
+	if err := os.WriteFile(taken, []byte("an earlier restore's"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	live := fileBytes(t, c.revlog())
+	boot, _ := pgDatabase(t)
+	controller.OnRestoreStep(t, func(step string) {
+		if step != "installing" {
+			return
+		}
+		// The restored database has committed; a directory is where the log is to go.
+		dir := c.revlog()
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "x"), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	})
+	_, err := controller.Restore(context.Background(), controller.RestoreOptions{ConfigPath: boot, Archive: archive, RevocationLogs: c.logs(), Now: func() time.Time { return now }})
+	if err == nil {
+		t.Fatal("a restore whose logs could not be placed succeeded")
+	}
+	if !strings.Contains(err.Error(), "the PostgreSQL database holds the restore (epoch ") || !strings.Contains(err.Error(), ".restoring-revocations.log as revocations.log") {
+		t.Errorf("the error: %v", err)
+	}
+	if n := countRows(t, openBoot(t, boot), "instance", "true"); n != 1 {
+		t.Errorf("the database holds %d installations", n)
+	}
+	if got := fileBytes(t, taken); got != "an earlier restore's" {
+		t.Errorf("an earlier replaced log was overwritten: %q", got)
+	}
+	if got := fileBytes(t, c.revlog()+".before-restore-20261127T100000Z-1"); got != live {
+		t.Errorf("the replaced log is not kept under a new suffix: %q", got)
+	}
+	if fileBytes(t, filepath.Join(c.state, ".restoring-revocations.log")) == "" {
+		t.Error("the restored log was removed")
+	}
+}
+
+// TestRestorePostgres_Options: --replaces is for PostgreSQL only; a restore into PostgreSQL names
+// its revocation log; a SQLite database named by --replaces is refused when it is a link, and a
+// controller running on it makes the restore refuse; a boot file with a PostgreSQL section that is
+// wrong says what is wrong with it.
+func TestRestorePostgres_Options(t *testing.T) {
+	ctx := context.Background()
+	c := newPGController(t)
+	archive := filepath.Join(t.TempDir(), "rpmgr.backup")
+	if _, err := c.backup(t, archive); err != nil {
+		t.Fatal(err)
+	}
+	before := stateDigest(t, c.state)
+	if _, err := controller.Restore(ctx, controller.RestoreOptions{ConfigPath: c.cfg, Archive: archive, Replaces: c.boot}); !errors.Is(err, controller.ErrReplacesNeedsPostgres) {
+		t.Errorf("--replaces on SQLite: %v", err)
+	}
+	target, _ := pgDatabase(t)
+	if _, err := controller.Restore(ctx, controller.RestoreOptions{ConfigPath: target, Archive: archive}); !errors.Is(err, controller.ErrRevocationLogNeeded) {
+		t.Errorf("without --revocation-log: %v", err)
+	}
+	if n := tableCount(t, target); n != 0 {
+		t.Errorf("a refused restore left %d tables", n)
+	}
+	link := filepath.Join(t.TempDir(), "old.db")
+	if err := os.Symlink(c.db, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.Restore(ctx, controller.RestoreOptions{ConfigPath: target, Archive: archive, RevocationLogs: c.logs(), Replaces: link}); !errors.Is(err, controller.ErrLinkedState) {
+		t.Errorf("a link as --replaces: %v", err)
+	}
+	if _, err := os.Lstat(link + ".lock"); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a lock file was made through a link: %v", err)
+	}
+	running, err := store.OpenSQLite(ctx, c.db, store.SQLiteOptions{Lock: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = controller.Restore(ctx, controller.RestoreOptions{ConfigPath: target, Archive: archive, RevocationLogs: c.logs(), Replaces: c.db})
+	_ = running.Close()
+	if !errors.Is(err, controller.ErrControllerRunning) {
+		t.Errorf("a controller on the replaced SQLite database: %v", err)
+	}
+	if n := tableCount(t, target); n != 0 {
+		t.Errorf("a refused restore left %d tables", n)
+	}
+	if stateDigest(t, c.state) != before {
+		t.Error("a refused restore changed the state directory")
+	}
+	if _, err := controller.Restore(ctx, controller.RestoreOptions{ConfigPath: target, Archive: archive, RevocationLogs: c.logs(), Replaces: c.db}); err != nil {
+		t.Errorf("a stopped SQLite database as --replaces: %v", err)
+	}
+
+	bad := filepath.Join(t.TempDir(), "bad.yaml")
+	body := "version: 1\ndatabase:\n  driver: postgres\n  dsn: postgres://u@h/db\n  password_file: /etc/pw\n  password_credential: cred\n"
+	if err := os.WriteFile(bad, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.Backup(ctx, bad, filepath.Join(t.TempDir(), "x"), "2.0.0", time.Now); err == nil || !strings.Contains(err.Error(), "password_file or password_credential") {
+		t.Errorf("a boot file with both password settings: %v", err)
 	}
 }

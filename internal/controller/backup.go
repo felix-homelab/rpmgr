@@ -88,16 +88,23 @@ func backup(ctx context.Context, d config.Database, w io.Writer, version string,
 			}
 		}
 	}
-	tmp, err := os.MkdirTemp(state, ".backup-")
+	// The copy is staged in a private directory of the caller's, never in the state directory, which
+	// belongs to the service user. Once SQLite is done with it, the files are read and removed
+	// through a handle on that directory, and only by their names.
+	tmp, err := os.MkdirTemp("", "rpmgr-backup-")
 	if err != nil {
 		return BackupInfo{}, err
 	}
+	stage, err := os.OpenRoot(tmp)
+	if err != nil {
+		_ = os.Remove(tmp)
+		return BackupInfo{}, err
+	}
 	defer func() {
-		if es, err := os.ReadDir(tmp); err == nil {
-			for _, e := range es {
-				_ = os.Remove(filepath.Join(tmp, e.Name()))
-			}
+		for _, n := range stagedBackupFiles {
+			_ = stage.Remove(n)
 		}
+		_ = stage.Close()
 		_ = os.Remove(tmp)
 	}()
 	copyPath := filepath.Join(tmp, BackupDatabase)
@@ -110,6 +117,12 @@ func backup(ctx context.Context, d config.Database, w io.Writer, version string,
 	if err != nil {
 		return BackupInfo{}, err
 	}
+	backupHook("snapshotted", tmp)
+	// What the copy holds decides, not what the database held a moment before: a database that was
+	// retired meanwhile is no controller's.
+	if inst.RetiredAt != nil {
+		return BackupInfo{}, fmt.Errorf("%w: it was retired %s", ErrRetired, inst.RetiredAt.UTC().Format(time.RFC3339))
+	}
 	info := BackupInfo{Format: 1, Version: version, Created: now().UTC(), TrustDomain: inst.TrustDomain, DBEpoch: inst.DbEpoch, SourceDialect: dialectOf(d)}
 	meta, err := json.MarshalIndent(info, "", "  ")
 	if err != nil {
@@ -119,7 +132,7 @@ func backup(ctx context.Context, d config.Database, w io.Writer, version string,
 	if err := addBytes(tw, BackupMeta, append(meta, '\n'), info.Created); err != nil {
 		return BackupInfo{}, err
 	}
-	if err := addFile(tw, BackupDatabase, copyPath, info.Created); err != nil {
+	if err := addFile(tw, BackupDatabase, stage, info.Created); err != nil {
 		return BackupInfo{}, err
 	}
 	for _, name := range []string{BackupRevocations, BackupCheckpoints} {
@@ -140,6 +153,15 @@ func backup(ctx context.Context, d config.Database, w io.Writer, version string,
 	return info, tw.Close()
 }
 
+// stagedBackupFiles are the names a backup creates in its staging directory: the copy, and the
+// work file of a PostgreSQL backup with the files SQLite keeps beside it.
+var stagedBackupFiles = []string{BackupDatabase, BackupDatabase + "-wal", BackupDatabase + "-shm", BackupDatabase + "-journal",
+	"work.db", "work.db-wal", "work.db-shm", "work.db-journal"}
+
+// backupHook, if set, runs at the steps of a backup, "opened" and "snapshotted", with the staging
+// directory: a test changes what the directory is there.
+var backupHook = func(string, string) {}
+
 func dialectOf(d config.Database) string {
 	if d.Driver == "postgres" {
 		return "postgres"
@@ -148,13 +170,26 @@ func dialectOf(d config.Database) string {
 }
 
 // snapshotSQLite writes a consistent copy of the SQLite database at dsn to copyPath and returns
-// its installation.
+// the installation as the copy holds it.
 func snapshotSQLite(ctx context.Context, dsn, copyPath string) (*ent.Instance, error) {
 	db, err := store.OpenSQLite(ctx, dsn, store.SQLiteOptions{})
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = db.Close() }()
+	if err := db.VacuumInto(ctx, copyPath); err != nil {
+		return nil, err
+	}
+	cp, err := store.OpenSQLite(ctx, copyPath, store.SQLiteOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = cp.Close() }()
+	return installationOf(ctx, cp)
+}
+
+// installationOf reads the installation of a database as the local CLI.
+func installationOf(ctx context.Context, db *store.DB) (*ent.Instance, error) {
 	sys, err := authz.System(ctx, "local-cli", "rpmgr backup", audit.SystemScopes(db))
 	if err != nil {
 		return nil, err
@@ -163,7 +198,7 @@ func snapshotSQLite(ctx context.Context, dsn, copyPath string) (*ent.Instance, e
 	if err != nil {
 		return nil, fmt.Errorf("controller: the database holds no installation: %w", err)
 	}
-	return inst, db.VacuumInto(ctx, copyPath)
+	return inst, nil
 }
 
 // snapshotPostgres copies a PostgreSQL database into a SQLite file at copyPath, through the copier
@@ -180,6 +215,7 @@ func snapshotPostgres(ctx context.Context, d config.Database, tmp, copyPath stri
 	if err := checkSource(ctx, src); err != nil {
 		return nil, err
 	}
+	backupHook("opened", tmp)
 	work, err := store.OpenSQLite(ctx, filepath.Join(tmp, "work.db"), store.SQLiteOptions{Create: true})
 	if err != nil {
 		return nil, err
@@ -191,13 +227,9 @@ func snapshotPostgres(ctx context.Context, d config.Database, tmp, copyPath stri
 	if _, err := store.CopyDatabase(ctx, src, work, store.CopyOptions{}); err != nil {
 		return nil, err
 	}
-	sys, err := authz.System(ctx, "local-cli", "rpmgr backup", audit.SystemScopes(work))
+	inst, err := installationOf(ctx, work)
 	if err != nil {
 		return nil, err
-	}
-	inst, err := work.Client().Instance.Get(sys, 1)
-	if err != nil {
-		return nil, fmt.Errorf("controller: the database holds no installation: %w", err)
 	}
 	return inst, work.VacuumInto(ctx, copyPath)
 }
@@ -210,8 +242,8 @@ func addBytes(tw *tar.Writer, name string, b []byte, mod time.Time) error {
 	return err
 }
 
-func addFile(tw *tar.Writer, name, path string, mod time.Time) error {
-	f, err := os.Open(path) //nolint:gosec // G304: the backup's own copy
+func addFile(tw *tar.Writer, name string, stage *os.Root, mod time.Time) error {
+	f, err := stage.Open(name)
 	if err != nil {
 		return err
 	}

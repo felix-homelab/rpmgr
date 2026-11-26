@@ -3,6 +3,7 @@
 package controller
 
 import (
+	"errors"
 	"path/filepath"
 
 	"github.com/felix-homelab/rpmgr/internal/config"
@@ -17,12 +18,17 @@ var postgresStateDir = "/var/lib/rpmgr"
 // boot file. A PostgreSQL database is read from the `database` section alone, as `migrate-db` does,
 // because the boot file's other sections are not this command's business.
 func bootDatabase(path string) (config.Database, error) {
-	if d, err := config.LoadDatabase(path); err == nil && d.Driver == "postgres" {
+	d, derr := config.LoadDatabase(path)
+	if derr == nil && d.Driver == "postgres" {
 		return d, nil
 	}
 	cfg, err := loadController(path)
 	if err != nil {
-		return config.Database{}, err
+		// Of a PostgreSQL file only the database section is read, so its fault is named too.
+		return config.Database{}, errors.Join(err, derr)
+	}
+	if derr != nil && cfg.Database.Driver == "postgres" {
+		return config.Database{}, derr // not a file of a SQLite controller: say what is wrong with its section
 	}
 	return config.Database{Driver: cfg.Database.Driver, DSN: cfg.Database.DSN}, nil
 }

@@ -183,3 +183,11 @@ func SetPostgresStateDir(t testing.TB, dir string) {
 	postgresStateDir = dir
 	t.Cleanup(func() { postgresStateDir = old })
 }
+
+// OnBackupStep runs f at each step of a backup ("opened" for PostgreSQL only, then "snapshotted"),
+// with the backup's staging directory, until the test ends; the test must not run in parallel with
+// others.
+func OnBackupStep(t testing.TB, f func(step, dir string)) {
+	backupHook = f
+	t.Cleanup(func() { backupHook = func(string, string) {} })
+}

@@ -287,10 +287,10 @@ func restoreCommand() *cli.Command {
 		Summary: "restore the controller from a backup",
 		Flags: func(fs *flag.FlagSet) {
 			fs.StringVar(&in, "in", "", "the archive of rpmgr backup (required)")
-			fs.Func("revocation-log", "the revocation-log sink directory, or a replica's revocations.log; repeat for each (default the state directory's revocations.log)",
+			fs.Func("revocation-log", "the revocation-log sink directory, or a replica's revocations.log; repeat for each (default the state directory's revocations.log; required for a restore into PostgreSQL)",
 				func(s string) error { logs = append(logs, s); return nil })
 			fs.StringVar(&stage, "stage-dir", "", "where the restore does its SQLite work: a directory you own with mode 0700 that no one else can write (default a new private directory under the temporary one); the root updater passes /var/lib/rpmgr-update/restore")
-			fs.StringVar(&replaces, "replaces", "", "the boot file of the database a restore into a new PostgreSQL database replaces: the restore refuses while a controller holds its lock; without it, stop every controller yourself first")
+			fs.StringVar(&replaces, "replaces", "", "the boot file, or SQLite file, of the database a restore into a new PostgreSQL database replaces: the restore refuses while a controller holds its lock; without it, stop every controller yourself first")
 			fs.BoolVar(&dnsDisabled, "dns-disabled", false, "set every managed DNS zone to disabled instead of held, for a copy that must never touch production DNS")
 			fs.StringVar(&configPath, "config", "", bootFlagHelp)
 		},

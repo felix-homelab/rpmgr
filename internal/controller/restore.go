@@ -170,8 +170,15 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 	}
 	dsn := d.DSN
 	state := stateDir(d)
+	if o.Replaces != "" && d.Driver != "postgres" {
+		return RestoreResult{}, ErrReplacesNeedsPostgres
+	}
+	if d.Driver == "postgres" && len(o.RevocationLogs) == 0 {
+		return RestoreResult{}, ErrRevocationLogNeeded
+	}
 	var res RestoreResult
 	var pg *store.DB
+	locked := []*store.DB{} // the PostgreSQL databases whose controller lock the restore holds
 	if d.Driver == "postgres" {
 		// The controller lock of the target database, exclusive, held to the end: a controller, which
 		// holds it shared or exclusive, makes the restore refuse.
@@ -184,13 +191,17 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 			return RestoreResult{}, err
 		}
 		defer func() { _ = pg.Close() }()
+		locked = append(locked, pg)
 		if o.Replaces != "" {
-			old, retired, lerr := lockReplaced(ctx, o, d)
+			release, old, retired, lerr := lockReplaced(ctx, o, d)
 			if lerr != nil {
 				return RestoreResult{}, lerr
 			}
-			defer func() { _ = old.Close() }()
+			defer release()
 			res.ReplacesRetired = retired
+			if old != nil {
+				locked = append(locked, old)
+			}
 		}
 	} else {
 		unlock, err := store.HoldLockNoFollow(dsn)
@@ -291,25 +302,51 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 			moves = append(moves, move{tmp, n + s})
 		}
 	}
+	if res.Previous, err = freeSuffix(root, names, o.Now()); err != nil {
+		return RestoreResult{}, err
+	}
+	hook("moving")
+	var aside [][2]string
+	putBack := func() {
+		for i := len(aside) - 1; i >= 0; i-- {
+			_ = root.Rename(aside[i][1], aside[i][0])
+		}
+	}
+	for i, n := range live {
+		for _, s := range suffixes(i) {
+			if err := root.Rename(n+s, n+s+res.Previous); err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					continue
+				}
+				if pg != nil {
+					putBack()
+				}
+				return RestoreResult{}, err
+			}
+			aside = append(aside, [2]string{n + s, n + s + res.Previous})
+		}
+	}
 	if pg != nil {
-		// Everything is ready, and nothing in the state directory has changed yet: the copier fills
-		// the empty database in one transaction, or leaves it as it was.
-		if err := restorePostgres(ctx, pg, staged(staged0)); err != nil {
+		// Everything is ready and the live files are out of the way: the copier fills the empty
+		// database in one transaction, or leaves it as it was, and then the files go back.
+		if err := restorePostgres(ctx, locked, pg, staged(staged0)); err != nil {
+			putBack()
 			return RestoreResult{}, err
 		}
 	}
-	res.Previous = ".before-restore-" + o.Now().UTC().Format("20060102T150405Z")
-	hook("moving")
-	for i, n := range live {
-		for _, s := range suffixes(i) {
-			if err := root.Rename(n+s, n+s+res.Previous); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return RestoreResult{}, err
-			}
-		}
-	}
 	hook("installing")
-	for _, m := range moves {
+	for i, m := range moves {
 		if err := root.Rename(m.tmp, m.live); err != nil {
+			if pg != nil {
+				// The database holds the restore now: what is left stays, for the operator to place.
+				var left []string
+				for _, r := range moves[i:] {
+					left = append(left, r.tmp+" as "+r.live)
+				}
+				moves = nil
+				return RestoreResult{}, fmt.Errorf("controller: the PostgreSQL database holds the restore (epoch %s), but putting %s in place failed: %w; "+
+					"in %s, move %s into place by hand; the replaced files end in %s", res.NewEpoch, m.live, err, state, strings.Join(left, ", "), res.Previous)
+			}
 			return RestoreResult{}, fmt.Errorf("controller: putting the restored %s in place: %w; the replaced files end in %s",
 				m.live, err, res.Previous)
 		}
@@ -318,40 +355,95 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 	return res, ownLike(state, state)
 }
 
-// lockReplaced opens the database that the restore replaces with its controller lock, exclusively,
-// which the caller keeps until the restore ends: a controller on it, or a replica, makes the restore
-// refuse. It returns where `migrate-db` moved that database, if it did. The database it names is
-// never the target.
-func lockReplaced(ctx context.Context, o RestoreOptions, target config.Database) (*store.DB, string, error) {
+// Errors of Restore for options that do not fit the boot file's database.
+var (
+	// ErrReplacesNeedsPostgres is returned for --replaces with a SQLite boot file, which restores in
+	// place and has no other database to replace.
+	ErrReplacesNeedsPostgres = errors.New("controller: --replaces is for a restore into a new PostgreSQL database; a SQLite restore replaces the database in place")
+	// ErrRevocationLogNeeded is returned for a restore into PostgreSQL without --revocation-log: the
+	// host's own log says nothing of what other controllers on that database revoked.
+	ErrRevocationLogNeeded = errors.New("controller: a restore into PostgreSQL needs --revocation-log, the sink directory or every controller's revocations.log")
+)
+
+// freeSuffix returns the suffix of the replaced files, made of the time, with a number added when a
+// replaced file of that name exists already, so that nothing is ever overwritten.
+func freeSuffix(root *os.Root, names []string, now time.Time) (string, error) {
+	base := ".before-restore-" + now.UTC().Format("20060102T150405Z")
+	for i := 0; ; i++ {
+		suffix := base
+		if i > 0 {
+			suffix = fmt.Sprintf("%s-%d", base, i)
+		}
+		free := true
+		for _, n := range names {
+			if _, err := root.Lstat(n + suffix); err == nil {
+				free = false
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return "", err
+			}
+		}
+		if free {
+			return suffix, nil
+		}
+	}
+}
+
+// lockReplaced takes the controller lock of the database that the restore replaces, exclusively,
+// until release is called: a controller on it, or a replica, makes the restore refuse. For a
+// PostgreSQL database it returns the open database, which the caller watches for a lost lock, and
+// where `migrate-db` moved it, if it did. A SQLite file is locked by its name without following
+// links, and is refused if it is no plain file. The database it names is never the target.
+func lockReplaced(ctx context.Context, o RestoreOptions, target config.Database) (release func(), db *store.DB, retired string, err error) {
 	old, err := endpoint(o.Replaces)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
 	if sameDatabase(old, target) {
-		return nil, "", fmt.Errorf("%w: --replaces names the database the restore fills", ErrSameDatabase)
+		return nil, nil, "", fmt.Errorf("%w: --replaces names the database the restore fills", ErrSameDatabase)
 	}
-	db, err := openMigrateEnd(ctx, old, o.Getenv, false)
+	running := func() error {
+		hint := ""
+		if old.Driver == target.Driver {
+			hint = "; --replaces may name the target under another name"
+		}
+		return fmt.Errorf("%w (the database --replaces names%s)", ErrControllerRunning, hint)
+	}
+	if old.Driver != "postgres" {
+		if err := refuseLinked(old.DSN, true); err != nil {
+			return nil, nil, "", err
+		}
+		unlock, err := store.HoldLockNoFollow(old.DSN)
+		if errors.Is(err, store.ErrLocked) {
+			return nil, nil, "", running()
+		}
+		if err != nil {
+			return nil, nil, "", err
+		}
+		return func() { _ = unlock() }, nil, "", nil
+	}
+	db, err = openMigrateEnd(ctx, old, o.Getenv, false)
 	if errors.Is(err, ErrStopController) {
-		return nil, "", fmt.Errorf("%w (the database --replaces names)", ErrControllerRunning)
+		return nil, nil, "", running()
 	}
 	if err != nil {
-		return nil, "", fmt.Errorf("controller: the database --replaces names: %w", err)
+		return nil, nil, "", fmt.Errorf("controller: the database --replaces names: %w", err)
 	}
+	release = func() { _ = db.Close() }
 	inst, err := db.ReadClient().Instance.Query().Only(migrateScope(ctx))
 	if err != nil || inst.RetiredAt == nil { // no installation to read, or one that is not retired
-		return db, "", nil
+		return release, db, "", nil
 	}
 	if inst.RetiredTo == nil {
-		return db, "an unknown boot file", nil
+		return release, db, "an unknown boot file", nil
 	}
-	return db, *inst.RetiredTo, nil
+	return release, db, *inst.RetiredTo, nil
 }
 
 // restorePostgres copies the prepared SQLite database at path into the empty, migrated PostgreSQL
 // database pg, which the caller holds the controller lock of, in one transaction. A target that
 // holds a row is refused (store.ErrTargetNotEmpty) and one at another schema version is refused
 // (store.ErrSchemaMismatch); either way the target is left as it was.
-func restorePostgres(ctx context.Context, pg *store.DB, path string) error {
+func restorePostgres(ctx context.Context, locked []*store.DB, pg *store.DB, path string) error {
 	if err := migrateEmptyTarget(ctx, pg); err != nil {
 		return fmt.Errorf("controller: the target database: %w", err)
 	}
@@ -361,7 +453,7 @@ func restorePostgres(ctx context.Context, pg *store.DB, path string) error {
 	}
 	defer func() { _ = src.Close() }()
 	hook("copying to postgres")
-	copyCtx, cancel := untilLost(ctx, pg)
+	copyCtx, cancel := untilLost(ctx, locked...)
 	defer cancel(nil)
 	if _, err := store.CopyDatabase(copyCtx, src, pg, store.CopyOptions{}); err != nil {
 		return errors.Join(fmt.Errorf("controller: restoring into PostgreSQL: %w", err), context.Cause(copyCtx))
@@ -575,6 +667,12 @@ func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer
 	sys, err := authz.System(ctx, "local-cli", "rpmgr restore", audit.SystemScopes(db))
 	if err != nil {
 		return err
+	}
+	// A database that `migrate-db` retired is no controller's, and one restored from it would refuse to
+	// start: only an archive of the controller that runs now can be restored.
+	if inst, err := db.Client().Instance.Get(sys, 1); err == nil && inst.RetiredAt != nil {
+		return fmt.Errorf("%w: the archive holds a database retired %s; restore an archive of the controller that runs now",
+			ErrRetired, inst.RetiredAt.UTC().Format(time.RFC3339))
 	}
 	if res.NewEpoch, err = store.NewEpoch(sys, db); err != nil {
 		return err
