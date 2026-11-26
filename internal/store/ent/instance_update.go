@@ -62,6 +62,46 @@ func (_u *InstanceUpdate) ClearRestoreReviewSince() *InstanceUpdate {
 	return _u
 }
 
+// SetRetiredAt sets the "retired_at" field.
+func (_u *InstanceUpdate) SetRetiredAt(v time.Time) *InstanceUpdate {
+	_u.mutation.SetRetiredAt(v)
+	return _u
+}
+
+// SetNillableRetiredAt sets the "retired_at" field if the given value is not nil.
+func (_u *InstanceUpdate) SetNillableRetiredAt(v *time.Time) *InstanceUpdate {
+	if v != nil {
+		_u.SetRetiredAt(*v)
+	}
+	return _u
+}
+
+// ClearRetiredAt clears the value of the "retired_at" field.
+func (_u *InstanceUpdate) ClearRetiredAt() *InstanceUpdate {
+	_u.mutation.ClearRetiredAt()
+	return _u
+}
+
+// SetRetiredTo sets the "retired_to" field.
+func (_u *InstanceUpdate) SetRetiredTo(v string) *InstanceUpdate {
+	_u.mutation.SetRetiredTo(v)
+	return _u
+}
+
+// SetNillableRetiredTo sets the "retired_to" field if the given value is not nil.
+func (_u *InstanceUpdate) SetNillableRetiredTo(v *string) *InstanceUpdate {
+	if v != nil {
+		_u.SetRetiredTo(*v)
+	}
+	return _u
+}
+
+// ClearRetiredTo clears the value of the "retired_to" field.
+func (_u *InstanceUpdate) ClearRetiredTo() *InstanceUpdate {
+	_u.mutation.ClearRetiredTo()
+	return _u
+}
+
 // Mutation returns the InstanceMutation object of the builder.
 func (_u *InstanceUpdate) Mutation() *InstanceMutation {
 	return _u.mutation
@@ -125,6 +165,18 @@ func (_u *InstanceUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.RestoreReviewSinceCleared() {
 		_spec.ClearField(instance.FieldRestoreReviewSince, field.TypeTime)
 	}
+	if value, ok := _u.mutation.RetiredAt(); ok {
+		_spec.SetField(instance.FieldRetiredAt, field.TypeTime, value)
+	}
+	if _u.mutation.RetiredAtCleared() {
+		_spec.ClearField(instance.FieldRetiredAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.RetiredTo(); ok {
+		_spec.SetField(instance.FieldRetiredTo, field.TypeString, value)
+	}
+	if _u.mutation.RetiredToCleared() {
+		_spec.ClearField(instance.FieldRetiredTo, field.TypeString)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{instance.Label}
@@ -176,6 +228,46 @@ func (_u *InstanceUpdateOne) SetNillableRestoreReviewSince(v *time.Time) *Instan
 // ClearRestoreReviewSince clears the value of the "restore_review_since" field.
 func (_u *InstanceUpdateOne) ClearRestoreReviewSince() *InstanceUpdateOne {
 	_u.mutation.ClearRestoreReviewSince()
+	return _u
+}
+
+// SetRetiredAt sets the "retired_at" field.
+func (_u *InstanceUpdateOne) SetRetiredAt(v time.Time) *InstanceUpdateOne {
+	_u.mutation.SetRetiredAt(v)
+	return _u
+}
+
+// SetNillableRetiredAt sets the "retired_at" field if the given value is not nil.
+func (_u *InstanceUpdateOne) SetNillableRetiredAt(v *time.Time) *InstanceUpdateOne {
+	if v != nil {
+		_u.SetRetiredAt(*v)
+	}
+	return _u
+}
+
+// ClearRetiredAt clears the value of the "retired_at" field.
+func (_u *InstanceUpdateOne) ClearRetiredAt() *InstanceUpdateOne {
+	_u.mutation.ClearRetiredAt()
+	return _u
+}
+
+// SetRetiredTo sets the "retired_to" field.
+func (_u *InstanceUpdateOne) SetRetiredTo(v string) *InstanceUpdateOne {
+	_u.mutation.SetRetiredTo(v)
+	return _u
+}
+
+// SetNillableRetiredTo sets the "retired_to" field if the given value is not nil.
+func (_u *InstanceUpdateOne) SetNillableRetiredTo(v *string) *InstanceUpdateOne {
+	if v != nil {
+		_u.SetRetiredTo(*v)
+	}
+	return _u
+}
+
+// ClearRetiredTo clears the value of the "retired_to" field.
+func (_u *InstanceUpdateOne) ClearRetiredTo() *InstanceUpdateOne {
+	_u.mutation.ClearRetiredTo()
 	return _u
 }
 
@@ -271,6 +363,18 @@ func (_u *InstanceUpdateOne) sqlSave(ctx context.Context) (_node *Instance, err 
 	}
 	if _u.mutation.RestoreReviewSinceCleared() {
 		_spec.ClearField(instance.FieldRestoreReviewSince, field.TypeTime)
+	}
+	if value, ok := _u.mutation.RetiredAt(); ok {
+		_spec.SetField(instance.FieldRetiredAt, field.TypeTime, value)
+	}
+	if _u.mutation.RetiredAtCleared() {
+		_spec.ClearField(instance.FieldRetiredAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.RetiredTo(); ok {
+		_spec.SetField(instance.FieldRetiredTo, field.TypeString, value)
+	}
+	if _u.mutation.RetiredToCleared() {
+		_spec.ClearField(instance.FieldRetiredTo, field.TypeString)
 	}
 	_node = &Instance{config: _u.config}
 	_spec.Assign = _node.assignValues

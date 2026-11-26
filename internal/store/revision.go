@@ -114,6 +114,9 @@ func configTx(ctx context.Context, db *DB, fn func(tx *ent.Tx) ([]string, error)
 		return nil
 	}
 	err := withTx(ctx, db.client, db.writeTxOptions(), func(tx *ent.Tx) error {
+		if err := db.guardRetired(ctx, tx); err != nil {
+			return err
+		}
 		if ifChanged {
 			if _, err := tx.ExecContext(ctx, "UPDATE config_seq SET seq = seq WHERE id = 1"); err != nil {
 				return err
@@ -165,6 +168,9 @@ func RevisionOrg(ctx context.Context, org string) context.Context {
 // same goroutine holds another write transaction.
 func WriteTx(ctx context.Context, db *DB, fn func(tx *ent.Tx) error) error {
 	return withTx(ctx, db.client, db.writeTxOptions(), func(tx *ent.Tx) error {
+		if err := db.guardRetired(ctx, tx); err != nil {
+			return err
+		}
 		if err := fn(tx); err != nil {
 			return err
 		}

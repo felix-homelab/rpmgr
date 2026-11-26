@@ -589,6 +589,9 @@ and so do `rpmgr backup` and `rpmgr restore` for PostgreSQL
   read-only. `migrate-db` has the same `db_epoch` and revisions on both sides, so a controller
   started on each would hand agents two histories; after the target's transaction has committed,
   `migrate-db` therefore sets `instance.retired_at` and `retired_to` on the source, and **a
-  controller refuses to start on a retired database**. `--no-retire` leaves the source usable, for
-  a test copy, and says so. Backup and restore never retire anything
+  controller refuses to start on a retired database**. Every command that opens the database without
+  the controller lock refuses a retired one too, naming `retired_to`, and checks again inside each
+  write transaction (a share lock on the instance row on PostgreSQL), so a write that waited for the
+  retirement never lands in the retired database. `--no-retire` leaves the source usable, for a test
+  copy, and says so. Backup and restore never retire anything
   ([10](10-operations.md#moving-between-sqlite-and-postgresql)).
