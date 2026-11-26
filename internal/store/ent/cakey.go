@@ -25,6 +25,8 @@ type CAKey struct {
 	PublicKey []byte `json:"public_key,omitempty"`
 	// Certificate holds the value of the "certificate" field.
 	Certificate []byte `json:"certificate,omitempty"`
+	// Csr holds the value of the "csr" field.
+	Csr []byte `json:"csr,omitempty"`
 	// KeyEnc holds the value of the "key_enc" field.
 	KeyEnc *[]byte `json:"-"`
 	// NotBefore holds the value of the "not_before" field.
@@ -41,7 +43,7 @@ func (*CAKey) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case cakey.FieldPublicKey, cakey.FieldCertificate, cakey.FieldKeyEnc:
+		case cakey.FieldPublicKey, cakey.FieldCertificate, cakey.FieldCsr, cakey.FieldKeyEnc:
 			values[i] = new([]byte)
 		case cakey.FieldID, cakey.FieldKind, cakey.FieldAlgorithm, cakey.FieldStatus:
 			values[i] = new(sql.NullString)
@@ -91,6 +93,12 @@ func (_m *CAKey) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field certificate", values[i])
 			} else if value != nil {
 				_m.Certificate = *value
+			}
+		case cakey.FieldCsr:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field csr", values[i])
+			} else if value != nil {
+				_m.Csr = *value
 			}
 		case cakey.FieldKeyEnc:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -163,6 +171,9 @@ func (_m *CAKey) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("certificate=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Certificate))
+	builder.WriteString(", ")
+	builder.WriteString("csr=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Csr))
 	builder.WriteString(", ")
 	builder.WriteString("key_enc=<sensitive>")
 	builder.WriteString(", ")

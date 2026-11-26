@@ -59,6 +59,9 @@ func (p *Pki) GetPkiStatus(ctx context.Context, _ *connect.Request[rpmgrv1.GetPk
 	}
 	out := &rpmgrv1.GetPkiStatusResponse{TrustDomain: inst.TrustDomain}
 	for _, r := range rows {
+		if len(r.Certificate) == 0 {
+			continue // a next intermediate that waits for the signature of an offline root
+		}
 		k, err := caKeyOf(r)
 		if err != nil {
 			return nil, err

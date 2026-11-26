@@ -85,10 +85,20 @@ func NewIntermediate(root KeyPair, now time.Time) (KeyPair, error) {
 	if err != nil {
 		return KeyPair{}, err
 	}
-	tmpl := &x509.Certificate{
+	cert, err := create(intermediateTemplate(td, root.Cert, now), root.Cert, &key.PublicKey, root.Key)
+	if err != nil {
+		return KeyPair{}, err
+	}
+	return KeyPair{Cert: cert, Key: key}, nil
+}
+
+// intermediateTemplate is the certificate of an issuing intermediate under root; NewIntermediate
+// and SignIntermediate (the offline root) make it the same.
+func intermediateTemplate(td string, root *x509.Certificate, now time.Time) *x509.Certificate {
+	return &x509.Certificate{
 		Subject:                     pkix.Name{CommonName: "rpmgr issuing CA " + td},
 		NotBefore:                   now.Add(-Backdate),
-		NotAfter:                    capAt(now.Add(IntermediateLifetime), root.Cert),
+		NotAfter:                    capAt(now.Add(IntermediateLifetime), root),
 		IsCA:                        true,
 		BasicConstraintsValid:       true,
 		MaxPathLen:                  0,
@@ -98,11 +108,6 @@ func NewIntermediate(root KeyPair, now time.Time) (KeyPair, error) {
 		PermittedDNSDomains:         []string{td},
 		PermittedURIDomains:         []string{td},
 	}
-	cert, err := create(tmpl, root.Cert, &key.PublicKey, root.Key)
-	if err != nil {
-		return KeyPair{}, err
-	}
-	return KeyPair{Cert: cert, Key: key}, nil
 }
 
 // TrustDomainOf returns the trust domain of a root: its only URI SAN, spiffe://<td>.

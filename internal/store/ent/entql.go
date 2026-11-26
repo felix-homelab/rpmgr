@@ -385,6 +385,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			cakey.FieldAlgorithm:   {Type: field.TypeString, Column: cakey.FieldAlgorithm},
 			cakey.FieldPublicKey:   {Type: field.TypeBytes, Column: cakey.FieldPublicKey},
 			cakey.FieldCertificate: {Type: field.TypeBytes, Column: cakey.FieldCertificate},
+			cakey.FieldCsr:         {Type: field.TypeBytes, Column: cakey.FieldCsr},
 			cakey.FieldKeyEnc:      {Type: field.TypeBytes, Column: cakey.FieldKeyEnc},
 			cakey.FieldNotBefore:   {Type: field.TypeTime, Column: cakey.FieldNotBefore},
 			cakey.FieldNotAfter:    {Type: field.TypeTime, Column: cakey.FieldNotAfter},
@@ -3463,6 +3464,11 @@ func (f *CAKeyFilter) WherePublicKey(p entql.BytesP) {
 // WhereCertificate applies the entql []byte predicate on the certificate field.
 func (f *CAKeyFilter) WhereCertificate(p entql.BytesP) {
 	f.Where(p.Field(cakey.FieldCertificate))
+}
+
+// WhereCsr applies the entql []byte predicate on the csr field.
+func (f *CAKeyFilter) WhereCsr(p entql.BytesP) {
+	f.Where(p.Field(cakey.FieldCsr))
 }
 
 // WhereKeyEnc applies the entql []byte predicate on the key_enc field.
