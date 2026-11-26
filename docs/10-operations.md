@@ -133,7 +133,7 @@ with `rpmgr user reset-password` while no user exists. There is no default passw
 | `/etc/rpmgr/<role>.yaml` | root, 0644 | Boot configuration ([Configuration](#configuration)) |
 | `/etc/rpmgr/tls/` | root, 0755 | The certificate `rpmgr setup --tls self-signed` makes for the UI: `<host>.crt` (root, 0644) and `<host>.key` (rpmgr, 0600) |
 | `/etc/rpmgr/policy.yaml` | root, 0644 | Connector-local policy, read-only for the service user; the root updater, and a gateway's agent when it is offered a release, also read `auto_update` and `update_channel` from it ([04](04-security.md#connector-local-policy)) |
-| `/var/lib/rpmgr/identity/` | rpmgr, 0700 | Agent identity, written by `rpmgr enroll`: `key.pem` (private key, 0600) and `chain.pem` (certificate and intermediates), both replaced at every renewal (`*.new` files are a renewal in progress, finished at the next start), `roots.pem` (the pinned root and roots it cross-signed), `signing.pem` (the config-signing certificates, replaced by those of every `Welcome`), `agent.json` (agent ID, trust domain, the controller endpoints of the enrollment; those of the stored snapshot take their place, [03](03-connections.md#transport)). Enrollment refuses a directory open to the group or other users, and an existing identity without `--replace` |
+| `/var/lib/rpmgr/identity/` | rpmgr, 0700 | Agent identity, written by `rpmgr enroll`: `key.pem` (private key, 0600) and `chain.pem` (certificate and intermediates), both replaced at every renewal (`*.new` files are a renewal in progress, finished at the next start), `roots.pem` (the pinned root and the roots a cross-certificate of a trusted root vouched for, rewritten atomically), `signing.pem` (the config-signing certificates, replaced by those of every `Welcome`), `agent.json` (agent ID, trust domain, the controller endpoints of the enrollment; those of the stored snapshot take their place, [03](03-connections.md#transport)). Enrollment refuses a directory open to the group or other users, and an existing identity without `--replace` |
 | `/var/lib/rpmgr/` | rpmgr, 0750 | Last-known-good snapshot (`snapshot.signed`, 0600) and **deny-list** (`denylist.signed`, 0600) (both signed; the deny-list is loaded before any session is accepted), stateless reset key (gateways: `quic-reset.key`, 0600, created at the first start), route certificates with their keys that the gateway fetched (gateways: `resources/`, 0700, one 0600 file per item, named by its SHA-256, removed when no route needs it), SQLite database and its lock file `controller.db.lock`, held by the running controller (controller) |
 | `/var/lib/rpmgr/update/` | rpmgr, 0750 | OTA download area: artifact and signed manifest written by the agent. **Untrusted input** to the updater, which never verifies or installs files in place here |
 | `/etc/sysctl.d/60-rpmgr.conf` | root, 0644 | Host tuning, written by `/install.sh` on every run: the UDP buffers, whatever the host has now, and BBR with `--tcp-bbr` or while the file sets it ([03](03-connections.md#host-tuning-applied-by-the-installer)) |
@@ -530,7 +530,7 @@ message that names the variable, not its value ([D93](14-open-decisions.md#engin
 | `api.cloudflare.com` | 443/TCP | DNS provider API, and Cloudflare's IP ranges for proxied routes ([15](15-dns.md#cloudflare-specifics)) | A Cloudflare provider is connected (Phase 2) |
 | The authoritative nameservers of claimed domains | 53/UDP and TCP | Reading `_rpmgr-challenge` TXT records ([04](04-security.md#route-and-hostname-ownership)) | Domains pending verification |
 | The PostgreSQL server | 5432/TCP, as the DSN says | The controller's database; mutual or server-verified TLS, `verify-full` except on loopback and a socket ([06](06-data-model.md#connecting-to-postgresql-phase-2)). Not through a proxy | `database.driver: postgres` (Phase 2) |
-| Vault or OpenBao Transit | as `kek.kms.address` says, usually 8200/TCP | Wrapping and unwrapping data keys ([04](04-security.md#kek-in-vault-or-openbao-transit)). Not through a proxy | `kek.source: kms` (Phase 2) |
+| Vault or OpenBao Transit | as `kek.kms.address` says, usually 8200/TCP | Wrapping and unwrapping data keys ([04](04-security.md#kek-in-vault-or-openbao-transit)). Not through a proxy | `kek.source: kms` |
 | Webhook receivers, the external audit sink, the revocation-log sink, OIDC providers, SMTP | as configured | Integrations configured by an admin | As configured |
 
 ## Configuration
@@ -565,7 +565,7 @@ database:
   # postgres: dsn: postgres://rpmgr@db.example.com/rpmgr?sslmode=verify-full&sslrootcert=/etc/rpmgr/pg-ca.pem
   # password_file: /etc/rpmgr/db-password       # or password_credential: <name>; never in the DSN
 kek:
-  source: systemd-credential  # systemd-credential | file | kms (Vault/OpenBao Transit, Phase 2); never env
+  source: systemd-credential  # systemd-credential | file | kms (Vault/OpenBao Transit); never env
   name: rpmgr-kek             # systemd-credential: the credential name
   # path: /etc/rpmgr/kek      # file: base64 of 32 random bytes, mode 0600 or 0400
   # kms:                      # source: kms (04)
@@ -671,9 +671,8 @@ Rules for every boot file:
   `host:port`; `hostnames` are lower-case DNS names (internationalised ones in their `xn--` form)
   and need an address ([03](03-connections.md#reaching-a-private-controller)).
 - URLs are `https://<host>[:<port>]` without user, path, query or fragment; listen addresses are
-  `[host]:port`; paths are absolute. `database.driver: postgres` and `kek.source: kms` are refused
-  before
-  Phase 2 (slices 8.6 and 8.9); from then on these rules hold as well:
+  `[host]:port`; paths are absolute. `database.driver: postgres` is refused before Phase 2 (slice
+  8.6); from then on these rules hold as well, and `kek.source: kms` has them from slice 8.9:
   - **PostgreSQL.** The `dsn` is a PostgreSQL URL or key-value string **without a password**: one
     that has one, or a `PGPASSWORD` in the environment or a `.pgpass` file that would supply one,
     stops the process. At most one of `password_file` and `password_credential` is set. The file
@@ -686,7 +685,11 @@ Rules for every boot file:
   - **Transit.** `kek.kms` takes `address` (an `https://` URL), `mount` (default `transit`), `key`,
     an optional `ca_file` of PEM certificates, and exactly one of `token_file` and `approle`
     (`role_id_file`, `secret_id_file`, optional `mount`, default `approle`). Every file is regular
-    and of mode 0600 or 0400. `name` and `path` are for the other sources and refused with `kms`.
+    and of mode 0600 or 0400. `name` and `path` are for the other sources and refused with `kms`,
+    and `kms` is refused with them. The controller reads the key at start and does not start when
+    Transit cannot be reached, the key is missing, of another type or not derived, or the
+    credential is refused; the message names the reason and no credential
+    ([04](04-security.md#kek-in-vault-or-openbao-transit)).
   - **Replicas.** `listen.internal` is `[host]:port`, for controllers only. With it,
     `listen.internal_address` (`host:port`, a name or an address the other replicas can dial) and
     `revocation_log.sink` are required, `database.driver` must be `postgres`, and the controller
@@ -1181,8 +1184,8 @@ gateway counts as `transport="h2"` ([03](03-connections.md#transport-selection))
 | `rpmgr_gateway_quic_bound` | gauge | gateway | 1 | 1 while the gateway listens for data sessions over QUIC; 0 while it does not, as in a process a hand-off started whose UDP port is still held. Suggested alert: 0 for more than 5 min |
 | `rpmgr_audit_checkpoint_age_seconds` | gauge | controller | 1 | Age of the oldest audit entry no checkpoint covers yet, 0 when every entry is covered ([04](04-security.md#audit-log)); with the external sink (Phase 2), no checkpoint that reached the sink |
 | `rpmgr_revocation_log_sink` | gauge | controller | 1 | 1 if a sink keeps the revocation log off the host, 0 for a single node without one ([Backup and restore](#backup-and-restore)) |
-| `rpmgr_kms_up` | gauge | controller | 2 | 1 while the last request to Transit succeeded, 0 after a failure; with `kek.source: kms` only |
-| `rpmgr_kms_requests_total{op,result}` | counter | controller | 2 | Transit requests by `encrypt`, `decrypt`, `rewrap` or `login` and `ok`, `denied`, `unavailable` or `error` |
+| `rpmgr_kms_up` | gauge | controller | 2 | 1 while Transit answers and the key is usable, 0 after a request found Transit unreachable, refused the credential or did not find the key, or after the key failed its check (missing, of another type, not derived); the controller is then not ready, and each `/readyz` reads the key again, at most once a second, until the check passes ([04](04-security.md#kek-in-vault-or-openbao-transit)); with `kek.source: kms` only |
+| `rpmgr_kms_requests_total{op,result}` | counter | controller | 2 | Transit requests by `encrypt`, `decrypt`, `rewrap`, `check` (the read of the key) or `login` and `ok`, `denied`, `unavailable` or `error` |
 | `rpmgr_ca_root_offline` | gauge | controller | 2 | 1 when the root's key is offline ([04](04-security.md#offline-root-ca)) |
 | `rpmgr_ca_intermediate_signing_pending` | gauge | controller | 2 | 1 while the next intermediate waits for an offline root's signature |
 | `rpmgr_controller_nodes{state}` | gauge | controller | 2 | Replicas by `live` and `stale` ([06](06-data-model.md#system)) |
@@ -1431,14 +1434,19 @@ Each runbook: **symptoms → steps → done when**.
 - **With an offline root** the job does not issue at half-life; Settings → PKI says "intermediate
   needs signing", and the alert is critical at the lead time of
   [04](04-security.md#offline-root-ca):
-  1. `rpmgr ca rotate-intermediate --csr-out <request>` on the controller host (or take the request
-     the job made from `rpmgr ca status`). Note the key hash it prints.
+  1. `rpmgr ca rotate-intermediate --csr-out <request>` on the controller host: it writes the
+     request the job made, or makes one. Note the key hash it prints; `rpmgr ca status` and
+     Settings → PKI show it too.
   2. Carry the request to the offline host and run `rpmgr ca sign-intermediate --root-file <file>
      --csr <request> --out <certificate>`. It shows the key's hash: it must equal the one in step 1.
-     Confirm, and enter the passphrase.
+     Confirm, and enter the passphrase. On a host where nobody confirms, `--yes` needs
+     `--key-sha256 <hash>` with the hash from step 1; another request is refused.
   3. Carry the certificate back and run `rpmgr ca import-intermediate --in <certificate>`. It
      refuses a certificate that does not chain to the root, is not name-constrained to the trust
      domain or has the wrong path length, and changes nothing then.
+- **If the alert says the signed intermediate is not valid now**, it was signed with a clock that
+  is off, or too long ago: make a new request (step 1), sign it with the offline host's clock
+  corrected, and import it; the import retires the stale one.
 - **Done when**: every agent's certificate is issued by the new intermediate (Settings → PKI), and
   the notice is gone.
 
@@ -1456,23 +1464,23 @@ Each runbook: **symptoms → steps → done when**.
   another place.
 - **Done when**: `rpmgr ca status` shows the root as offline and no longer warns about the KEK,
   no database, backup or log on the controller host holds its key in the clear, and the file opens
-  on the offline host (run `rpmgr ca
+  on the offline host (with a request from `rpmgr ca rotate-intermediate --csr-out`, run `rpmgr ca
   sign-intermediate` once, and answer "no" at the confirmation).
 
 ### Rotate the root
 
 - **Steps** ([04](04-security.md#root-rotation)): `rpmgr ca new-root` (with an offline root,
   `--csr-out`, then sign the cross-certificate offline with `rpmgr ca sign-intermediate --kind
-  cross-root`, the new intermediate's key with the same command, and import both with `rpmgr ca
-  import-intermediate`). Issuing moves to the new root at once and every chain carries both
-  intermediates, so agents that know only the old root keep verifying. Watch Settings → PKI and
-  `rpmgr ca status` until no agent is a straggler; leave the old root in the bundle for the overlap
-  (the longest leaf lifetime plus the Reauth grace period). `rpmgr ca drop-root` before then is
-  refused with the date it is allowed. If the alert "root rotation stalled" fires, an enabled
-  agent cannot or did not take the new root, most often because it has no `trust.roots`: update,
-  re-enroll or decommission it, or `rpmgr ca drop-root --strand-stragglers` to drop the old root
-  and leave it to re-enroll. After the drop, agents that never saw the new root have to
-  re-enroll.
+  cross-root` (the flag comes with `ca new-root`, slice 8.14), the new intermediate's key with the
+  same command, and import both with `rpmgr ca import-intermediate`). Issuing moves to the new root
+  at once and every chain carries both intermediates, so agents that know only the old root keep
+  verifying. Watch Settings → PKI and `rpmgr ca status` until no agent is a straggler; leave the old
+  root in the bundle for the overlap (the longest leaf lifetime plus the Reauth grace period).
+  `rpmgr ca drop-root` before then is refused with the date it is allowed. If the alert "root
+  rotation stalled" fires, an enabled agent cannot or did not take the new root, most often because
+  it has no `trust.roots`: update, re-enroll or decommission it, or `rpmgr ca drop-root
+  --strand-stragglers` to drop the old root and leave it to re-enroll. After the drop, agents that
+  never saw the new root have to re-enroll.
 - **Done when**: the bundle is the new root alone and every agent reports its digest.
 
 ### Root compromise
@@ -1509,13 +1517,19 @@ Each runbook: **symptoms → steps → done when**.
   start the controllers; back up the new KEK separately; delete the old KEK's file and retire it
   after a successful backup and test restore.
 - **A Transit key** (`kek.source: kms`) rotates in Transit, and replicas keep running (a single
-  controller is stopped for it: the command takes the controller lock shared, so it is refused
-  beside one): rotate the key there, run `rpmgr kek rotate` (it calls `rewrap` for every wrapped
-  key, in batches), wait for `rpmgr kek status` to show none on an older key version, and only then
-  raise the key's minimum decryption version in Transit
-  ([04](04-security.md#kek-in-vault-or-openbao-transit)). **Moving** the KEK between a file or
-  credential and Transit, in either direction, needs every controller stopped: write the new boot
-  file, then `rpmgr kek rotate --previous-config <the old boot file>`.
+  controller is stopped for it: the command takes the controller lock exclusively, so it is refused
+  beside any): rotate the key there, run `rpmgr kek rotate` (it reads the key, then calls `rewrap`
+  once for every value that is not on the key's latest version, in one transaction; it fails and
+  changes nothing if the key was rotated again while it ran), wait for `rpmgr kek status`
+  to show none on an older key version, and only then raise the key's minimum decryption version
+  in Transit ([04](04-security.md#kek-in-vault-or-openbao-transit)). A command that cannot reach
+  Transit stops and changes nothing; `rpmgr kek status` then says why the key did not load and
+  still counts the values. **Moving** the KEK between a file or credential and Transit, in either
+  direction, needs every controller stopped: write the new boot file, then
+  `rpmgr kek rotate --config <the new boot file> --previous-config <the old boot file>`, which
+  opens each value with the KEK the old file names and seals it with the new one, in one
+  transaction. Keep the old KEK until the move is done and backed up: with Transit as the old KEK
+  that is the key and its credential, with a file the file.
 - **A systemd credential** is loaded only inside a unit: run a command that needs the KEK, such as
   `kek rotate` or `ca rotate-intermediate`, under `systemd-run --pipe --wait
   --property=LoadCredentialEncrypted=rpmgr-kek:/etc/rpmgr/credstore/rpmgr-kek`.

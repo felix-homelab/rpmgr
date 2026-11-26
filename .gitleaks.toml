@@ -68,3 +68,9 @@ commits = ["4814e34e9c23151b1df339ff4f88dd3565bda486"]
 [[allowlists]]
 description = "fake Global API Key shape in the DNS provider tests"
 regexes = ['''^0123456789ABCDEF0123456789ABCDEF01234$''']
+
+# The made-up KEK version of the PKI page's test in e10c73b9, which the generic rule reads as a key;
+# later commits use a plain value.
+[[allowlists]]
+description = "made-up KEK version in the PKI page test"
+regexes = ['''^0a1b2c3d4e5f6071$''']

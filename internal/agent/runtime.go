@@ -58,6 +58,14 @@ type RuntimeOptions struct {
 	Logger      *slog.Logger
 	// OnOffer gets the release offer of every applied snapshot, nil for none; may be nil.
 	OnOffer func(*agentv1.ReleaseOffer)
+	// OnTrustRoots gets the trust roots of every snapshot that verified, before the revision is
+	// checked; may be nil.
+	OnTrustRoots func([][]byte) (changed bool)
+	// OnRootsChanged is called once the snapshot that changed the roots is dealt with; may be nil.
+	OnRootsChanged func()
+	// Roots returns the roots a signer may chain to: every root the agent holds. Nil means the
+	// identity's roots.pem as loaded.
+	Roots func() []*x509.Certificate
 }
 
 // Runtime applies the agent's snapshots: it verifies each, ignores one that is not newer, lets the
@@ -229,6 +237,9 @@ func (r *Runtime) receive(ctx context.Context, signed *agentv1.Signed) {
 		r.reject(nil, hash, []*agentv1.SnapshotError{{Message: err.Error()}})
 		return
 	}
+	if r.o.OnTrustRoots != nil && r.o.OnTrustRoots(snap.GetTrustRoots()) && r.o.OnRootsChanged != nil {
+		defer r.o.OnRootsChanged()
+	}
 	rev := snap.GetRevision()
 	r.mu.Lock()
 	cur, epoch := r.cur, r.epoch
@@ -298,7 +309,11 @@ func (r *Runtime) verify(signed *agentv1.Signed) (*agentv1.Snapshot, error) {
 	r.mu.Lock()
 	signers := r.signers
 	r.mu.Unlock()
-	return snapsig.VerifySnapshot(signed, signers, r.o.Identity.Root, r.o.Identity.SPIFFE(), r.o.Now())
+	roots := []*x509.Certificate{r.o.Identity.Root}
+	if r.o.Roots != nil {
+		roots = r.o.Roots()
+	}
+	return snapsig.VerifySnapshotRoots(signed, signers, roots, r.o.Identity.SPIFFE(), r.o.Now())
 }
 
 // validate checks what every role relies on, each resource's ID and hash, and then lets the role

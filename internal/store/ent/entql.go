@@ -385,6 +385,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			cakey.FieldAlgorithm:   {Type: field.TypeString, Column: cakey.FieldAlgorithm},
 			cakey.FieldPublicKey:   {Type: field.TypeBytes, Column: cakey.FieldPublicKey},
 			cakey.FieldCertificate: {Type: field.TypeBytes, Column: cakey.FieldCertificate},
+			cakey.FieldCsr:         {Type: field.TypeBytes, Column: cakey.FieldCsr},
 			cakey.FieldKeyEnc:      {Type: field.TypeBytes, Column: cakey.FieldKeyEnc},
 			cakey.FieldNotBefore:   {Type: field.TypeTime, Column: cakey.FieldNotBefore},
 			cakey.FieldNotAfter:    {Type: field.TypeTime, Column: cakey.FieldNotAfter},
@@ -887,6 +888,8 @@ var schemaGraph = func() *sqlgraph.Schema {
 			instance.FieldDbEpoch:            {Type: field.TypeString, Column: instance.FieldDbEpoch},
 			instance.FieldCreatedAt:          {Type: field.TypeTime, Column: instance.FieldCreatedAt},
 			instance.FieldRestoreReviewSince: {Type: field.TypeTime, Column: instance.FieldRestoreReviewSince},
+			instance.FieldRetiredAt:          {Type: field.TypeTime, Column: instance.FieldRetiredAt},
+			instance.FieldRetiredTo:          {Type: field.TypeString, Column: instance.FieldRetiredTo},
 		},
 	}
 	graph.Nodes[36] = &sqlgraph.Node{
@@ -3465,6 +3468,11 @@ func (f *CAKeyFilter) WhereCertificate(p entql.BytesP) {
 	f.Where(p.Field(cakey.FieldCertificate))
 }
 
+// WhereCsr applies the entql []byte predicate on the csr field.
+func (f *CAKeyFilter) WhereCsr(p entql.BytesP) {
+	f.Where(p.Field(cakey.FieldCsr))
+}
+
 // WhereKeyEnc applies the entql []byte predicate on the key_enc field.
 func (f *CAKeyFilter) WhereKeyEnc(p entql.BytesP) {
 	f.Where(p.Field(cakey.FieldKeyEnc))
@@ -5675,6 +5683,16 @@ func (f *InstanceFilter) WhereCreatedAt(p entql.TimeP) {
 // WhereRestoreReviewSince applies the entql time.Time predicate on the restore_review_since field.
 func (f *InstanceFilter) WhereRestoreReviewSince(p entql.TimeP) {
 	f.Where(p.Field(instance.FieldRestoreReviewSince))
+}
+
+// WhereRetiredAt applies the entql time.Time predicate on the retired_at field.
+func (f *InstanceFilter) WhereRetiredAt(p entql.TimeP) {
+	f.Where(p.Field(instance.FieldRetiredAt))
+}
+
+// WhereRetiredTo applies the entql string predicate on the retired_to field.
+func (f *InstanceFilter) WhereRetiredTo(p entql.StringP) {
+	f.Where(p.Field(instance.FieldRetiredTo))
 }
 
 // addPredicate implements the predicateAdder interface.

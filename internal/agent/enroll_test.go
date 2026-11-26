@@ -266,51 +266,20 @@ func TestEnroll_BundleWithExtraRootRejected(t *testing.T) {
 		t.Errorf("roots.pem keeps %d roots, want only the pinned one", len(roots))
 	}
 
-	pinned, key := rootPair(t, "pinned")
-	cross := crossSign(t, pinned, key)
-	unrelated, _ := rootPair(t, "unrelated")
-	got := agent.AcceptRoots(pinned, []*x509.Certificate{cross, unrelated, pinned})
-	if len(got) != 2 || !got[0].Equal(pinned) || !got[1].Equal(cross) {
-		t.Errorf("accepted %d roots, want the pinned one and the one it cross-signed", len(got))
+	// The response may add a root only with a cross-certificate of the pinned root; of the
+	// Welcome and snapshot clauses see TestAgent_SnapshotRootNeedsCrossSign.
+	pinned := newRoot(t, in.td, time.Now())
+	next := newRoot(t, in.td, time.Now())
+	cross := crossCert(t, pinned, next, &next.Key.PublicKey, nil)
+	unrelated := newRoot(t, in.td, time.Now())
+	got := agent.AcceptRoots([]*x509.Certificate{pinned.Cert}, in.td, []*x509.Certificate{cross, unrelated.Cert, next.Cert, pinned.Cert}, time.Now())
+	if len(got) != 2 || !got[0].Equal(pinned.Cert) || !got[1].Equal(next.Cert) {
+		t.Errorf("accepted %d roots, want the pinned one and the root it cross-signed (not the cross-certificate)", len(got))
 	}
 }
 
 func pemOf(c *x509.Certificate) []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: c.Raw})
-}
-
-func rootPair(t *testing.T, name string) (*x509.Certificate, any) {
-	t.Helper()
-	key, err := pki.NewKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	tmpl := &x509.Certificate{SerialNumber: big.NewInt(2), Subject: pkix.Name{CommonName: name}, NotBefore: time.Now(),
-		NotAfter: time.Now().Add(time.Hour), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	c, _ := x509.ParseCertificate(der)
-	return c, key
-}
-
-// crossSign issues a certificate for a new root key, signed by parent: what a planned root
-// rotation hands out.
-func crossSign(t *testing.T, parent *x509.Certificate, parentKey any) *x509.Certificate {
-	t.Helper()
-	key, err := pki.NewKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	tmpl := &x509.Certificate{SerialNumber: big.NewInt(3), Subject: pkix.Name{CommonName: "next root"}, NotBefore: time.Now(),
-		NotAfter: time.Now().Add(time.Hour), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, parent, &key.PublicKey, parentKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	c, _ := x509.ParseCertificate(der)
-	return c
 }
 
 func TestEnroll_RefusedBeforeTheNetwork(t *testing.T) {

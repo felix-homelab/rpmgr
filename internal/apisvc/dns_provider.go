@@ -151,10 +151,13 @@ func (d *DnsProviders) ConnectDnsProvider(ctx context.Context, req *connect.Requ
 		return nil, err
 	}
 	id := ids.New("dnp")
+	sealed, err := d.Sealer.Seal(ctx, providers.SecretContext(id), tok)
+	if err != nil {
+		return nil, storeError(err)
+	}
 	var row *ent.DNSProvider
 	err = store.WriteTx(ctx, d.DB, func(tx *ent.Tx) error {
-		sealed, err := store.Seal(ctx, tx, d.Sealer, providers.SecretContext(id), tok)
-		if err != nil {
+		if err := store.RecordSealed(ctx, tx, providers.SecretContext(id), sealed); err != nil {
 			return err
 		}
 		c := tx.DNSProvider.Create().SetID(id).SetOrgID(m.GetOrgId()).SetKind(dnsprovider.KindCloudflare).SetName(name).
@@ -248,12 +251,17 @@ func (d *DnsProviders) UpdateDnsProvider(ctx context.Context, req *connect.Reque
 			return nil, err
 		}
 	}
+	var sealed []byte
+	if rotate { // before the transaction: a key service may be slow, and the version check below guards the update
+		if sealed, err = d.Sealer.Seal(ctx, providers.SecretContext(id), tok); err != nil {
+			return nil, storeError(err)
+		}
+	}
 	var row *ent.DNSProvider
 	err = store.WriteTx(ctx, d.DB, func(tx *ent.Tx) error {
 		u := tx.DNSProvider.UpdateOneID(id).Where(dnsprovider.Version(cur.Version)).SetName(name)
 		if rotate {
-			sealed, err := store.Seal(ctx, tx, d.Sealer, providers.SecretContext(id), tok)
-			if err != nil {
+			if err := store.RecordSealed(ctx, tx, providers.SecretContext(id), sealed); err != nil {
 				return err
 			}
 			u.SetCredentialEnc(sealed).SetAccountID(next.GetCloudflare().GetAccountId()).SetStatus(dnsprovider.StatusOk).
@@ -265,6 +273,12 @@ func (d *DnsProviders) UpdateDnsProvider(ctx context.Context, req *connect.Reque
 		row, err = u.Save(ctx)
 		return err
 	})
+	if ent.IsNotFound(err) {
+		// The version guard failed, or the provider is gone.
+		if ok, xerr := d.DB.ReadClient().DNSProvider.Query().Where(dnsprovider.ID(id)).Exist(ctx); xerr == nil && ok {
+			return nil, connect.NewError(connect.CodeAborted, errors.New("apisvc: the provider changed while it was updated; try again"))
+		}
+	}
 	if err != nil {
 		return nil, storeError(err)
 	}
@@ -318,7 +332,7 @@ func (d *DnsProviders) DeleteDnsProvider(ctx context.Context, req *connect.Reque
 // client opens the token of a stored provider and makes the client of its account. Its errors are
 // fixed words: none quotes the token.
 func (d *DnsProviders) client(ctx context.Context, row *ent.DNSProvider) (dns.Provider, error) {
-	tok, err := d.Sealer.Open(providers.SecretContext(row.ID), row.CredentialEnc)
+	tok, err := d.Sealer.Open(ctx, providers.SecretContext(row.ID), row.CredentialEnc)
 	if err != nil {
 		if d.Logger != nil {
 			d.Logger.ErrorContext(ctx, "a dns provider's token cannot be opened", "dns_provider", row.ID)

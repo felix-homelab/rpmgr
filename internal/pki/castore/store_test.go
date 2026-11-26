@@ -256,8 +256,11 @@ func TestSeal_RecordsKEKVersion(t *testing.T) {
 		c := secret.Context{Table: "users", Column: "totp_seed_enc", RowID: ids.New("usr")}
 		for _, s := range []*secret.Sealer{sealer(t, k1), sealer(t, k2, k1)} {
 			if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
-				_, err := store.Seal(sys, tx, s, c, secret.New("seed"))
-				return err
+				sealed, err := s.Seal(sys, c, secret.New("seed"))
+				if err != nil {
+					return err
+				}
+				return store.RecordSealed(sys, tx, c, sealed)
 			}); err != nil {
 				t.Fatal(err)
 			}
@@ -267,8 +270,11 @@ func TestSeal_RecordsKEKVersion(t *testing.T) {
 			t.Fatalf("secrets_meta after a rotation: %+v", rows)
 		}
 		if err := store.WriteTx(context.Background(), db, func(tx *ent.Tx) error {
-			_, err := store.Seal(context.Background(), tx, sealer(t, k1), c, secret.New("seed"))
-			return err
+			sealed, err := sealer(t, k1).Seal(context.Background(), c, secret.New("seed"))
+			if err != nil {
+				return err
+			}
+			return store.RecordSealed(context.Background(), tx, c, sealed)
 		}); err == nil {
 			t.Error("sealed without a scope")
 		}

@@ -74,7 +74,7 @@ func TestDNSTokenJob_Delegation(t *testing.T) {
 	org := storetest.Org(t, db, "org-a")
 	c := db.Client()
 	pid := ids.New("dnp")
-	sealed, err := sealer.Seal(providers.SecretContext(pid), secret.New("token-good-0001"))
+	sealed, err := sealer.Seal(context.Background(), providers.SecretContext(pid), secret.New("token-good-0001"))
 	if err != nil {
 		t.Fatal(err)
 	}

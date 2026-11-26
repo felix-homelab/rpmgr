@@ -60,7 +60,7 @@ func (s *Sessions) FetchResource(ctx context.Context, req *agentv1.FetchResource
 		if err != nil {
 			return err
 		}
-		content, err = certs.Item(c, s.sealer)
+		content, err = certs.Item(s.sys, c, s.sealer)
 		return err
 	})
 	switch {

@@ -70,8 +70,10 @@ var noJobs bool
 
 // RunOptions configure Run.
 type RunOptions struct {
-	Config  config.Controller
-	Version string
+	Config config.Controller
+	// ConfigFile is the path Config was read from, shown in the boot settings; empty if none.
+	ConfigFile string
+	Version    string
 	// Sources compile the agents' snapshots.
 	Sources []snapshot.Source
 	// ACMERoots, if set, trusts the ACME CA's TLS certificate instead of the system roots (tests).
@@ -146,13 +148,23 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return fmt.Errorf("controller: %w", err)
 	}
-	var kek secret.KEK
-	if o.KEK != nil {
-		kek = *o.KEK
-	} else if kek, err = loadKEK(cfg, o.Getenv); err != nil {
+	var health *kmsHealth
+	var observe func(op, result string)
+	if cfg.KEK.Source == config.KEKKMS {
+		health = newKMSHealth()
+		observe = health.observe
+	}
+	local := func(cfg config.Controller) (secret.KEK, error) {
+		if o.KEK != nil && !o.KEK.IsZero() {
+			return *o.KEK, nil
+		}
+		return loadKEK(cfg, o.Getenv)
+	}
+	kekw, err := openKEK(ctx, cfg, local, o.Logger, observe)
+	if err != nil {
 		return err
 	}
-	sealer, err := secret.NewSealer(kek)
+	sealer, err := secret.NewSealerWith(kekw.Wrapper)
 	if err != nil {
 		return err
 	}
@@ -179,9 +191,12 @@ func Run(ctx context.Context, o RunOptions) error {
 	} else if !ok {
 		return ErrNotInitialised
 	}
+	if err := refuseRetired(ctx, db); err != nil {
+		return err
+	}
 	ca, err := castore.LoadCA(sys, db, sealer, o.Now)
 	if err != nil {
-		return err
+		return explainOpen(err)
 	}
 	td := ca.TrustDomain()
 	stateDir := filepath.Dir(cfg.Database.DSN)
@@ -202,7 +217,7 @@ func Run(ctx context.Context, o RunOptions) error {
 
 	sessions := NewSessions(SessionsOptions{DB: db, CA: ca, Node: nodeID, Version: o.Version, Sys: sys, Now: o.Now, RevLog: rl, Sealer: sealer,
 		Logger:   o.Logger,
-		Compiler: &snapshot.Compiler{Sources: o.Sources, Endpoints: AgentEndpoints(cfg.PublicURL), Offer: snapshot.ReleaseOfferAt(cfg.PublicURL), Roots: ca.TrustRoots}})
+		Compiler: &snapshot.Compiler{Sources: o.Sources, Endpoints: AgentEndpoints(cfg.PublicURL), Offer: snapshot.ReleaseOfferAt(cfg.PublicURL), Roots: ca.TrustRoots, Log: o.Logger}})
 	reg := o.Registry
 	if reg == nil {
 		reg = telemetry.NewRegistry()
@@ -220,6 +235,15 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	ready := NewReadiness(db, dir, sys)
+	if health != nil {
+		health.probe = kekw.Probe
+		ready.KMS = health
+		for _, c := range health.Collectors() {
+			if err := reg.Register(c); err != nil {
+				return err
+			}
+		}
+	}
 
 	roots := x509.NewCertPool()
 	roots.AddCert(ca.Root())
@@ -443,7 +467,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_settings_proto.Services().ByName("SettingsService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewSettingsServiceHandler(&apisvc.Settings{DB: db, Sys: sys, Sealer: sealer, Now: o.Now, RevocationLog: shipper.Status}, opts...)
+			return rpmgrv1connect.NewSettingsServiceHandler(&apisvc.Settings{DB: db, Sys: sys, Sealer: sealer, Now: o.Now, RevocationLog: shipper.Status,
+				Boot: &apisvc.BootSource{Config: cfg, NodeID: nodeID, ConfigFile: o.ConfigFile, LoadedAt: o.Now()}}, opts...)
 		}); err != nil {
 		return err
 	}

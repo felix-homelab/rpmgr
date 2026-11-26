@@ -54,7 +54,7 @@ func newEnv(t *testing.T, state dnszone.SyncState) *env {
 	kek, _ := secret.NewKEK([]byte("0123456789abcdef0123456789abcdef"))
 	sealer, _ := secret.NewSealer(kek)
 	pid := ids.New("dnp")
-	sealed, err := sealer.Seal(providers.SecretContext(pid), secret.New(token))
+	sealed, err := sealer.Seal(context.Background(), providers.SecretContext(pid), secret.New(token))
 	if err != nil {
 		t.Fatal(err)
 	}

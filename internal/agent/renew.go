@@ -101,7 +101,11 @@ func (s *stateCreds) boundCSR(key *ecdsa.PrivateKey) ([]byte, error) {
 // credentials are the TLS credentials of a connection to the controller name sni with the current
 // certificate.
 func (c *Client) credentials(sni string) *stateCreds {
-	cfg := pki.ClientConfig(c.Certificate(), c.o.Identity.Roots, sni,
+	roots := c.o.Identity.Roots
+	if c.o.Roots != nil {
+		roots = c.o.Roots()
+	}
+	cfg := pki.ClientConfig(c.Certificate(), roots, sni,
 		pki.Expect{TrustDomain: c.o.Identity.TrustDomain, Kinds: []pki.Kind{pki.KindController}}, c.o.Now, nil)
 	return &stateCreds{TransportCredentials: credentials.NewTLS(cfg)}
 }

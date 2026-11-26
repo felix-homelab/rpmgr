@@ -54,7 +54,10 @@ Under **Settings**, the Instance Admin opens **PKI**. **Certificate authority** 
 domain, the root pin, and each key whose certificate has not expired: **Key**, **State**,
 **Subject**, **Valid** and **Replaced on**, the day the schedule replaces it. The states are
 **Next** (made ahead and announced to agents, not signing yet), **Active** and **Retired**
-(replaced, still verifying what it signed until it expires).
+(replaced, still verifying what it signed until it expires). With the root offline the page says
+so, has no rotation button, and shows a notice while the next intermediate waits for the root's
+signature or its signature is not valid, and while the sealed root key may still be recoverable
+([Take the root offline](#take-the-root-offline)).
 
 ### With the command line
 
@@ -67,6 +70,7 @@ sudo rpmgr ca status
 ```text
 Trust domain: rpmgr-ewl35s75
 Root pin:     sha256:XOCDT8EkqMT2J5JWgt+BH8H82MFTr37JH+8l70Fe2vk=
+Root key:     online (sealed in the database)
 
 KIND              STATE   NOT BEFORE  NOT AFTER   ROTATES     SUBJECT
 root              active  YYYY-MM-DD  YYYY-MM-DD  -           CN=rpmgr root CA rpmgr-ewl35s75
@@ -76,7 +80,8 @@ audit-checkpoint  active  YYYY-MM-DD  YYYY-MM-DD  YYYY-MM-DD
 ```
 
 The lifetimes and the rotation schedule behind the dates are in
-[04](../../04-security.md#ca-hierarchy).
+[04](../../04-security.md#ca-hierarchy). With the root offline, the `Root key` line says so, and a
+warning follows until the KEK is rotated ([Take the root offline](#take-the-root-offline)).
 
 ## Rotate the issuing intermediate
 
@@ -106,6 +111,12 @@ Rotate it by hand only when you have a reason, such as a suspicion that its key 
   ([Rotate the issuing intermediate](../../10-operations.md#rotate-the-issuing-intermediate);
   [Rotate the KEK](../../10-operations.md#rotate-the-kek)). The command is recorded in the
   instance's audit log as `local-cli`.
+
+  With the KEK in a Vault or OpenBao Transit key (`kek.source: kms`), the command reads the
+  credential files of the boot file and asks Transit to wrap the new key, so it runs as a user that
+  can read those files, and Transit must be reachable. If it is not, the command stops with the
+  reason and changes nothing
+  ([Boot files](../reference/boot-files.md#controller)).
 
 Running controllers load the new intermediate on their own, shortly after
 ([04](../../04-security.md#ca-rotation)). When every agent's certificate is issued by the new
@@ -152,6 +163,66 @@ Revoking takes effect at once, and does not wait for certificates to expire
 
 `rpmgr status` on an agent host shows how many entries its deny-list has
 ([Status and diagnostics](../connectors/status-and-diagnostics.md#rpmgr-status)).
+
+## Take the root offline
+
+By default the root's key is sealed in the controller's database under the KEK. For a high-assurance
+installation it can leave the controller: it moves into a file that a passphrase protects, you keep
+the file on offline media, and the root signs only on a host you choose, when a new intermediate is
+due ([Offline root CA](../../04-security.md#offline-root-ca)). A controller that runs keeps serving.
+It cannot sign an intermediate itself, and it has no command that brings the root's key back.
+
+1. On the controller host, as root, with the KEK (in a systemd credential, run it inside a unit
+   that loads it, as the runbooks show):
+
+   ```sh
+   sudo rpmgr ca offline-root --out /root/rpmgr-root.age
+   ```
+
+   It writes the file, reads it again from disk, checks that its key is the database's, and only
+   then removes the key from the database. It never overwrites a file. It generates a passphrase and
+   shows it once, and stores it nowhere. Pass `--passphrase-file <file>` or `--prompt` to use your
+   own; it must be long and unpredictable enough, and is never an argument. If the command fails
+   after the key may already be marked as offline, it keeps the file and shows the generated
+   passphrase with the error: write it down, and read `rpmgr ca status` before you go on.
+2. Write the passphrase down and keep it apart from the media. Move the file to offline media and
+   delete every other copy, on the controller host too. Keep a second copy of the media.
+3. **Rotate the KEK** and destroy the old one. Removing the key from the database does not erase
+   what was sealed: free pages, the write-ahead log and every older backup still hold it, and the
+   old KEK opens it. `rpmgr ca status` and **Settings**, **PKI** warn until the KEK is rotated
+   ([Rotate the KEK](../../10-operations.md#rotate-the-kek)). Take a new backup afterwards; backups
+   made before cannot be opened any more, which is the point.
+
+A restore of an older backup that still held the key takes it out again, and says so
+([Backup and restore](backup-and-restore.md)).
+
+### Sign the next intermediate
+
+The intermediate is not replaced on its own while the root is offline: the controller makes the
+key and waits for a signature. **Settings**, **PKI** says when it is time, and
+`rpmgr ca rotate-intermediate` refuses without `--csr-out`
+([Rotate the issuing intermediate](../../10-operations.md#rotate-the-issuing-intermediate)):
+
+```sh
+sudo rpmgr ca rotate-intermediate --csr-out next.csr    # on the controller host
+rpmgr ca sign-intermediate --root-file rpmgr-root.age --csr next.csr --out next.crt   # offline host
+sudo rpmgr ca import-intermediate --in next.crt         # controller host
+```
+
+**Settings**, **PKI** and `rpmgr ca status` show a notice with the key's hash while the request
+waits for its signature. It turns critical shortly before the active intermediate expires
+([04](../../04-security.md#offline-root-ca)); an expired intermediate cannot issue certificates. If
+the signed intermediate is not valid when the schedule would use it, for instance because the
+offline host's clock was off, a critical notice says so: make a new request, sign it and import it,
+which retires the stale one.
+
+The first command prints the SHA-256 of the new key. `sign-intermediate` needs no database, KEK or
+controller. It asks for the passphrase and shows the subject, the key's hash, the validity and the
+constraints: compare the hash with the first command's, and confirm (`--yes` replaces the question
+on a host where nobody is, and then needs `--key-sha256` with that hash). `import-intermediate`
+needs no KEK. It refuses a certificate that is for another key, does not chain to the root, is not
+limited to the trust domain or has the wrong path length, and changes nothing then. The commands are
+recorded in the instance's audit log as `local-cli`.
 
 ## The root
 

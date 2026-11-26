@@ -304,6 +304,178 @@ func (SmtpSecurity) EnumDescriptor() ([]byte, []int) {
 	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{4}
 }
 
+// DatabaseDriver is the database engine of a controller.
+type DatabaseDriver int32
+
+const (
+	// Not set.
+	DatabaseDriver_DATABASE_DRIVER_UNSPECIFIED DatabaseDriver = 0
+	// SQLite, a file on the controller's host.
+	DatabaseDriver_DATABASE_DRIVER_SQLITE DatabaseDriver = 1
+	// PostgreSQL.
+	DatabaseDriver_DATABASE_DRIVER_POSTGRES DatabaseDriver = 2
+)
+
+// Enum value maps for DatabaseDriver.
+var (
+	DatabaseDriver_name = map[int32]string{
+		0: "DATABASE_DRIVER_UNSPECIFIED",
+		1: "DATABASE_DRIVER_SQLITE",
+		2: "DATABASE_DRIVER_POSTGRES",
+	}
+	DatabaseDriver_value = map[string]int32{
+		"DATABASE_DRIVER_UNSPECIFIED": 0,
+		"DATABASE_DRIVER_SQLITE":      1,
+		"DATABASE_DRIVER_POSTGRES":    2,
+	}
+)
+
+func (x DatabaseDriver) Enum() *DatabaseDriver {
+	p := new(DatabaseDriver)
+	*p = x
+	return p
+}
+
+func (x DatabaseDriver) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DatabaseDriver) Descriptor() protoreflect.EnumDescriptor {
+	return file_rpmgr_v1_settings_proto_enumTypes[5].Descriptor()
+}
+
+func (DatabaseDriver) Type() protoreflect.EnumType {
+	return &file_rpmgr_v1_settings_proto_enumTypes[5]
+}
+
+func (x DatabaseDriver) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DatabaseDriver.Descriptor instead.
+func (DatabaseDriver) EnumDescriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{5}
+}
+
+// PasswordSource is where the database password comes from; the password itself is never shown.
+type PasswordSource int32
+
+const (
+	// Not set.
+	PasswordSource_PASSWORD_SOURCE_UNSPECIFIED PasswordSource = 0
+	// The database has no password.
+	PasswordSource_PASSWORD_SOURCE_NONE PasswordSource = 1
+	// A password file.
+	PasswordSource_PASSWORD_SOURCE_FILE PasswordSource = 2
+	// A systemd credential.
+	PasswordSource_PASSWORD_SOURCE_CREDENTIAL PasswordSource = 3
+	// The DSN itself carries a password. The database opener refuses that; it is shown so that the
+	// operator sees it, and the password is not.
+	PasswordSource_PASSWORD_SOURCE_DSN PasswordSource = 4
+)
+
+// Enum value maps for PasswordSource.
+var (
+	PasswordSource_name = map[int32]string{
+		0: "PASSWORD_SOURCE_UNSPECIFIED",
+		1: "PASSWORD_SOURCE_NONE",
+		2: "PASSWORD_SOURCE_FILE",
+		3: "PASSWORD_SOURCE_CREDENTIAL",
+		4: "PASSWORD_SOURCE_DSN",
+	}
+	PasswordSource_value = map[string]int32{
+		"PASSWORD_SOURCE_UNSPECIFIED": 0,
+		"PASSWORD_SOURCE_NONE":        1,
+		"PASSWORD_SOURCE_FILE":        2,
+		"PASSWORD_SOURCE_CREDENTIAL":  3,
+		"PASSWORD_SOURCE_DSN":         4,
+	}
+)
+
+func (x PasswordSource) Enum() *PasswordSource {
+	p := new(PasswordSource)
+	*p = x
+	return p
+}
+
+func (x PasswordSource) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (PasswordSource) Descriptor() protoreflect.EnumDescriptor {
+	return file_rpmgr_v1_settings_proto_enumTypes[6].Descriptor()
+}
+
+func (PasswordSource) Type() protoreflect.EnumType {
+	return &file_rpmgr_v1_settings_proto_enumTypes[6]
+}
+
+func (x PasswordSource) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use PasswordSource.Descriptor instead.
+func (PasswordSource) EnumDescriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{6}
+}
+
+// KekSource is where the key-encryption key comes from; the key itself is never shown.
+type KekSource int32
+
+const (
+	// Not set.
+	KekSource_KEK_SOURCE_UNSPECIFIED KekSource = 0
+	// A systemd credential.
+	KekSource_KEK_SOURCE_SYSTEMD_CREDENTIAL KekSource = 1
+	// A file.
+	KekSource_KEK_SOURCE_FILE KekSource = 2
+	// A key management service (Phase 2, slice 8.9).
+	KekSource_KEK_SOURCE_KMS KekSource = 3
+)
+
+// Enum value maps for KekSource.
+var (
+	KekSource_name = map[int32]string{
+		0: "KEK_SOURCE_UNSPECIFIED",
+		1: "KEK_SOURCE_SYSTEMD_CREDENTIAL",
+		2: "KEK_SOURCE_FILE",
+		3: "KEK_SOURCE_KMS",
+	}
+	KekSource_value = map[string]int32{
+		"KEK_SOURCE_UNSPECIFIED":        0,
+		"KEK_SOURCE_SYSTEMD_CREDENTIAL": 1,
+		"KEK_SOURCE_FILE":               2,
+		"KEK_SOURCE_KMS":                3,
+	}
+)
+
+func (x KekSource) Enum() *KekSource {
+	p := new(KekSource)
+	*p = x
+	return p
+}
+
+func (x KekSource) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (KekSource) Descriptor() protoreflect.EnumDescriptor {
+	return file_rpmgr_v1_settings_proto_enumTypes[7].Descriptor()
+}
+
+func (KekSource) Type() protoreflect.EnumType {
+	return &file_rpmgr_v1_settings_proto_enumTypes[7]
+}
+
+func (x KekSource) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use KekSource.Descriptor instead.
+func (KekSource) EnumDescriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{7}
+}
+
 // InstanceSettings are the runtime settings of the installation, changed by the Instance Admin
 // (docs/10-operations.md, "Runtime settings"). A field that is not set has its default, which the
 // server fills in when it reads them.
@@ -1387,6 +1559,402 @@ func (x *UpdateOrgSettingsResponse) GetApplyStatus() *ApplyStatus {
 	return nil
 }
 
+// GetBootSettingsRequest is empty.
+type GetBootSettingsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetBootSettingsRequest) Reset() {
+	*x = GetBootSettingsRequest{}
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBootSettingsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBootSettingsRequest) ProtoMessage() {}
+
+func (x *GetBootSettingsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBootSettingsRequest.ProtoReflect.Descriptor instead.
+func (*GetBootSettingsRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{15}
+}
+
+// GetBootSettingsResponse is the boot settings of the controller that answered.
+type GetBootSettingsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The boot settings; never a secret, a DSN or the path of a secret file (docs/04-security.md,
+	// "Secrets at rest and in logs").
+	Settings      *BootSettings `protobuf:"bytes,1,opt,name=settings,proto3" json:"settings,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetBootSettingsResponse) Reset() {
+	*x = GetBootSettingsResponse{}
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBootSettingsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBootSettingsResponse) ProtoMessage() {}
+
+func (x *GetBootSettingsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBootSettingsResponse.ProtoReflect.Descriptor instead.
+func (*GetBootSettingsResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *GetBootSettingsResponse) GetSettings() *BootSettings {
+	if x != nil {
+		return x.Settings
+	}
+	return nil
+}
+
+// BootSettings is a controller's boot file as loaded (docs/10-operations.md, "Boot files").
+type BootSettings struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The replica that answered.
+	NodeId string `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	// The path of the boot file; empty when the controller did not read one.
+	ConfigFile string `protobuf:"bytes,2,opt,name=config_file,json=configFile,proto3" json:"config_file,omitempty"`
+	// When the boot file was loaded; a change takes effect at the next restart.
+	LoadedAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=loaded_at,json=loadedAt,proto3" json:"loaded_at,omitempty"`
+	// The URL that agents and browsers use to reach the controller.
+	PublicUrl string `protobuf:"bytes,4,opt,name=public_url,json=publicUrl,proto3" json:"public_url,omitempty"`
+	// The addresses the controller listens on; an empty one is off.
+	ListenHttps string `protobuf:"bytes,5,opt,name=listen_https,json=listenHttps,proto3" json:"listen_https,omitempty"`
+	ListenHttp  string `protobuf:"bytes,6,opt,name=listen_http,json=listenHttp,proto3" json:"listen_http,omitempty"`
+	ListenAdmin string `protobuf:"bytes,7,opt,name=listen_admin,json=listenAdmin,proto3" json:"listen_admin,omitempty"`
+	// The database.
+	Database *BootDatabase `protobuf:"bytes,8,opt,name=database,proto3" json:"database,omitempty"`
+	// The key-encryption key.
+	Kek *BootKek `protobuf:"bytes,9,opt,name=kek,proto3" json:"kek,omitempty"`
+	// Whether the certificate of the public URL comes from files; else ACME obtains one.
+	TlsFilesSet bool `protobuf:"varint,10,opt,name=tls_files_set,json=tlsFilesSet,proto3" json:"tls_files_set,omitempty"`
+	// The revocation-log sink: a directory, or empty for none.
+	RevocationLogSink string `protobuf:"bytes,11,opt,name=revocation_log_sink,json=revocationLogSink,proto3" json:"revocation_log_sink,omitempty"`
+	// The log level and format of the boot file, as set; empty is the default.
+	LogLevel  string `protobuf:"bytes,12,opt,name=log_level,json=logLevel,proto3" json:"log_level,omitempty"`
+	LogFormat string `protobuf:"bytes,13,opt,name=log_format,json=logFormat,proto3" json:"log_format,omitempty"`
+	// Whether tracing is on.
+	TracingEnabled bool `protobuf:"varint,14,opt,name=tracing_enabled,json=tracingEnabled,proto3" json:"tracing_enabled,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *BootSettings) Reset() {
+	*x = BootSettings{}
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BootSettings) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BootSettings) ProtoMessage() {}
+
+func (x *BootSettings) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BootSettings.ProtoReflect.Descriptor instead.
+func (*BootSettings) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *BootSettings) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *BootSettings) GetConfigFile() string {
+	if x != nil {
+		return x.ConfigFile
+	}
+	return ""
+}
+
+func (x *BootSettings) GetLoadedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LoadedAt
+	}
+	return nil
+}
+
+func (x *BootSettings) GetPublicUrl() string {
+	if x != nil {
+		return x.PublicUrl
+	}
+	return ""
+}
+
+func (x *BootSettings) GetListenHttps() string {
+	if x != nil {
+		return x.ListenHttps
+	}
+	return ""
+}
+
+func (x *BootSettings) GetListenHttp() string {
+	if x != nil {
+		return x.ListenHttp
+	}
+	return ""
+}
+
+func (x *BootSettings) GetListenAdmin() string {
+	if x != nil {
+		return x.ListenAdmin
+	}
+	return ""
+}
+
+func (x *BootSettings) GetDatabase() *BootDatabase {
+	if x != nil {
+		return x.Database
+	}
+	return nil
+}
+
+func (x *BootSettings) GetKek() *BootKek {
+	if x != nil {
+		return x.Kek
+	}
+	return nil
+}
+
+func (x *BootSettings) GetTlsFilesSet() bool {
+	if x != nil {
+		return x.TlsFilesSet
+	}
+	return false
+}
+
+func (x *BootSettings) GetRevocationLogSink() string {
+	if x != nil {
+		return x.RevocationLogSink
+	}
+	return ""
+}
+
+func (x *BootSettings) GetLogLevel() string {
+	if x != nil {
+		return x.LogLevel
+	}
+	return ""
+}
+
+func (x *BootSettings) GetLogFormat() string {
+	if x != nil {
+		return x.LogFormat
+	}
+	return ""
+}
+
+func (x *BootSettings) GetTracingEnabled() bool {
+	if x != nil {
+		return x.TracingEnabled
+	}
+	return false
+}
+
+// BootDatabase is the database section. For SQLite only the driver is set: its path is a file of
+// the host, not a setting to show.
+type BootDatabase struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Driver DatabaseDriver         `protobuf:"varint,1,opt,name=driver,proto3,enum=rpmgr.v1.DatabaseDriver" json:"driver,omitempty"`
+	// PostgreSQL only; read from the DSN, which is never shown whole.
+	Host     string `protobuf:"bytes,2,opt,name=host,proto3" json:"host,omitempty"`
+	Port     string `protobuf:"bytes,3,opt,name=port,proto3" json:"port,omitempty"`
+	Database string `protobuf:"bytes,4,opt,name=database,proto3" json:"database,omitempty"`
+	User     string `protobuf:"bytes,5,opt,name=user,proto3" json:"user,omitempty"`
+	// The sslmode of the DSN; empty if it sets none.
+	Sslmode string `protobuf:"bytes,6,opt,name=sslmode,proto3" json:"sslmode,omitempty"`
+	// PostgreSQL only.
+	PasswordSource PasswordSource `protobuf:"varint,7,opt,name=password_source,json=passwordSource,proto3,enum=rpmgr.v1.PasswordSource" json:"password_source,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *BootDatabase) Reset() {
+	*x = BootDatabase{}
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BootDatabase) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BootDatabase) ProtoMessage() {}
+
+func (x *BootDatabase) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BootDatabase.ProtoReflect.Descriptor instead.
+func (*BootDatabase) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *BootDatabase) GetDriver() DatabaseDriver {
+	if x != nil {
+		return x.Driver
+	}
+	return DatabaseDriver_DATABASE_DRIVER_UNSPECIFIED
+}
+
+func (x *BootDatabase) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *BootDatabase) GetPort() string {
+	if x != nil {
+		return x.Port
+	}
+	return ""
+}
+
+func (x *BootDatabase) GetDatabase() string {
+	if x != nil {
+		return x.Database
+	}
+	return ""
+}
+
+func (x *BootDatabase) GetUser() string {
+	if x != nil {
+		return x.User
+	}
+	return ""
+}
+
+func (x *BootDatabase) GetSslmode() string {
+	if x != nil {
+		return x.Sslmode
+	}
+	return ""
+}
+
+func (x *BootDatabase) GetPasswordSource() PasswordSource {
+	if x != nil {
+		return x.PasswordSource
+	}
+	return PasswordSource_PASSWORD_SOURCE_UNSPECIFIED
+}
+
+// BootKek is the KEK section: the kind of source and, where it is no secret, its name. The path of
+// a KEK file is not shown.
+type BootKek struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Source KekSource              `protobuf:"varint,1,opt,name=source,proto3,enum=rpmgr.v1.KekSource" json:"source,omitempty"`
+	// The name of the systemd credential; empty for other sources.
+	CredentialName string `protobuf:"bytes,2,opt,name=credential_name,json=credentialName,proto3" json:"credential_name,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *BootKek) Reset() {
+	*x = BootKek{}
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BootKek) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BootKek) ProtoMessage() {}
+
+func (x *BootKek) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_settings_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BootKek.ProtoReflect.Descriptor instead.
+func (*BootKek) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *BootKek) GetSource() KekSource {
+	if x != nil {
+		return x.Source
+	}
+	return KekSource_KEK_SOURCE_UNSPECIFIED
+}
+
+func (x *BootKek) GetCredentialName() string {
+	if x != nil {
+		return x.CredentialName
+	}
+	return ""
+}
+
 var File_rpmgr_v1_settings_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_settings_proto_rawDesc = "" +
@@ -1493,7 +2061,41 @@ const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"\bsettings\x18\x01 \x01(\v2\x15.rpmgr.v1.OrgSettingsR\bsettings\x12\x12\n" +
 	"\x04etag\x18\x02 \x01(\tR\x04etag\x12.\n" +
 	"\brevision\x18\x03 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\x128\n" +
-	"\fapply_status\x18\x04 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus*\x9c\x01\n" +
+	"\fapply_status\x18\x04 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus\"\x18\n" +
+	"\x16GetBootSettingsRequest\"M\n" +
+	"\x17GetBootSettingsResponse\x122\n" +
+	"\bsettings\x18\x01 \x01(\v2\x16.rpmgr.v1.BootSettingsR\bsettings\"\x99\x04\n" +
+	"\fBootSettings\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x1f\n" +
+	"\vconfig_file\x18\x02 \x01(\tR\n" +
+	"configFile\x127\n" +
+	"\tloaded_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\bloadedAt\x12\x1d\n" +
+	"\n" +
+	"public_url\x18\x04 \x01(\tR\tpublicUrl\x12!\n" +
+	"\flisten_https\x18\x05 \x01(\tR\vlistenHttps\x12\x1f\n" +
+	"\vlisten_http\x18\x06 \x01(\tR\n" +
+	"listenHttp\x12!\n" +
+	"\flisten_admin\x18\a \x01(\tR\vlistenAdmin\x122\n" +
+	"\bdatabase\x18\b \x01(\v2\x16.rpmgr.v1.BootDatabaseR\bdatabase\x12#\n" +
+	"\x03kek\x18\t \x01(\v2\x11.rpmgr.v1.BootKekR\x03kek\x12\"\n" +
+	"\rtls_files_set\x18\n" +
+	" \x01(\bR\vtlsFilesSet\x12.\n" +
+	"\x13revocation_log_sink\x18\v \x01(\tR\x11revocationLogSink\x12\x1b\n" +
+	"\tlog_level\x18\f \x01(\tR\blogLevel\x12\x1d\n" +
+	"\n" +
+	"log_format\x18\r \x01(\tR\tlogFormat\x12'\n" +
+	"\x0ftracing_enabled\x18\x0e \x01(\bR\x0etracingEnabled\"\xf5\x01\n" +
+	"\fBootDatabase\x120\n" +
+	"\x06driver\x18\x01 \x01(\x0e2\x18.rpmgr.v1.DatabaseDriverR\x06driver\x12\x12\n" +
+	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
+	"\x04port\x18\x03 \x01(\tR\x04port\x12\x1a\n" +
+	"\bdatabase\x18\x04 \x01(\tR\bdatabase\x12\x12\n" +
+	"\x04user\x18\x05 \x01(\tR\x04user\x12\x18\n" +
+	"\asslmode\x18\x06 \x01(\tR\asslmode\x12A\n" +
+	"\x0fpassword_source\x18\a \x01(\x0e2\x18.rpmgr.v1.PasswordSourceR\x0epasswordSource\"_\n" +
+	"\aBootKek\x12+\n" +
+	"\x06source\x18\x01 \x01(\x0e2\x13.rpmgr.v1.KekSourceR\x06source\x12'\n" +
+	"\x0fcredential_name\x18\x02 \x01(\tR\x0ecredentialName*\x9c\x01\n" +
 	"\x0fTransportPolicy\x12 \n" +
 	"\x1cTRANSPORT_POLICY_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15TRANSPORT_POLICY_AUTO\x10\x01\x12\x19\n" +
@@ -1515,14 +2117,31 @@ const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"\fSmtpSecurity\x12\x1d\n" +
 	"\x19SMTP_SECURITY_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16SMTP_SECURITY_STARTTLS\x10\x01\x12\x15\n" +
-	"\x11SMTP_SECURITY_TLS\x10\x022\xe7\x04\n" +
+	"\x11SMTP_SECURITY_TLS\x10\x02*k\n" +
+	"\x0eDatabaseDriver\x12\x1f\n" +
+	"\x1bDATABASE_DRIVER_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16DATABASE_DRIVER_SQLITE\x10\x01\x12\x1c\n" +
+	"\x18DATABASE_DRIVER_POSTGRES\x10\x02*\x9e\x01\n" +
+	"\x0ePasswordSource\x12\x1f\n" +
+	"\x1bPASSWORD_SOURCE_UNSPECIFIED\x10\x00\x12\x18\n" +
+	"\x14PASSWORD_SOURCE_NONE\x10\x01\x12\x18\n" +
+	"\x14PASSWORD_SOURCE_FILE\x10\x02\x12\x1e\n" +
+	"\x1aPASSWORD_SOURCE_CREDENTIAL\x10\x03\x12\x17\n" +
+	"\x13PASSWORD_SOURCE_DSN\x10\x04*s\n" +
+	"\tKekSource\x12\x1a\n" +
+	"\x16KEK_SOURCE_UNSPECIFIED\x10\x00\x12!\n" +
+	"\x1dKEK_SOURCE_SYSTEMD_CREDENTIAL\x10\x01\x12\x13\n" +
+	"\x0fKEK_SOURCE_FILE\x10\x02\x12\x12\n" +
+	"\x0eKEK_SOURCE_KMS\x10\x032\xd8\x05\n" +
 	"\x0fSettingsService\x12{\n" +
 	"\x13GetInstanceSettings\x12$.rpmgr.v1.GetInstanceSettingsRequest\x1a%.rpmgr.v1.GetInstanceSettingsResponse\"\x17\x8a\xb5\x18\x10\n" +
 	"\x0einstance.admin\x90\x02\x01\x12\x81\x01\n" +
 	"\x16UpdateInstanceSettings\x12'.rpmgr.v1.UpdateInstanceSettingsRequest\x1a(.rpmgr.v1.UpdateInstanceSettingsResponse\"\x14\x8a\xb5\x18\x10\n" +
 	"\x0einstance.admin\x12l\n" +
 	"\x0fSetSmtpPassword\x12 .rpmgr.v1.SetSmtpPasswordRequest\x1a!.rpmgr.v1.SetSmtpPasswordResponse\"\x14\x8a\xb5\x18\x10\n" +
-	"\x0einstance.admin\x12n\n" +
+	"\x0einstance.admin\x12o\n" +
+	"\x0fGetBootSettings\x12 .rpmgr.v1.GetBootSettingsRequest\x1a!.rpmgr.v1.GetBootSettingsResponse\"\x17\x8a\xb5\x18\x10\n" +
+	"\x0einstance.admin\x90\x02\x01\x12n\n" +
 	"\x0eGetOrgSettings\x12\x1f.rpmgr.v1.GetOrgSettingsRequest\x1a .rpmgr.v1.GetOrgSettingsResponse\"\x19\x8a\xb5\x18\x12\n" +
 	"\borg.read\x12\x06org_id\x90\x02\x01\x12u\n" +
 	"\x11UpdateOrgSettings\x12\".rpmgr.v1.UpdateOrgSettingsRequest\x1a#.rpmgr.v1.UpdateOrgSettingsResponse\"\x17\x8a\xb5\x18\x13\n" +
@@ -1540,77 +2159,94 @@ func file_rpmgr_v1_settings_proto_rawDescGZIP() []byte {
 	return file_rpmgr_v1_settings_proto_rawDescData
 }
 
-var file_rpmgr_v1_settings_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_rpmgr_v1_settings_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_rpmgr_v1_settings_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
+var file_rpmgr_v1_settings_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_rpmgr_v1_settings_proto_goTypes = []any{
 	(TransportPolicy)(0),                   // 0: rpmgr.v1.TransportPolicy
 	(PasswordHashProfile)(0),               // 1: rpmgr.v1.PasswordHashProfile
 	(UpdateChannel)(0),                     // 2: rpmgr.v1.UpdateChannel
 	(RolloutMode)(0),                       // 3: rpmgr.v1.RolloutMode
 	(SmtpSecurity)(0),                      // 4: rpmgr.v1.SmtpSecurity
-	(*InstanceSettings)(nil),               // 5: rpmgr.v1.InstanceSettings
-	(*CloudflareIpRanges)(nil),             // 6: rpmgr.v1.CloudflareIpRanges
-	(*SmtpSettings)(nil),                   // 7: rpmgr.v1.SmtpSettings
-	(*OrgSettings)(nil),                    // 8: rpmgr.v1.OrgSettings
-	(*GetInstanceSettingsRequest)(nil),     // 9: rpmgr.v1.GetInstanceSettingsRequest
-	(*GetInstanceSettingsResponse)(nil),    // 10: rpmgr.v1.GetInstanceSettingsResponse
-	(*RevocationLogStatus)(nil),            // 11: rpmgr.v1.RevocationLogStatus
-	(*UpdateInstanceSettingsRequest)(nil),  // 12: rpmgr.v1.UpdateInstanceSettingsRequest
-	(*UpdateInstanceSettingsResponse)(nil), // 13: rpmgr.v1.UpdateInstanceSettingsResponse
-	(*SetSmtpPasswordRequest)(nil),         // 14: rpmgr.v1.SetSmtpPasswordRequest
-	(*SetSmtpPasswordResponse)(nil),        // 15: rpmgr.v1.SetSmtpPasswordResponse
-	(*GetOrgSettingsRequest)(nil),          // 16: rpmgr.v1.GetOrgSettingsRequest
-	(*GetOrgSettingsResponse)(nil),         // 17: rpmgr.v1.GetOrgSettingsResponse
-	(*UpdateOrgSettingsRequest)(nil),       // 18: rpmgr.v1.UpdateOrgSettingsRequest
-	(*UpdateOrgSettingsResponse)(nil),      // 19: rpmgr.v1.UpdateOrgSettingsResponse
-	(*durationpb.Duration)(nil),            // 20: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil),          // 21: google.protobuf.Timestamp
-	(*fieldmaskpb.FieldMask)(nil),          // 22: google.protobuf.FieldMask
-	(*Revision)(nil),                       // 23: rpmgr.v1.Revision
-	(*ApplyStatus)(nil),                    // 24: rpmgr.v1.ApplyStatus
+	(DatabaseDriver)(0),                    // 5: rpmgr.v1.DatabaseDriver
+	(PasswordSource)(0),                    // 6: rpmgr.v1.PasswordSource
+	(KekSource)(0),                         // 7: rpmgr.v1.KekSource
+	(*InstanceSettings)(nil),               // 8: rpmgr.v1.InstanceSettings
+	(*CloudflareIpRanges)(nil),             // 9: rpmgr.v1.CloudflareIpRanges
+	(*SmtpSettings)(nil),                   // 10: rpmgr.v1.SmtpSettings
+	(*OrgSettings)(nil),                    // 11: rpmgr.v1.OrgSettings
+	(*GetInstanceSettingsRequest)(nil),     // 12: rpmgr.v1.GetInstanceSettingsRequest
+	(*GetInstanceSettingsResponse)(nil),    // 13: rpmgr.v1.GetInstanceSettingsResponse
+	(*RevocationLogStatus)(nil),            // 14: rpmgr.v1.RevocationLogStatus
+	(*UpdateInstanceSettingsRequest)(nil),  // 15: rpmgr.v1.UpdateInstanceSettingsRequest
+	(*UpdateInstanceSettingsResponse)(nil), // 16: rpmgr.v1.UpdateInstanceSettingsResponse
+	(*SetSmtpPasswordRequest)(nil),         // 17: rpmgr.v1.SetSmtpPasswordRequest
+	(*SetSmtpPasswordResponse)(nil),        // 18: rpmgr.v1.SetSmtpPasswordResponse
+	(*GetOrgSettingsRequest)(nil),          // 19: rpmgr.v1.GetOrgSettingsRequest
+	(*GetOrgSettingsResponse)(nil),         // 20: rpmgr.v1.GetOrgSettingsResponse
+	(*UpdateOrgSettingsRequest)(nil),       // 21: rpmgr.v1.UpdateOrgSettingsRequest
+	(*UpdateOrgSettingsResponse)(nil),      // 22: rpmgr.v1.UpdateOrgSettingsResponse
+	(*GetBootSettingsRequest)(nil),         // 23: rpmgr.v1.GetBootSettingsRequest
+	(*GetBootSettingsResponse)(nil),        // 24: rpmgr.v1.GetBootSettingsResponse
+	(*BootSettings)(nil),                   // 25: rpmgr.v1.BootSettings
+	(*BootDatabase)(nil),                   // 26: rpmgr.v1.BootDatabase
+	(*BootKek)(nil),                        // 27: rpmgr.v1.BootKek
+	(*durationpb.Duration)(nil),            // 28: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),          // 29: google.protobuf.Timestamp
+	(*fieldmaskpb.FieldMask)(nil),          // 30: google.protobuf.FieldMask
+	(*Revision)(nil),                       // 31: rpmgr.v1.Revision
+	(*ApplyStatus)(nil),                    // 32: rpmgr.v1.ApplyStatus
 }
 var file_rpmgr_v1_settings_proto_depIdxs = []int32{
 	0,  // 0: rpmgr.v1.InstanceSettings.default_transport:type_name -> rpmgr.v1.TransportPolicy
-	20, // 1: rpmgr.v1.InstanceSettings.leaf_certificate_lifetime:type_name -> google.protobuf.Duration
-	20, // 2: rpmgr.v1.InstanceSettings.expired_certificate_grace:type_name -> google.protobuf.Duration
+	28, // 1: rpmgr.v1.InstanceSettings.leaf_certificate_lifetime:type_name -> google.protobuf.Duration
+	28, // 2: rpmgr.v1.InstanceSettings.expired_certificate_grace:type_name -> google.protobuf.Duration
 	1,  // 3: rpmgr.v1.InstanceSettings.password_hash_profile:type_name -> rpmgr.v1.PasswordHashProfile
 	2,  // 4: rpmgr.v1.InstanceSettings.update_channel:type_name -> rpmgr.v1.UpdateChannel
-	20, // 5: rpmgr.v1.InstanceSettings.hourly_rollup_retention:type_name -> google.protobuf.Duration
-	20, // 6: rpmgr.v1.InstanceSettings.daily_rollup_retention:type_name -> google.protobuf.Duration
-	7,  // 7: rpmgr.v1.InstanceSettings.smtp:type_name -> rpmgr.v1.SmtpSettings
-	20, // 8: rpmgr.v1.InstanceSettings.audit_retention:type_name -> google.protobuf.Duration
+	28, // 5: rpmgr.v1.InstanceSettings.hourly_rollup_retention:type_name -> google.protobuf.Duration
+	28, // 6: rpmgr.v1.InstanceSettings.daily_rollup_retention:type_name -> google.protobuf.Duration
+	10, // 7: rpmgr.v1.InstanceSettings.smtp:type_name -> rpmgr.v1.SmtpSettings
+	28, // 8: rpmgr.v1.InstanceSettings.audit_retention:type_name -> google.protobuf.Duration
 	3,  // 9: rpmgr.v1.InstanceSettings.rollout_mode:type_name -> rpmgr.v1.RolloutMode
-	6,  // 10: rpmgr.v1.InstanceSettings.cloudflare_ip_ranges:type_name -> rpmgr.v1.CloudflareIpRanges
-	21, // 11: rpmgr.v1.CloudflareIpRanges.refreshed_at:type_name -> google.protobuf.Timestamp
+	9,  // 10: rpmgr.v1.InstanceSettings.cloudflare_ip_ranges:type_name -> rpmgr.v1.CloudflareIpRanges
+	29, // 11: rpmgr.v1.CloudflareIpRanges.refreshed_at:type_name -> google.protobuf.Timestamp
 	4,  // 12: rpmgr.v1.SmtpSettings.security:type_name -> rpmgr.v1.SmtpSecurity
-	5,  // 13: rpmgr.v1.GetInstanceSettingsResponse.settings:type_name -> rpmgr.v1.InstanceSettings
-	11, // 14: rpmgr.v1.GetInstanceSettingsResponse.revocation_log:type_name -> rpmgr.v1.RevocationLogStatus
-	21, // 15: rpmgr.v1.RevocationLogStatus.oldest_unshipped_time:type_name -> google.protobuf.Timestamp
-	5,  // 16: rpmgr.v1.UpdateInstanceSettingsRequest.settings:type_name -> rpmgr.v1.InstanceSettings
-	22, // 17: rpmgr.v1.UpdateInstanceSettingsRequest.update_mask:type_name -> google.protobuf.FieldMask
-	5,  // 18: rpmgr.v1.UpdateInstanceSettingsResponse.settings:type_name -> rpmgr.v1.InstanceSettings
-	23, // 19: rpmgr.v1.UpdateInstanceSettingsResponse.revision:type_name -> rpmgr.v1.Revision
-	8,  // 20: rpmgr.v1.GetOrgSettingsResponse.settings:type_name -> rpmgr.v1.OrgSettings
-	8,  // 21: rpmgr.v1.UpdateOrgSettingsRequest.settings:type_name -> rpmgr.v1.OrgSettings
-	22, // 22: rpmgr.v1.UpdateOrgSettingsRequest.update_mask:type_name -> google.protobuf.FieldMask
-	8,  // 23: rpmgr.v1.UpdateOrgSettingsResponse.settings:type_name -> rpmgr.v1.OrgSettings
-	23, // 24: rpmgr.v1.UpdateOrgSettingsResponse.revision:type_name -> rpmgr.v1.Revision
-	24, // 25: rpmgr.v1.UpdateOrgSettingsResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	9,  // 26: rpmgr.v1.SettingsService.GetInstanceSettings:input_type -> rpmgr.v1.GetInstanceSettingsRequest
-	12, // 27: rpmgr.v1.SettingsService.UpdateInstanceSettings:input_type -> rpmgr.v1.UpdateInstanceSettingsRequest
-	14, // 28: rpmgr.v1.SettingsService.SetSmtpPassword:input_type -> rpmgr.v1.SetSmtpPasswordRequest
-	16, // 29: rpmgr.v1.SettingsService.GetOrgSettings:input_type -> rpmgr.v1.GetOrgSettingsRequest
-	18, // 30: rpmgr.v1.SettingsService.UpdateOrgSettings:input_type -> rpmgr.v1.UpdateOrgSettingsRequest
-	10, // 31: rpmgr.v1.SettingsService.GetInstanceSettings:output_type -> rpmgr.v1.GetInstanceSettingsResponse
-	13, // 32: rpmgr.v1.SettingsService.UpdateInstanceSettings:output_type -> rpmgr.v1.UpdateInstanceSettingsResponse
-	15, // 33: rpmgr.v1.SettingsService.SetSmtpPassword:output_type -> rpmgr.v1.SetSmtpPasswordResponse
-	17, // 34: rpmgr.v1.SettingsService.GetOrgSettings:output_type -> rpmgr.v1.GetOrgSettingsResponse
-	19, // 35: rpmgr.v1.SettingsService.UpdateOrgSettings:output_type -> rpmgr.v1.UpdateOrgSettingsResponse
-	31, // [31:36] is the sub-list for method output_type
-	26, // [26:31] is the sub-list for method input_type
-	26, // [26:26] is the sub-list for extension type_name
-	26, // [26:26] is the sub-list for extension extendee
-	0,  // [0:26] is the sub-list for field type_name
+	8,  // 13: rpmgr.v1.GetInstanceSettingsResponse.settings:type_name -> rpmgr.v1.InstanceSettings
+	14, // 14: rpmgr.v1.GetInstanceSettingsResponse.revocation_log:type_name -> rpmgr.v1.RevocationLogStatus
+	29, // 15: rpmgr.v1.RevocationLogStatus.oldest_unshipped_time:type_name -> google.protobuf.Timestamp
+	8,  // 16: rpmgr.v1.UpdateInstanceSettingsRequest.settings:type_name -> rpmgr.v1.InstanceSettings
+	30, // 17: rpmgr.v1.UpdateInstanceSettingsRequest.update_mask:type_name -> google.protobuf.FieldMask
+	8,  // 18: rpmgr.v1.UpdateInstanceSettingsResponse.settings:type_name -> rpmgr.v1.InstanceSettings
+	31, // 19: rpmgr.v1.UpdateInstanceSettingsResponse.revision:type_name -> rpmgr.v1.Revision
+	11, // 20: rpmgr.v1.GetOrgSettingsResponse.settings:type_name -> rpmgr.v1.OrgSettings
+	11, // 21: rpmgr.v1.UpdateOrgSettingsRequest.settings:type_name -> rpmgr.v1.OrgSettings
+	30, // 22: rpmgr.v1.UpdateOrgSettingsRequest.update_mask:type_name -> google.protobuf.FieldMask
+	11, // 23: rpmgr.v1.UpdateOrgSettingsResponse.settings:type_name -> rpmgr.v1.OrgSettings
+	31, // 24: rpmgr.v1.UpdateOrgSettingsResponse.revision:type_name -> rpmgr.v1.Revision
+	32, // 25: rpmgr.v1.UpdateOrgSettingsResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	25, // 26: rpmgr.v1.GetBootSettingsResponse.settings:type_name -> rpmgr.v1.BootSettings
+	29, // 27: rpmgr.v1.BootSettings.loaded_at:type_name -> google.protobuf.Timestamp
+	26, // 28: rpmgr.v1.BootSettings.database:type_name -> rpmgr.v1.BootDatabase
+	27, // 29: rpmgr.v1.BootSettings.kek:type_name -> rpmgr.v1.BootKek
+	5,  // 30: rpmgr.v1.BootDatabase.driver:type_name -> rpmgr.v1.DatabaseDriver
+	6,  // 31: rpmgr.v1.BootDatabase.password_source:type_name -> rpmgr.v1.PasswordSource
+	7,  // 32: rpmgr.v1.BootKek.source:type_name -> rpmgr.v1.KekSource
+	12, // 33: rpmgr.v1.SettingsService.GetInstanceSettings:input_type -> rpmgr.v1.GetInstanceSettingsRequest
+	15, // 34: rpmgr.v1.SettingsService.UpdateInstanceSettings:input_type -> rpmgr.v1.UpdateInstanceSettingsRequest
+	17, // 35: rpmgr.v1.SettingsService.SetSmtpPassword:input_type -> rpmgr.v1.SetSmtpPasswordRequest
+	23, // 36: rpmgr.v1.SettingsService.GetBootSettings:input_type -> rpmgr.v1.GetBootSettingsRequest
+	19, // 37: rpmgr.v1.SettingsService.GetOrgSettings:input_type -> rpmgr.v1.GetOrgSettingsRequest
+	21, // 38: rpmgr.v1.SettingsService.UpdateOrgSettings:input_type -> rpmgr.v1.UpdateOrgSettingsRequest
+	13, // 39: rpmgr.v1.SettingsService.GetInstanceSettings:output_type -> rpmgr.v1.GetInstanceSettingsResponse
+	16, // 40: rpmgr.v1.SettingsService.UpdateInstanceSettings:output_type -> rpmgr.v1.UpdateInstanceSettingsResponse
+	18, // 41: rpmgr.v1.SettingsService.SetSmtpPassword:output_type -> rpmgr.v1.SetSmtpPasswordResponse
+	24, // 42: rpmgr.v1.SettingsService.GetBootSettings:output_type -> rpmgr.v1.GetBootSettingsResponse
+	20, // 43: rpmgr.v1.SettingsService.GetOrgSettings:output_type -> rpmgr.v1.GetOrgSettingsResponse
+	22, // 44: rpmgr.v1.SettingsService.UpdateOrgSettings:output_type -> rpmgr.v1.UpdateOrgSettingsResponse
+	39, // [39:45] is the sub-list for method output_type
+	33, // [33:39] is the sub-list for method input_type
+	33, // [33:33] is the sub-list for extension type_name
+	33, // [33:33] is the sub-list for extension extendee
+	0,  // [0:33] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_settings_proto_init() }
@@ -1628,8 +2264,8 @@ func file_rpmgr_v1_settings_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_settings_proto_rawDesc), len(file_rpmgr_v1_settings_proto_rawDesc)),
-			NumEnums:      5,
-			NumMessages:   15,
+			NumEnums:      8,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

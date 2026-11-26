@@ -31,6 +31,12 @@ service SettingsService {
   rpc SetSmtpPassword(SetSmtpPasswordRequest) returns (SetSmtpPasswordResponse) {
     option (rpmgr.v1.authz) = {permission: "instance.admin"};
   }
+  // GetBootSettings returns the boot file of the controller that answers, as it was loaded at
+  // start, read-only and without any secret (docs/07-api.md, "Services").
+  rpc GetBootSettings(GetBootSettingsRequest) returns (GetBootSettingsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
   // GetOrgSettings returns an org's settings, defaults filled in.
   rpc GetOrgSettings(GetOrgSettingsRequest) returns (GetOrgSettingsResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
@@ -412,4 +418,103 @@ message UpdateOrgSettingsResponse {
   // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
   // final or the wait is over (docs/07-api.md, "Writes and apply status").
   ApplyStatus apply_status = 4;
+}
+
+// GetBootSettingsRequest is empty.
+message GetBootSettingsRequest {}
+
+// GetBootSettingsResponse is the boot settings of the controller that answered.
+message GetBootSettingsResponse {
+  // The boot settings; never a secret, a DSN or the path of a secret file (docs/04-security.md,
+  // "Secrets at rest and in logs").
+  BootSettings settings = 1;
+}
+
+// DatabaseDriver is the database engine of a controller.
+enum DatabaseDriver {
+  // Not set.
+  DATABASE_DRIVER_UNSPECIFIED = 0;
+  // SQLite, a file on the controller's host.
+  DATABASE_DRIVER_SQLITE = 1;
+  // PostgreSQL.
+  DATABASE_DRIVER_POSTGRES = 2;
+}
+
+// PasswordSource is where the database password comes from; the password itself is never shown.
+enum PasswordSource {
+  // Not set.
+  PASSWORD_SOURCE_UNSPECIFIED = 0;
+  // The database has no password.
+  PASSWORD_SOURCE_NONE = 1;
+  // A password file.
+  PASSWORD_SOURCE_FILE = 2;
+  // A systemd credential.
+  PASSWORD_SOURCE_CREDENTIAL = 3;
+  // The DSN itself carries a password. The database opener refuses that; it is shown so that the
+  // operator sees it, and the password is not.
+  PASSWORD_SOURCE_DSN = 4;
+}
+
+// KekSource is where the key-encryption key comes from; the key itself is never shown.
+enum KekSource {
+  // Not set.
+  KEK_SOURCE_UNSPECIFIED = 0;
+  // A systemd credential.
+  KEK_SOURCE_SYSTEMD_CREDENTIAL = 1;
+  // A file.
+  KEK_SOURCE_FILE = 2;
+  // A key management service (Phase 2, slice 8.9).
+  KEK_SOURCE_KMS = 3;
+}
+
+// BootSettings is a controller's boot file as loaded (docs/10-operations.md, "Boot files").
+message BootSettings {
+  // The replica that answered.
+  string node_id = 1;
+  // The path of the boot file; empty when the controller did not read one.
+  string config_file = 2;
+  // When the boot file was loaded; a change takes effect at the next restart.
+  google.protobuf.Timestamp loaded_at = 3;
+  // The URL that agents and browsers use to reach the controller.
+  string public_url = 4;
+  // The addresses the controller listens on; an empty one is off.
+  string listen_https = 5;
+  string listen_http = 6;
+  string listen_admin = 7;
+  // The database.
+  BootDatabase database = 8;
+  // The key-encryption key.
+  BootKek kek = 9;
+  // Whether the certificate of the public URL comes from files; else ACME obtains one.
+  bool tls_files_set = 10;
+  // The revocation-log sink: a directory, or empty for none.
+  string revocation_log_sink = 11;
+  // The log level and format of the boot file, as set; empty is the default.
+  string log_level = 12;
+  string log_format = 13;
+  // Whether tracing is on.
+  bool tracing_enabled = 14;
+}
+
+// BootDatabase is the database section. For SQLite only the driver is set: its path is a file of
+// the host, not a setting to show.
+message BootDatabase {
+  DatabaseDriver driver = 1;
+  // PostgreSQL only; read from the DSN, which is never shown whole.
+  string host = 2;
+  string port = 3;
+  string database = 4;
+  string user = 5;
+  // The sslmode of the DSN; empty if it sets none.
+  string sslmode = 6;
+  // PostgreSQL only.
+  PasswordSource password_source = 7;
+}
+
+// BootKek is the KEK section: the kind of source and, where it is no secret, its name. The path of
+// a KEK file is not shown.
+message BootKek {
+  KekSource source = 1;
+  // The name of the systemd credential; empty for other sources.
+  string credential_name = 2;
 }

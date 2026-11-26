@@ -6,10 +6,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"connectrpc.com/connect"
@@ -20,6 +24,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/config"
+	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
+	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -53,8 +60,12 @@ func openLocal(ctx context.Context, path, what string) (config.Controller, *stor
 	if _, err := os.Stat(cfg.Database.DSN); err != nil {
 		return cfg, nil, nil, fmt.Errorf("controller: no database at %s; run `rpmgr controller init` first: %w", cfg.Database.DSN, err)
 	}
-	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{})
+	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{RefuseRetired: true})
 	if err != nil {
+		return cfg, nil, nil, err
+	}
+	if err := refuseRetired(ctx, db); err != nil {
+		_ = db.Close()
 		return cfg, nil, nil, err
 	}
 	sys, err := authz.System(ctx, "local-cli", what, audit.SystemScopes(db))
@@ -77,6 +88,14 @@ func localKEK(cfg config.Controller, getenv func(string) string) (secret.KEK, er
 	return k, err
 }
 
+// kmsLog receives the Transit client's warnings in a local command; they hold no credential.
+var kmsLog = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+// localWrapper opens the boot file's KEK source for a command run from a shell.
+func localWrapper(ctx context.Context, cfg config.Controller, getenv func(string) string) (kekWrapper, error) {
+	return openKEK(ctx, cfg, func(c config.Controller) (secret.KEK, error) { return localKEK(c, getenv) }, kmsLog, nil)
+}
+
 // CAStatus is `rpmgr ca status`: the CA's keys that have not expired, as Settings → PKI shows them.
 // It needs no KEK.
 func CAStatus(ctx context.Context, path string) (*rpmgrv1.GetPkiStatusResponse, error) {
@@ -92,6 +111,43 @@ func CAStatus(ctx context.Context, path string) (*rpmgrv1.GetPkiStatusResponse, 
 	return resp.Msg, nil
 }
 
+// CAStatusWarnings are what `rpmgr ca status` adds to the status of the API: a root_offline marker
+// in this host's revocation log that names a root whose key is still in the database, as a failed
+// ceremony leaves it. A restore would null that key, so the file the ceremony kept is the only
+// copy to trust. It needs no KEK.
+func CAStatusWarnings(ctx context.Context, path string) ([]string, error) {
+	cfg, db, sys, err := openLocal(ctx, path, "rpmgr ca status")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = db.Close() }()
+	log := filepath.Join(filepath.Dir(cfg.Database.DSN), "revocations.log")
+	if _, err := os.Stat(log); err != nil {
+		return nil, nil
+	}
+	entries, err := revlog.Read(log)
+	if err != nil {
+		return nil, err
+	}
+	roots, err := db.ReadClient().CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.KeyEncNotNil()).All(sys)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, e := range entries {
+		if e.Kind != revlog.RootOffline {
+			continue
+		}
+		for _, r := range roots {
+			if len(*r.KeyEnc) > 0 && pki.PublicKeyHash(r.PublicKey) == e.Subject {
+				out = append(out, fmt.Sprintf("the revocation log says the root %s went offline, but its key is still in the database: a failed "+
+					"ceremony. The file it wrote is kept and holds the key; a restore would take the key out of the database", e.Subject))
+			}
+		}
+	}
+	return out, nil
+}
+
 // RotateIntermediate is `rpmgr ca rotate-intermediate`: a new issuing intermediate now, beside a
 // running controller, which reloads its keys within a minute (docs/04-security.md, "CA
 // rotation"). It returns the new intermediate.
@@ -100,11 +156,11 @@ func RotateIntermediate(ctx context.Context, path string, getenv func(string) st
 	if err != nil {
 		return nil, err
 	}
-	kek, err := localKEK(cfg, getenv)
+	kek, err := localWrapper(ctx, cfg, getenv)
 	if err != nil {
 		return nil, err
 	}
-	sealer, err := secret.NewSealer(kek)
+	sealer, err := secret.NewSealerWith(kek.Wrapper)
 	if err != nil {
 		return nil, err
 	}
@@ -114,6 +170,9 @@ func RotateIntermediate(ctx context.Context, path string, getenv func(string) st
 	}
 	defer func() { _ = db.Close() }()
 	resp, err := (&apisvc.Pki{DB: db, Sys: sys, Sealer: sealer}).RotateIntermediate(sys, connect.NewRequest(&rpmgrv1.RotateIntermediateRequest{}))
+	if ce := (*connect.Error)(nil); errors.As(err, &ce) && ce.Code() == connect.CodeFailedPrecondition {
+		return nil, fmt.Errorf("%w: ask it for a signature with --csr-out <file>", castore.ErrRootOffline)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -160,9 +219,51 @@ type KEKStatus struct {
 }
 
 // Mismatch reports whether the boot file's KEK wraps none of the recorded secrets while others do:
-// the boot file names another KEK than the one the database was sealed with.
+// the boot file names another KEK than the one the database was sealed with. A Transit key that
+// was rotated is not one: its older versions are the same KEK, and `kek rotate` moves them.
 func (s KEKStatus) Mismatch() bool {
-	return s.Current != "" && s.Versions[s.Current] == 0 && len(s.Old) > 0
+	if s.Current == "" || len(s.Old) == 0 {
+		return false
+	}
+	for v, n := range s.Versions {
+		if n > 0 && secret.KEKIdentity(v) == secret.KEKIdentity(s.Current) {
+			return false
+		}
+	}
+	return true
+}
+
+// Write prints the status as `rpmgr kek status` shows it. It prints versions and counts, and the
+// reason the KEK did not load, which holds no credential.
+func (s KEKStatus) Write(w io.Writer) error {
+	if s.CurrentErr != nil {
+		fmt.Fprintf(w, "The boot file's KEK: not loaded (%v)\n\n", s.CurrentErr)
+	} else {
+		fmt.Fprintf(w, "The boot file's KEK: version %s\n\n", s.Current)
+	}
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "KEK VERSION\tSECRETS")
+	for _, v := range slices.Sorted(maps.Keys(s.Versions)) {
+		mark := ""
+		if v == s.Current {
+			mark = " (the boot file's)"
+		}
+		fmt.Fprintf(tw, "%s%s\t%d\n", v, mark, s.Versions[v])
+	}
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+	if s.Mismatch() {
+		fmt.Fprintln(w, "\nThe boot file's KEK wraps none of the secrets: it is not the KEK of this database, or a\n"+
+			"rotation is pending (rpmgr kek rotate --previous-file <the old KEK> or\n--previous-config <the old boot file>).")
+	}
+	if len(s.Old) > 0 && s.CurrentErr == nil {
+		fmt.Fprintf(w, "\nUnder another KEK or key version than the boot file's (%d):\n", len(s.Old))
+		for _, r := range s.Old {
+			fmt.Fprintf(w, "  %s  (%s)\n", r, r.KEKVersion)
+		}
+	}
+	return nil
 }
 
 // StatusKEK is `rpmgr kek status`: which KEK versions wrap the stored secrets, by secrets_meta,
@@ -174,10 +275,10 @@ func StatusKEK(ctx context.Context, path string, getenv func(string) string) (KE
 	}
 	defer func() { _ = db.Close() }()
 	st := KEKStatus{Versions: map[string]int{}}
-	if k, err := localKEK(cfg, getenv); err != nil {
+	if k, err := localWrapper(ctx, cfg, getenv); err != nil {
 		st.CurrentErr = err
 	} else {
-		st.Current = k.Version()
+		st.Current = k.Version
 	}
 	err = store.ReadTx(sys, db, func(tx *ent.Tx, _ store.Revision) error {
 		rows, err := tx.SecretMeta.Query().Order(ent.Asc(secretmeta.FieldTableName), ent.Asc(secretmeta.FieldRowID)).All(sys)
@@ -226,28 +327,64 @@ func sealedValues(ctx context.Context, tx *ent.Tx, dialect string, c sealedColum
 	return out, rows.Err()
 }
 
+// ErrPreviousNeeded is returned by RotateKEK for a file or credential KEK without the previous one:
+// only a Transit key has earlier versions of itself to re-wrap.
+var ErrPreviousNeeded = errors.New("controller: the previous KEK is needed: --previous-file or --previous-config")
+
+// PreviousKEK names the KEK before a rotation: a file of the format of kek.source file, or a boot
+// file whose kek section names it, of any source, to move between a file or credential and Transit.
+// At most one is set; with neither, the boot file's KEK must be a Transit key, whose earlier
+// versions are re-wrapped to the latest.
+type PreviousKEK struct {
+	File, Config string
+}
+
 // RotateKEK is `rpmgr kek rotate`: with every controller stopped, it re-wraps the data key of every
-// stored secret under the boot file's KEK, opening them with it or with previous, the KEK before;
-// the secrets themselves are not re-encrypted (docs/04-security.md, "Secrets at rest and in
-// logs"). It is one transaction: a secret that opens with neither KEK changes nothing. It returns
-// how many values it re-wrapped and the new version.
-func RotateKEK(ctx context.Context, path, previous string, getenv func(string) string) (int, string, error) {
+// stored secret under the boot file's KEK, opening them with it or with the previous one; the
+// secrets themselves are not re-encrypted (docs/04-security.md, "Secrets at rest and in logs"). It
+// is one transaction: a secret that opens with neither KEK changes nothing, and Transit being down
+// stops it. It returns how many values it re-wrapped and the new version.
+func RotateKEK(ctx context.Context, path string, previous PreviousKEK, getenv func(string) string) (int, string, error) {
+	if previous.File != "" && previous.Config != "" {
+		return 0, "", errors.New("controller: the previous KEK is a file or a boot file, not both")
+	}
 	cfg, err := loadController(path)
 	if err != nil {
 		return 0, "", err
 	}
-	kek, err := localKEK(cfg, getenv)
+	if previous == (PreviousKEK{}) && cfg.KEK.Source != config.KEKKMS {
+		return 0, "", ErrPreviousNeeded
+	}
+	kek, err := localWrapper(ctx, cfg, getenv)
 	if err != nil {
 		return 0, "", err
 	}
-	old, err := secret.LoadKEKFile(previous)
-	if err != nil {
-		return 0, "", fmt.Errorf("controller: the previous KEK: %w", err)
+	var prev []secret.Wrapper
+	from := "earlier versions of " + kek.Version
+	switch {
+	case previous.File != "":
+		old, err := secret.LoadKEKFile(previous.File)
+		if err != nil {
+			return 0, "", fmt.Errorf("controller: the previous KEK: %w", err)
+		}
+		prev, from = append(prev, secret.NewLocalWrapper(old)), old.Version()
+	case previous.Config != "":
+		pcfg, err := loadController(previous.Config)
+		if err != nil {
+			return 0, "", fmt.Errorf("controller: the previous KEK: %w", err)
+		}
+		old, err := localWrapper(ctx, pcfg, getenv)
+		if err != nil {
+			return 0, "", fmt.Errorf("controller: the previous KEK: %w", err)
+		}
+		prev, from = append(prev, old.Wrapper), old.Version
 	}
-	sealer, err := secret.NewSealer(kek, old)
+	sealer, err := secret.NewSealerWith(kek.Wrapper, prev...)
 	if err != nil {
 		return 0, "", err
 	}
+	// Only SQLite exists in this phase, so the one lock a command can take is the exclusive one;
+	// beside replicas it would be the shared one.
 	unlock, err := store.HoldLock(cfg.Database.DSN)
 	if errors.Is(err, store.ErrLocked) {
 		return 0, "", ErrStopController
@@ -280,10 +417,14 @@ func RotateKEK(ctx context.Context, path, previous string, getenv func(string) s
 				}
 			}
 			for _, id := range ids {
-				re, err := sealer.Rewrap(secret.Context{Table: c.table, Column: c.column, RowID: id}, values[id])
-				if err != nil {
+				re, err := sealer.Rewrap(sys, secret.Context{Table: c.table, Column: c.column, RowID: id}, values[id])
+				if errors.Is(err, secret.ErrOpen) {
 					failed = append(failed, c.table+"."+c.column+" "+id)
 					continue
+				}
+				if err != nil {
+					// Transit is down or refuses: nothing is known about this value.
+					return fmt.Errorf("controller: %s.%s %s: %w", c.table, c.column, id, err)
 				}
 				if !slices.Equal(re, values[id]) {
 					q, args := entsql.Dialect(db.Dialect).Update(c.table).Set(c.column, re).Where(entsql.EQ(c.id, id)).Query()
@@ -293,8 +434,12 @@ func RotateKEK(ctx context.Context, path, previous string, getenv func(string) s
 					n++
 				}
 				if c.meta {
+					version, err := secret.KEKVersion(re)
+					if err != nil {
+						return err
+					}
 					if err := tx.SecretMeta.Create().SetTableName(c.table).SetRowID(id).SetColumnName(c.column).
-						SetKekVersion(kek.Version()).Exec(sys); err != nil {
+						SetKekVersion(version).Exec(sys); err != nil {
 						return err
 					}
 				}
@@ -304,15 +449,26 @@ func RotateKEK(ctx context.Context, path, previous string, getenv func(string) s
 			return fmt.Errorf("controller: %d secrets open with neither the boot file's KEK nor the previous one, so nothing was re-wrapped: %s",
 				len(failed), strings.Join(failed, ", "))
 		}
+		if cfg.KEK.Source == config.KEKKMS {
+			// A key rotated meanwhile leaves the values skipped at the start on an older version.
+			again, err := localWrapper(sys, cfg, getenv)
+			if err != nil {
+				return err
+			}
+			if again.Version != kek.Version {
+				return fmt.Errorf("controller: the Transit key went from %s to %s while the command ran, so nothing was changed; run it again",
+					kek.Version, again.Version)
+			}
+		}
 		_, err := audit.Append(sys, tx, audit.Entry{ActorType: audit.ActorSystem, ActorID: "local-cli", Action: "kek.rotate",
-			TargetType: "kek", TargetID: kek.Version(), Result: audit.Success,
-			Reason: fmt.Sprintf("%d secrets re-wrapped from %s", n, old.Version())})
+			TargetType: "kek", TargetID: kek.Version, Result: audit.Success,
+			Reason: fmt.Sprintf("%d secrets re-wrapped from %s", n, from)})
 		return err
 	})
 	if err != nil {
 		return 0, "", err
 	}
-	return n, kek.Version(), nil
+	return n, kek.Version, nil
 }
 
 // MigrateResult is what `rpmgr migrate` did.

@@ -265,11 +265,11 @@ func TestDNS_TokenWriteOnlyAndBaseURLFixed(t *testing.T) {
 			t.Errorf("the stored value holds %s…", tok[:12])
 		}
 	}
-	opened, err := e.sealer.Open(providers.SecretContext(row.ID), row.CredentialEnc)
+	opened, err := e.sealer.Open(context.Background(), providers.SecretContext(row.ID), row.CredentialEnc)
 	if err != nil || !opened.EqualString(dnsToken2) {
 		t.Errorf("the stored token after a rotation: %v", err)
 	}
-	if _, err := e.sealer.Open(providers.SecretContext("dnp_other"), row.CredentialEnc); err == nil {
+	if _, err := e.sealer.Open(context.Background(), providers.SecretContext("dnp_other"), row.CredentialEnc); err == nil {
 		t.Error("the stored token opens for another row")
 	}
 	if strings.Contains(fmt.Sprintf("%+v %v %#v", row, row, row), dnsToken2) {
@@ -438,7 +438,7 @@ func TestDnsProviders_StepUp(t *testing.T) {
 		t.Errorf("list zones: %v", err)
 	}
 	row := e.db.Client().DNSProvider.GetX(e.sys, p.GetId())
-	if tok, _ := e.sealer.Open(providers.SecretContext(row.ID), row.CredentialEnc); !tok.EqualString(dnsToken1) || row.Name != "renamed" {
+	if tok, _ := e.sealer.Open(context.Background(), providers.SecretContext(row.ID), row.CredentialEnc); !tok.EqualString(dnsToken1) || row.Name != "renamed" {
 		t.Error("a refused rotation changed the token")
 	}
 }
@@ -556,7 +556,7 @@ func TestDnsProviders_OtherOrg(t *testing.T) {
 		}
 	}
 	row := e.db.Client().DNSProvider.GetX(e.sys, id)
-	if tok, _ := e.sealer.Open(providers.SecretContext(id), row.CredentialEnc); !tok.EqualString(dnsToken1) || row.Name != "main" || row.Version != 1 {
+	if tok, _ := e.sealer.Open(context.Background(), providers.SecretContext(id), row.CredentialEnc); !tok.EqualString(dnsToken1) || row.Name != "main" || row.Version != 1 {
 		t.Error("another org's call changed the provider")
 	}
 	// Bob's own list is empty, and his provider of the same name is possible: names are per org.
@@ -583,7 +583,7 @@ func TestDnsProviders_Rotate(t *testing.T) {
 	zones[p.GetId()] = 3 // three zones imported from it
 	opened := func() string {
 		row := e.db.Client().DNSProvider.GetX(e.sys, p.GetId())
-		tok, err := e.sealer.Open(providers.SecretContext(row.ID), row.CredentialEnc)
+		tok, err := e.sealer.Open(context.Background(), providers.SecretContext(row.ID), row.CredentialEnc)
 		if err != nil {
 			t.Fatal(err)
 		}

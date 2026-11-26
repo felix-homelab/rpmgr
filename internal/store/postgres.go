@@ -70,6 +70,9 @@ type PostgresOptions struct {
 	// Shared makes Lock shared, for the replicas of a controller cluster (listen.internal) and for
 	// `rpmgr migrate`: any number of shared holders, none while an exclusive one has the lock.
 	Shared bool
+	// RefuseRetired makes every write transaction check that `rpmgr migrate-db` has not retired the
+	// database, for commands that take no controller lock.
+	RefuseRetired bool
 }
 
 // OpenPostgres opens a PostgreSQL database. A server that is not on the loopback interface or a
@@ -83,7 +86,7 @@ func OpenPostgres(ctx context.Context, dsn string, o PostgresOptions) (*DB, erro
 		return nil, err
 	}
 	pool := stdlib.OpenDB(*cfg)
-	db := &DB{Dialect: Postgres, Writer: pool, Reader: pool, unlock: func() error { return nil }}
+	db := &DB{Dialect: Postgres, Writer: pool, Reader: pool, unlock: func() error { return nil }, refuseRetired: o.RefuseRetired}
 	if err := checkPostgres(ctx, pool); err != nil {
 		_ = db.Close()
 		return nil, err

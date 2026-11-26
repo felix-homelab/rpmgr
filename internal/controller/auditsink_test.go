@@ -113,7 +113,7 @@ func (e *sinkEnv) newJob() lease.Job {
 func (e *sinkEnv) sink(name, path string, entries bool) *ent.AuditSink {
 	e.t.Helper()
 	id := ids.New("ask")
-	sealed, err := e.sealer.Seal(secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: id}, secret.New(sinkSecret))
+	sealed, err := e.sealer.Seal(context.Background(), secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: id}, secret.New(sinkSecret))
 	if err != nil {
 		e.t.Fatal(err)
 	}

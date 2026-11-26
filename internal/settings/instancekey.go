@@ -44,9 +44,12 @@ func InstanceKey(ctx context.Context, db *store.DB, sealer *secret.Sealer, name 
 		if _, err := rand.Read(key); err != nil {
 			return nil, err
 		}
+		sealed, err := sealer.Seal(ctx, secretContext(name), secret.FromBytes(key))
+		if err != nil {
+			return nil, err
+		}
 		err = store.WriteTx(ctx, db, func(tx *ent.Tx) error {
-			sealed, err := store.Seal(ctx, tx, sealer, secretContext(name), secret.FromBytes(key))
-			if err != nil {
+			if err := store.RecordSealed(ctx, tx, secretContext(name), sealed); err != nil {
 				return err
 			}
 			return tx.InstanceSecret.Create().SetID(name).SetValueEnc(sealed).SetUpdatedAt(time.Now()).Exec(ctx)

@@ -121,12 +121,12 @@ type s3Sink struct {
 // acknowledged, the rest goes in the next pass.
 var errBatchTime = errors.New("writing a batch to the object store took longer than the time allowed for a batch")
 
-func openS3(o Options, s *ent.AuditSink) (Sink, error) {
+func openS3(ctx context.Context, o Options, s *ent.AuditSink) (Sink, error) {
 	set := S3SettingsOf(s.Settings)
 	if s.SecretEnc == nil || len(*s.SecretEnc) == 0 {
 		return nil, errors.New("the object-storage sink has no secret key")
 	}
-	key, err := o.Sealer.Open(secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: s.ID}, *s.SecretEnc)
+	key, err := o.Sealer.Open(ctx, secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: s.ID}, *s.SecretEnc)
 	if err != nil {
 		return nil, errors.New("the object-storage sink's secret key cannot be opened")
 	}
@@ -225,7 +225,7 @@ func s3Failure(err error) error {
 // checkS3 is Test for an object-storage sink: it checks the bucket instead of writing an item that
 // the lock would keep for the sink's whole lock period.
 func (r *Runner) checkS3(ctx context.Context, s *ent.AuditSink) error {
-	sink, err := r.open(s)
+	sink, err := r.open(ctx, s)
 	if err != nil {
 		return err
 	}
