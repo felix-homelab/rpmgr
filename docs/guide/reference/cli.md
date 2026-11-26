@@ -684,7 +684,7 @@ rpmgr ca sign-intermediate [flags]
 
 | Flag | Default | Description |
 |---|---|---|
-| `--csr ca rotate-intermediate --csr-out` |  | the request that ca rotate-intermediate --csr-out wrote |
+| `--csr ca rotate-intermediate --csr-out` |  | the request that ca rotate-intermediate --csr-out or \`ca new-root --csr-out\` wrote |
 | `--key-sha256 ca status` |  | the SHA-256 of the key the request must carry, as ca status and \`ca rotate-intermediate --csr-out\` show it; required with --yes |
 | `--kind string` | `intermediate` | intermediate, or cross-root for the request of a new root that ca new-root --csr-out wrote |
 | `--out string` |  | the certificate to write, which must not exist |
