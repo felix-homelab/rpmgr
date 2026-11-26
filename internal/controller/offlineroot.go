@@ -64,11 +64,11 @@ func OfflineRoot(ctx context.Context, o OfflineRootOptions) (OfflineRootResult, 
 	if err != nil {
 		return res, err
 	}
-	kek, err := localKEK(cfg, o.Getenv)
+	kek, err := localWrapper(ctx, cfg, o.Getenv)
 	if err != nil {
 		return res, err
 	}
-	sealer, err := secret.NewSealer(kek)
+	sealer, err := secret.NewSealerWith(kek.Wrapper)
 	if err != nil {
 		return res, err
 	}
@@ -97,6 +97,9 @@ func OfflineRoot(ctx context.Context, o OfflineRootOptions) (OfflineRootResult, 
 	// The key is opened before the transaction: opening may wait for a key service.
 	plan, err := castore.PlanRootExport(sys, db.ReadClient().CAKey, sealer)
 	if err != nil {
+		return OfflineRootResult{}, err
+	}
+	if err := fault("planned", o.Out); err != nil {
 		return OfflineRootResult{}, err
 	}
 	var created, marked bool
@@ -143,6 +146,11 @@ func OfflineRoot(ctx context.Context, o OfflineRootOptions) (OfflineRootResult, 
 			"only after `rpmgr ca status` shows the state: %w", o.Out, err)
 	case err != nil && created:
 		_ = os.Remove(o.Out) // the root stays online, so a file that holds its key is of no use
+	}
+	if errors.Is(err, castore.ErrRotated) {
+		return OfflineRootResult{}, fmt.Errorf("controller: the root's key changed while the ceremony was planned (a KEK "+
+			"rotation re-wrapped it meanwhile), so nothing was taken offline and no file was written: look at `rpmgr ca status`, "+
+			"then run the command again if the root is still online: %w", err)
 	}
 	if err != nil {
 		return OfflineRootResult{}, err
@@ -263,11 +271,11 @@ func RequestIntermediate(ctx context.Context, path, out string, getenv func(stri
 	if err != nil {
 		return "", err
 	}
-	kek, err := localKEK(cfg, getenv)
+	kek, err := localWrapper(ctx, cfg, getenv)
 	if err != nil {
 		return "", err
 	}
-	sealer, err := secret.NewSealer(kek)
+	sealer, err := secret.NewSealerWith(kek.Wrapper)
 	if err != nil {
 		return "", err
 	}
@@ -292,10 +300,17 @@ func RequestIntermediate(ctx context.Context, path, out string, getenv func(stri
 		if hash, err = requestKeyHash(csr); err != nil {
 			return "", err
 		}
+		if err = fault("planned", out); err != nil {
+			return "", err
+		}
 		err = store.WriteTx(sys, db, func(tx *ent.Tx) error { return applyRequest(sys, tx, plan, hash) })
 		if !errors.Is(err, castore.ErrRotated) || attempt == 2 {
 			break
 		}
+	}
+	if errors.Is(err, castore.ErrRotated) {
+		return "", fmt.Errorf("controller: the CA's keys changed on each of three attempts to ask for a signature (another "+
+			"request, rotation or `ca offline-root` ran at the same time); look at `rpmgr ca status` and try again: %w", err)
 	}
 	if err != nil {
 		return "", err
