@@ -26,6 +26,7 @@ New to rpmgr? Read [Concepts](concepts.md), then follow the [Quick start](quick-
 | [Upgrades](install/upgrades.md) | Upgrade every host in the right order |
 | [Air-gapped installations](install/air-gapped.md) | Give a controller without internet access its releases |
 | [Backup and restore](operations/backup-and-restore.md) | Back up the controller, and restore it |
+| [Move between SQLite and PostgreSQL](operations/sqlite-and-postgresql.md) | Copy a stopped controller's database to the other engine |
 
 ## Publish services
 

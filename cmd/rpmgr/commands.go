@@ -55,6 +55,7 @@ func commands() *cli.Command {
 			backupCommand(),
 			restoreCommand(),
 			migrateCommand(),
+			migrateDBCommand(),
 			caCommand(),
 			kekCommand(),
 			group("user", "administer users on the controller host", userResetPassword()),
@@ -86,7 +87,7 @@ const (
 var sectionOf = func() map[string]string {
 	m := map[string]string{}
 	for _, n := range []string{"setup", "enroll", "leave", "handoff", "status", "diag", "policy", "updater", "firewall", "backup",
-		"restore", "migrate", "ca", "kek", "user", "release", "systemd-unit"} {
+		"restore", "migrate", "migrate-db", "ca", "kek", "user", "release", "systemd-unit"} {
 		m[n] = sectionHost
 	}
 	for _, n := range []string{"controller", "gateway", "connector", "all-in-one"} {

@@ -12,6 +12,10 @@ Changes to the design documents are not recorded here: see the git history and t
 
 **Upgrade notes** ([Upgrades](docs/guide/install/upgrades.md)):
 
+- A SQLite database whose path is a symbolic link is now locked under the name of the file it points
+  to (`<file>.lock`), not under the link's. A controller of an earlier release that is still
+  running locks the old name, so stop it before you upgrade or run `rpmgr restore`, `rpmgr migrate`
+  or `rpmgr migrate-db` against such a database.
 - After the first start of this release, secrets are written in a new format that an older release
   cannot read. Take a backup of the database and the KEK before you upgrade; without it there is no
   way back to the older release.
@@ -91,6 +95,11 @@ Changes to the design documents are not recorded here: see the git history and t
   that are already verified.
 
 ### Added
+
+- `rpmgr migrate-db` copies a stopped controller's database into an empty one, from SQLite to
+  PostgreSQL or back, with the secrets still sealed and the database epoch kept. It retires the
+  source, which no controller then starts on, unless you pass `--no-retire`
+  ([guide](docs/guide/operations/sqlite-and-postgresql.md)). (#687)
 
 - The zone page now changes the zone's settings: whether it publishes route hostnames, allows
   proxied names and wildcards, and its delete threshold. Before, that took `rpmgr update zone` or

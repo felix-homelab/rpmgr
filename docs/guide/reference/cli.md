@@ -69,6 +69,7 @@ rpmgr <command>
 | [`rpmgr backup`](#rpmgr-backup) | Write a consistent backup of the controller |
 | [`rpmgr restore`](#rpmgr-restore) | Restore the controller from a backup |
 | [`rpmgr migrate`](#rpmgr-migrate) | Apply database migrations |
+| [`rpmgr migrate-db`](#rpmgr-migrate-db) | Copy a stopped controller's database between SQLite and PostgreSQL |
 | [`rpmgr ca`](#rpmgr-ca) | Administer the internal CA on the controller host |
 | [`rpmgr kek`](#rpmgr-kek) | Administer the key-encryption key on the controller host |
 | [`rpmgr user`](#rpmgr-user) | Administer users on the controller host |
@@ -600,6 +601,20 @@ rpmgr migrate [flags]
 | Flag | Default | Description |
 |---|---|---|
 | `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
+
+## rpmgr migrate-db
+
+Copy a stopped controller's database between SQLite and PostgreSQL.
+
+```text
+rpmgr migrate-db [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--from string` |  | the source: a SQLite database file or a boot file (required) |
+| `--no-retire` |  | leave the source usable after the copy, for a test copy |
+| `--to-file string` |  | the target: a boot file whose database section names an empty database (required) |
 
 ## rpmgr ca
 

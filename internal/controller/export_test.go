@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"os"
 	"testing"
 	"time"
 
@@ -152,4 +153,25 @@ func KMSReady(ctx context.Context, probe string, results ...string) error {
 		h.observe("encrypt", r)
 	}
 	return h.Ready(ctx)
+}
+
+// SetMigrateHook sets the hook MigrateDB calls at "before copy" and "after copy".
+func SetMigrateHook(t testing.TB, f func(stage string)) {
+	migrateHook = f
+	t.Cleanup(func() { migrateHook = nil })
+}
+
+// PlanTarget notes the files of a SQLite target that do not exist yet; remove removes those.
+func PlanTarget(path string) (remove func(), err error) {
+	p, err := planTarget(config.Database{Driver: "sqlite", DSN: path})
+	if err != nil {
+		return nil, err
+	}
+	return p.remove, nil
+}
+
+// SetEffectiveUID makes migrate-db believe it runs as uid.
+func SetEffectiveUID(t testing.TB, uid int) {
+	effectiveUID = func() int { return uid }
+	t.Cleanup(func() { effectiveUID = os.Geteuid })
 }

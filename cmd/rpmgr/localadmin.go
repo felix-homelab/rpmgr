@@ -90,6 +90,51 @@ func migrateCommand() *cli.Command {
 	})
 }
 
+// migrateDBCommand is `rpmgr migrate-db`: a stopped controller's database copied into an empty one,
+// between SQLite and PostgreSQL in either direction (docs/16-cli.md). It takes files, never a DSN.
+func migrateDBCommand() *cli.Command {
+	var from, toFile string
+	var noRetire bool
+	return &cli.Command{
+		Name:    "migrate-db",
+		Summary: "copy a stopped controller's database between SQLite and PostgreSQL",
+		Flags: func(fs *flag.FlagSet) {
+			fs.StringVar(&from, "from", "", "the source: a SQLite database file or a boot file (required)")
+			fs.StringVar(&toFile, "to-file", "", "the target: a boot file whose database section names an empty database (required)")
+			fs.BoolVar(&noRetire, "no-retire", false, "leave the source usable after the copy, for a test copy")
+		},
+		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
+			if from == "" || toFile == "" {
+				return cli.Usagef("migrate-db needs --from and --to-file")
+			}
+			tw := tabwriter.NewWriter(env.Stdout, 0, 4, 2, ' ', 0)
+			header := true
+			r, err := controller.MigrateDB(ctx, controller.MigrateDBOptions{From: from, ToFile: toFile, NoRetire: noRetire, Getenv: env.Getenv,
+				Progress: func(table string, rows int64) {
+					if header {
+						fmt.Fprintln(tw, "TABLE\tROWS")
+						header = false
+					}
+					fmt.Fprintf(tw, "%s\t%d\n", table, rows)
+				}})
+			if ferr := tw.Flush(); err == nil {
+				err = ferr
+			}
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintf(env.Stdout, "\nCopied %d tables and %d rows from %s to %s; the counts and content hashes agree (%s).\n"+
+				"The secrets were copied sealed and the database epoch is kept; no KEK was read.\n", r.Copy.Tables, r.Copy.Rows, r.From, r.To, r.Copy.Hash)
+			if err == nil && r.Retired {
+				_, err = fmt.Fprintln(env.Stdout, "The source is retired: no controller starts on it. Keep it until the target has run for a while.")
+			} else if err == nil {
+				_, err = fmt.Fprintln(env.Stdout, "The source is NOT retired (--no-retire): never run a controller on it and on the target at once.")
+			}
+			return err
+		},
+	}
+}
+
 // caCommand is `rpmgr ca …`.
 func caCommand() *cli.Command {
 	var csrOut string
