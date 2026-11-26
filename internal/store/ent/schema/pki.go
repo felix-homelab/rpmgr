@@ -44,7 +44,14 @@ func (CAKey) Fields() []ent.Field {
 		field.Bytes("key_enc").Optional().Nillable().Sensitive(),
 		field.Time("not_before"),
 		field.Time("not_after"),
-		field.Enum("status").Values("next", "active", "retired"),
+		// status: a root in the overlap of a rotation is "overlap": still in the trust bundle, no longer
+		// issuing (docs/04-security.md, "Root rotation"); the drop makes it retired.
+		field.Enum("status").Values("next", "active", "retired", "overlap"),
+		// cross_certificate is the certificate the old root signed for this key during a root rotation:
+		// the cross-certificate X on the new root's row, Y on the new intermediate's row.
+		field.Bytes("cross_certificate").Optional(),
+		// rotated_at is when a root entered the overlap, that is when issuing moved to the new root.
+		field.Time("rotated_at").Optional().Nillable(),
 	}
 }
 

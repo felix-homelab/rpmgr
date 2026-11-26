@@ -41,7 +41,9 @@ var (
 		cakey.KindIntermediate: rpmgrv1.CAKeyKind_CA_KEY_KIND_INTERMEDIATE, cakey.KindConfigSigning: rpmgrv1.CAKeyKind_CA_KEY_KIND_CONFIG_SIGNING,
 		cakey.KindAuditCheckpoint: rpmgrv1.CAKeyKind_CA_KEY_KIND_AUDIT_CHECKPOINT}
 	caKeyStates = map[cakey.Status]rpmgrv1.CAKeyState{cakey.StatusNext: rpmgrv1.CAKeyState_CA_KEY_STATE_NEXT,
-		cakey.StatusActive: rpmgrv1.CAKeyState_CA_KEY_STATE_ACTIVE, cakey.StatusRetired: rpmgrv1.CAKeyState_CA_KEY_STATE_RETIRED}
+		cakey.StatusActive: rpmgrv1.CAKeyState_CA_KEY_STATE_ACTIVE, cakey.StatusRetired: rpmgrv1.CAKeyState_CA_KEY_STATE_RETIRED,
+		// The old root in the overlap of a rotation no longer issues; `rpmgr ca status` says it is still trusted.
+		cakey.StatusOverlap: rpmgrv1.CAKeyState_CA_KEY_STATE_RETIRED}
 )
 
 // GetPkiStatus implements PkiService.
@@ -67,12 +69,16 @@ func (p *Pki) GetPkiStatus(ctx context.Context, _ *connect.Request[rpmgrv1.GetPk
 			return nil, err
 		}
 		if r.Kind == cakey.KindRoot && r.Status == cakey.StatusActive {
+			out.RootOffline = r.KeyEnc == nil || len(*r.KeyEnc) == 0
+		}
+		// The pin new agents enroll with: the active root, or in the overlap of a root rotation the old
+		// one, so that they hold both roots (docs/04-security.md, "Root rotation").
+		if r.Kind == cakey.KindRoot && (r.Status == cakey.StatusOverlap || r.Status == cakey.StatusActive && out.RootPin == "") {
 			root, err := x509.ParseCertificate(r.Certificate)
 			if err != nil {
 				return nil, err
 			}
 			out.RootPin = pki.RootPin(root)
-			out.RootOffline = r.KeyEnc == nil || len(*r.KeyEnc) == 0
 		}
 		out.Keys = append(out.Keys, k)
 	}

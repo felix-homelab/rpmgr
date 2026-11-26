@@ -417,7 +417,7 @@ func TestPush_TrustBundleChange(t *testing.T) {
 		e := startSessionsWith(t, db, func(o *controller.SessionsOptions) {
 			o.TrustBundle = func() []*x509.Certificate { return *bundle.Load() }
 			o.Compiler = &snapshot.Compiler{Sources: []snapshot.Source{orgResources},
-				Roots: func() ([][]byte, error) { return pki.TrustRootsDER(*bundle.Load()) }}
+				Roots: func(context.Context, *ent.Tx) ([][]byte, error) { return pki.TrustRootsDER(*bundle.Load()) }}
 			o.RevisionCheck = 20 * time.Millisecond
 		})
 		root := e.ca.Root()
