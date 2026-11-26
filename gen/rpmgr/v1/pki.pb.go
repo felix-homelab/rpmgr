@@ -279,9 +279,15 @@ type GetPkiStatusResponse struct {
 	// The root's pin, as `rpmgr enroll --ca-pin` takes it.
 	RootPin string `protobuf:"bytes,2,opt,name=root_pin,json=rootPin,proto3" json:"root_pin,omitempty"`
 	// The keys whose certificates have not expired: active and next first, by kind.
-	Keys          []*CAKey `protobuf:"bytes,3,rep,name=keys,proto3" json:"keys,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Keys []*CAKey `protobuf:"bytes,3,rep,name=keys,proto3" json:"keys,omitempty"`
+	// Whether the root's key is offline: the database holds its certificate and no key.
+	RootOffline bool `protobuf:"varint,4,opt,name=root_offline,json=rootOffline,proto3" json:"root_offline,omitempty"`
+	// The KEK that sealed the offline root's key and still wraps a stored secret: the sealed key may
+	// remain in free pages and backups, and this KEK opens it, until the KEK is rotated. Empty
+	// otherwise.
+	RootKeyResidueKek string `protobuf:"bytes,5,opt,name=root_key_residue_kek,json=rootKeyResidueKek,proto3" json:"root_key_residue_kek,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *GetPkiStatusResponse) Reset() {
@@ -333,6 +339,20 @@ func (x *GetPkiStatusResponse) GetKeys() []*CAKey {
 		return x.Keys
 	}
 	return nil
+}
+
+func (x *GetPkiStatusResponse) GetRootOffline() bool {
+	if x != nil {
+		return x.RootOffline
+	}
+	return false
+}
+
+func (x *GetPkiStatusResponse) GetRootKeyResidueKek() string {
+	if x != nil {
+		return x.RootKeyResidueKek
+	}
+	return ""
 }
 
 // RotateIntermediateRequest is empty.
@@ -432,11 +452,13 @@ const file_rpmgr_v1_pki_proto_rawDesc = "" +
 	"\tnot_after\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\bnotAfter\x12;\n" +
 	"\vrotate_time\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"rotateTime\"\x15\n" +
-	"\x13GetPkiStatusRequest\"y\n" +
+	"\x13GetPkiStatusRequest\"\xcd\x01\n" +
 	"\x14GetPkiStatusResponse\x12!\n" +
 	"\ftrust_domain\x18\x01 \x01(\tR\vtrustDomain\x12\x19\n" +
 	"\broot_pin\x18\x02 \x01(\tR\arootPin\x12#\n" +
-	"\x04keys\x18\x03 \x03(\v2\x0f.rpmgr.v1.CAKeyR\x04keys\"\x1b\n" +
+	"\x04keys\x18\x03 \x03(\v2\x0f.rpmgr.v1.CAKeyR\x04keys\x12!\n" +
+	"\froot_offline\x18\x04 \x01(\bR\vrootOffline\x12/\n" +
+	"\x14root_key_residue_kek\x18\x05 \x01(\tR\x11rootKeyResidueKek\"\x1b\n" +
 	"\x19RotateIntermediateRequest\"Q\n" +
 	"\x1aRotateIntermediateResponse\x123\n" +
 	"\fintermediate\x18\x01 \x01(\v2\x0f.rpmgr.v1.CAKeyR\fintermediate*\x9e\x01\n" +

@@ -612,7 +612,10 @@ rpmgr ca <command>
 | Command | What it does |
 |---|---|
 | [`rpmgr ca status`](#rpmgr-ca-status) | Show the CA keys and their validity |
-| [`rpmgr ca rotate-intermediate`](#rpmgr-ca-rotate-intermediate) | Rotate the issuing intermediate now |
+| [`rpmgr ca rotate-intermediate`](#rpmgr-ca-rotate-intermediate) | Rotate the issuing intermediate now, or with an offline root ask it for a signature |
+| [`rpmgr ca offline-root`](#rpmgr-ca-offline-root) | Move the root's key into a passphrase file and out of the database |
+| [`rpmgr ca sign-intermediate`](#rpmgr-ca-sign-intermediate) | Sign a request for an intermediate with the offline root, on the offline host |
+| [`rpmgr ca import-intermediate`](#rpmgr-ca-import-intermediate) | Import the intermediate the offline root signed |
 
 ## rpmgr ca status
 
@@ -628,7 +631,7 @@ rpmgr ca status [flags]
 
 ## rpmgr ca rotate-intermediate
 
-Rotate the issuing intermediate now.
+Rotate the issuing intermediate now, or with an offline root ask it for a signature.
 
 ```text
 rpmgr ca rotate-intermediate [flags]
@@ -637,6 +640,51 @@ rpmgr ca rotate-intermediate [flags]
 | Flag | Default | Description |
 |---|---|---|
 | `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
+| `--csr-out string` |  | with an offline root: write the request for its signature to this new file (never overwritten) |
+
+## rpmgr ca offline-root
+
+Move the root's key into a passphrase file and out of the database.
+
+```text
+rpmgr ca offline-root [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
+| `--out string` |  | the file to write, which must not exist; it is created with mode 0600 |
+| `--passphrase-file string` |  | read the passphrase from this file (mode 0600) instead of generating one |
+| `--prompt` |  | ask for the passphrase on the terminal, twice, instead of generating one |
+
+## rpmgr ca sign-intermediate
+
+Sign a request for an intermediate with the offline root, on the offline host.
+
+```text
+rpmgr ca sign-intermediate [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--csr ca rotate-intermediate --csr-out` |  | the request that ca rotate-intermediate --csr-out wrote |
+| `--out string` |  | the certificate to write, which must not exist |
+| `--passphrase-file string` |  | read the passphrase from this file (mode 0600) instead of asking for it |
+| `--root-file ca offline-root` |  | the root file that ca offline-root wrote |
+| `--yes` |  | sign without asking for a confirmation, on a host where nobody is |
+
+## rpmgr ca import-intermediate
+
+Import the intermediate the offline root signed.
+
+```text
+rpmgr ca import-intermediate [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
+| `--in ca sign-intermediate` |  | the certificate that ca sign-intermediate wrote |
 
 ## rpmgr kek
 

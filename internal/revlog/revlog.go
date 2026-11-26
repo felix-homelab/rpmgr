@@ -36,6 +36,10 @@ const (
 	// CredentialSuperseded: Subject is the user ID; Detail is password, mfa or recovery_codes.
 	CredentialSuperseded Kind = "credential_superseded" //nolint:gosec // G101: an entry kind, not a credential
 	GrantRemoved         Kind = "grant_removed"         // Subject: the grant ID; Detail: shell or visitor
+	// RootOffline is the durable marker of an offline root (docs/04-security.md, "Offline root CA"):
+	// Subject is the SHA-256 of the root's public key, hexadecimal; Detail is the KEK that sealed
+	// its key. A restore sets key_enc of that root to null again.
+	RootOffline Kind = "root_offline"
 )
 
 // What a CredentialSuperseded entry's Detail names.
@@ -47,7 +51,7 @@ const (
 
 var kinds = map[Kind]bool{CertificateRevoked: true, IdentityRevoked: true, CertificateSuperseded: true,
 	APITokenRevoked: true, SessionRevoked: true, MemberRemoved: true, RoleDowngraded: true,
-	InstanceAdminRevoked: true, CredentialSuperseded: true, GrantRemoved: true}
+	InstanceAdminRevoked: true, CredentialSuperseded: true, GrantRemoved: true, RootOffline: true}
 
 // Valid reports whether k is one of the kinds above.
 func (k Kind) Valid() bool { return kinds[k] }

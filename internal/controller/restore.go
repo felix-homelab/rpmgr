@@ -76,6 +76,10 @@ type RestoreResult struct {
 	// Kept lists the revocations since the backup not applied again, because the restored instance
 	// would have no active Instance Admin without them; the Instance Admin checks them.
 	Kept []string
+	// RootKeysDropped lists the roots, by the SHA-256 of their public key, that the archive still
+	// held the key of and the restore took offline again, as the revocation log's `root_offline`
+	// marker says (docs/04-security.md, "Offline root CA").
+	RootKeysDropped []string
 }
 
 // ErrControllerRunning is returned by Restore while a controller holds the database.
@@ -479,11 +483,32 @@ func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer
 			return err
 		}
 		res.DNSZones = n
+		// The archive's own log may hold a marker its database does not show: a backup's snapshot of
+		// the database can precede the commit that nulled the key, while its copy of the log, taken
+		// after, holds the marker. Applying a marker again is harmless.
+		own, err := revlog.Read(logPath)
+		if err != nil {
+			return err
+		}
+		for _, e := range own {
+			if e.Kind != revlog.RootOffline {
+				continue
+			}
+			if _, err := reapply(sys, tx, info.TrustDomain, e); errors.Is(err, errDroppedRootKey) {
+				res.RootKeysDropped = append(res.RootKeysDropped, e.Subject)
+			} else if err != nil {
+				return fmt.Errorf("controller: applying %s %s again: %w", e.Kind, e.Subject, err)
+			}
+		}
 		for _, e := range newer {
 			known, err := reapply(sys, tx, info.TrustDomain, e)
 			if errors.Is(err, errKeptInstanceAdmin) {
 				res.Kept = append(res.Kept, fmt.Sprintf("the Instance Admin role of %s, revoked %s, stays: the backup has no other active Instance Admin",
 					e.Subject, e.Time.UTC().Format(time.RFC3339)))
+				err = nil
+			}
+			if errors.Is(err, errDroppedRootKey) {
+				res.RootKeysDropped = append(res.RootKeysDropped, e.Subject)
 				err = nil
 			}
 			if err != nil {
@@ -506,7 +531,7 @@ func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer
 		_, err = audit.Append(sys, tx, audit.Entry{ActorType: audit.ActorSystem, ActorID: "local-cli", Action: "instance.restore",
 			TargetType: "instance", TargetID: res.NewEpoch, Result: audit.Success,
 			Reason: fmt.Sprintf("backup of %s, epoch %s; %d revocations since applied again, %d of them to subjects the backup does not hold%s; %d dns zones %s",
-				info.Created.UTC().Format(time.RFC3339), info.DBEpoch, res.Reapplied, res.Unknown, keptReason(res.Kept), res.DNSZones, dnsState(dnsDisabled))})
+				info.Created.UTC().Format(time.RFC3339), info.DBEpoch, res.Reapplied, res.Unknown, keptReason(res.Kept)+droppedReason(res.RootKeysDropped), res.DNSZones, dnsState(dnsDisabled))})
 		return err
 	})
 	if err != nil {
@@ -601,6 +626,12 @@ func reapply(ctx context.Context, tx *ent.Tx, td string, e revlog.Entry) (bool, 
 		return supersede(ctx, tx, e.Subject, e.Detail)
 	case revlog.SessionRevoked, revlog.GrantRemoved:
 		return true, nil // every session ends anyway; grants come with Phase 3
+	case revlog.RootOffline:
+		held, found, err := castore.ApplyRootOffline(ctx, tx, e.Subject)
+		if held && err == nil {
+			err = errDroppedRootKey
+		}
+		return found, err
 	}
 	return false, fmt.Errorf("unknown kind %q", e.Kind)
 }
@@ -685,6 +716,10 @@ func downgrade(ctx context.Context, tx *ent.Tx, org, userID string, role members
 	return true, err
 }
 
+// errDroppedRootKey reports that an archive held the key of a root that went offline after it: the
+// restore has set key_enc to null.
+var errDroppedRootKey = errors.New("controller: the archive held the offline root's key")
+
 // errKeptInstanceAdmin reports an Instance Admin revocation that a restore does not apply again.
 var errKeptInstanceAdmin = errors.New("controller: the restored instance keeps its last active Instance Admin")
 
@@ -710,6 +745,14 @@ func revokeInstanceAdmin(ctx context.Context, tx *ent.Tx, userID string) (bool, 
 }
 
 // keptReason is the part of the restore's audit reason that names the revocations it kept.
+// droppedReason is what the audit entry of a restore says of the root keys it took offline again.
+func droppedReason(dropped []string) string {
+	if len(dropped) == 0 {
+		return ""
+	}
+	return "; the archive held the key of the root " + strings.Join(dropped, ", ") + ", restored without it"
+}
+
 func keptReason(kept []string) string {
 	if len(kept) == 0 {
 		return ""

@@ -11,14 +11,19 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+
+	"entgo.io/ent/dialect/sql"
 
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 )
 
 // The offline root (docs/04-security.md, "Offline root CA"): its key leaves the database in an age
@@ -43,6 +48,8 @@ type RootExport struct {
 	Pin           string // the root's pin
 	PublicKeyHash string // SHA-256 of the root's public key, hexadecimal
 	FileSHA256    string // SHA-256 of the file, hexadecimal
+	// KEK is the version of the KEK that sealed the key in the database, which the marker names.
+	KEK string
 }
 
 // ExportRootOffline takes the root's key out of the database, in tx. It seals the key and the
@@ -69,6 +76,10 @@ func ExportRootOffline(ctx context.Context, tx *ent.Tx, s *secret.Sealer, passph
 	if err != nil {
 		return RootExport{}, err
 	}
+	kek, err := secret.KEKVersion(*row.KeyEnc)
+	if err != nil {
+		return RootExport{}, err
+	}
 	file, err := pki.SealRootFile(root, passphrase)
 	if err != nil {
 		return RootExport{}, err
@@ -85,9 +96,63 @@ func ExportRootOffline(ctx context.Context, tx *ent.Tx, s *secret.Sealer, passph
 	if err := tx.CAKey.UpdateOne(row).ClearKeyEnc().Exec(ctx); err != nil {
 		return RootExport{}, err
 	}
-	pub := sha256.Sum256(row.PublicKey)
 	sum := sha256.Sum256(back)
-	return RootExport{Pin: pki.RootPin(root.Cert), PublicKeyHash: hex.EncodeToString(pub[:]), FileSHA256: hex.EncodeToString(sum[:])}, nil
+	return RootExport{Pin: pki.RootPin(root.Cert), PublicKeyHash: pki.PublicKeyHash(row.PublicKey), FileSHA256: hex.EncodeToString(sum[:]), KEK: kek}, nil
+}
+
+// ApplyRootOffline is what a restore does with the marker `root_offline`: it sets key_enc to null
+// for the root whose public key has the SHA-256 hash. held reports that the restored database
+// still held the key, found is false for a root it does not hold.
+func ApplyRootOffline(ctx context.Context, tx *ent.Tx, hash string) (held, found bool, err error) {
+	rows, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot)).All(ctx)
+	if err != nil {
+		return false, false, err
+	}
+	for _, r := range rows {
+		if pki.PublicKeyHash(r.PublicKey) != hash {
+			continue
+		}
+		if keyOffline(r) {
+			return false, true, nil
+		}
+		return true, true, tx.CAKey.UpdateOne(r).ClearKeyEnc().Exec(ctx)
+	}
+	return false, false, nil
+}
+
+// RootActionOffline is the audit action of the ceremony; its Diff holds RootOfflineDiff(kek).
+const RootActionOffline = "ca.root_offline"
+
+// RootOfflineDiff is the Diff of the audit entry of the ceremony: the KEK that sealed the key.
+func RootOfflineDiff(kek string) string { return "kek:" + kek }
+
+// RootKeyResidue returns the KEK that sealed the root's key when it went offline while that KEK
+// still wraps a stored secret, and so, for the ceremony's KEK rotation, has not been replaced:
+// the sealed key may remain in free pages and backups, and this KEK opens it. It returns "" for an
+// online root, for a root whose KEK was replaced and when the audit log no longer has the entry.
+func RootKeyResidue(ctx context.Context, db *store.DB) (string, error) {
+	c := db.ReadClient()
+	if online, err := c.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusActive),
+		cakey.KeyEncNotNil()).Exist(ctx); err != nil || online {
+		return "", err
+	}
+	e, err := c.AuditEntry.Query().Where(auditentry.Action(RootActionOffline), auditentry.ResultEQ(auditentry.ResultSuccess)).
+		Order(auditentry.BySeq(sql.OrderDesc())).First(ctx)
+	if ent.IsNotFound(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	kek, ok := strings.CutPrefix(e.Diff, "kek:")
+	if !ok {
+		return "", nil
+	}
+	held, err := c.SecretMeta.Query().Where(secretmeta.KekVersion(kek)).Exist(ctx)
+	if err != nil || !held {
+		return "", err
+	}
+	return kek, nil
 }
 
 // RequestIntermediateSigning makes the next intermediate when the root is offline: a new key,

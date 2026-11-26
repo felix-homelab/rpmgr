@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: Apache-2.0
+
+//go:build rpmgrtest
+
+package controller
+
+// CeremonyFault, when set, is called at the stages of `rpmgr ca offline-root` ("written", "before-marker",
+// "appended", "commit") with the output path; an error it returns fails the stage.
+var CeremonyFault func(stage, path string) error
+
+func fault(stage, path string) error {
+	if CeremonyFault == nil {
+		return nil
+	}
+	return CeremonyFault(stage, path)
+}

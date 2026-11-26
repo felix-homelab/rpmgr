@@ -72,8 +72,14 @@ func (p *Pki) GetPkiStatus(ctx context.Context, _ *connect.Request[rpmgrv1.GetPk
 				return nil, err
 			}
 			out.RootPin = pki.RootPin(root)
+			out.RootOffline = r.KeyEnc == nil || len(*r.KeyEnc) == 0
 		}
 		out.Keys = append(out.Keys, k)
+	}
+	if out.RootOffline {
+		if out.RootKeyResidueKek, err = castore.RootKeyResidue(sys, p.DB); err != nil {
+			return nil, storeError(err)
+		}
 	}
 	// Active, then next, then retired; by kind; the newest first.
 	rank := map[rpmgrv1.CAKeyState]int{rpmgrv1.CAKeyState_CA_KEY_STATE_ACTIVE: 0, rpmgrv1.CAKeyState_CA_KEY_STATE_NEXT: 1,
@@ -106,6 +112,9 @@ func (p *Pki) RotateIntermediate(ctx context.Context, _ *connect.Request[rpmgrv1
 	})
 	if errors.Is(err, castore.ErrRotated) {
 		return nil, connect.NewError(connect.CodeAborted, err)
+	}
+	if errors.Is(err, castore.ErrRootOffline) {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	}
 	if err != nil {
 		return nil, storeError(err)

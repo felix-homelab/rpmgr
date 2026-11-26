@@ -82,6 +82,12 @@ message GetPkiStatusResponse {
   string root_pin = 2;
   // The keys whose certificates have not expired: active and next first, by kind.
   repeated CAKey keys = 3;
+  // Whether the root's key is offline: the database holds its certificate and no key.
+  bool root_offline = 4;
+  // The KEK that sealed the offline root's key and still wraps a stored secret: the sealed key may
+  // remain in free pages and backups, and this KEK opens it, until the KEK is rotated. Empty
+  // otherwise.
+  string root_key_residue_kek = 5;
 }
 
 // RotateIntermediateRequest is empty.

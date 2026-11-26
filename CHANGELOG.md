@@ -33,6 +33,13 @@ Changes to the design documents are not recorded here: see the git history and t
   latest version of a Transit key after you rotated it there, and `rpmgr kek rotate
   --previous-config <boot file>` moves the KEK between a file or credential and Transit, in either
   direction ([Rotate the KEK](docs/10-operations.md#rotate-the-kek)).
+- The root CA's key can leave the controller. `rpmgr ca offline-root --out <file>` moves it into a
+  file that a passphrase protects and removes it from the database; `rpmgr ca sign-intermediate`
+  signs the next issuing intermediate on the offline host, and `rpmgr ca import-intermediate`
+  imports it. `rpmgr ca rotate-intermediate --csr-out <file>` asks the offline root for that
+  signature, and without `--csr-out` it, and Settings → PKI, refuse to rotate while the root is
+  offline. `rpmgr ca status` shows whether the root is offline and warns until the KEK is rotated,
+  and a restore of an older backup takes the key out again. (#694)
 
 ### Changed
 
