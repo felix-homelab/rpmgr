@@ -176,3 +176,39 @@ func TestRotateIntermediate(t *testing.T) {
 		}
 	})
 }
+
+// TestPlanAppliesOnlyToTheKeysItSaw: two plans made from the same keys that only create the next
+// signing keys, as two rotation jobs would, apply once: the second, whose keys the first changed,
+// is refused with ErrRotated and writes nothing, where it would make a second set of next keys.
+func TestPlanAppliesOnlyToTheKeysItSaw(t *testing.T) {
+	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *castore.CA) {
+		sys := storetest.SystemCtx(t)
+		s := sealer(t, kek)
+		signer := db.Client().CAKey.Query().Where(cakey.KindEQ(cakey.KindConfigSigning), cakey.StatusEQ(cakey.StatusActive)).OnlyX(sys)
+		at := signer.NotAfter.Add(-castore.SignerNextBefore + time.Hour)
+		// A young intermediate, so that the plans below have no step but the next keys.
+		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { return castore.RotateIntermediate(sys, tx, s, at) }); err != nil {
+			t.Fatal(err)
+		}
+		plan := func() *castore.Plan {
+			p, err := castore.PlanRotation(sys, db.Client().CAKey, s, at)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return p
+		}
+		first, second := plan(), plan()
+		apply := func(p *castore.Plan) ([]string, error) {
+			var done []string
+			err := store.WriteTx(sys, db, func(tx *ent.Tx) error { var err error; done, err = p.Apply(sys, tx); return err })
+			return done, err
+		}
+		if done, err := apply(first); err != nil || len(done) != 2 {
+			t.Fatalf("the first plan: %v %v, want the two next keys", done, err)
+		}
+		keys := db.Client().CAKey.Query().CountX(sys)
+		if _, err := apply(second); !errors.Is(err, castore.ErrRotated) || db.Client().CAKey.Query().CountX(sys) != keys {
+			t.Fatalf("the second plan: %v, %d keys (was %d)", err, db.Client().CAKey.Query().CountX(sys), keys)
+		}
+	})
+}

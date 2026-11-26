@@ -273,6 +273,12 @@ func (d *DnsProviders) UpdateDnsProvider(ctx context.Context, req *connect.Reque
 		row, err = u.Save(ctx)
 		return err
 	})
+	if ent.IsNotFound(err) {
+		// The version guard failed, or the provider is gone.
+		if ok, xerr := d.DB.ReadClient().DNSProvider.Query().Where(dnsprovider.ID(id)).Exist(ctx); xerr == nil && ok {
+			return nil, connect.NewError(connect.CodeAborted, errors.New("apisvc: the provider changed while it was updated; try again"))
+		}
+	}
 	if err != nil {
 		return nil, storeError(err)
 	}

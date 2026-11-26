@@ -36,10 +36,13 @@ func (w *hungWrapper) Wrap(ctx context.Context, dk, aad []byte) ([]byte, error) 
 }
 
 // TestSealIsOutsideTheWriteTransaction: a secret whose seal waits for the key service holds no
-// write transaction, so an unrelated write goes through meanwhile (on SQLite there is one writer),
-// and the secret is stored once the key service answers.
+// write transaction, so an unrelated write goes through meanwhile, and the secret is stored once
+// the key service answers. SQLite only: it has one writer, which a transaction held during the seal
+// would block; PostgreSQL would let the unrelated write through either way, so a run there would
+// prove nothing.
 func TestSealIsOutsideTheWriteTransaction(t *testing.T) {
-	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+	{
+		db := storetest.Migrated(t, store.SQLite)
 		sys := storetest.SystemCtx(t)
 		kek, err := secret.NewKEK([]byte("0123456789abcdef0123456789abcdef"))
 		if err != nil {
@@ -74,5 +77,5 @@ func TestSealIsOutsideTheWriteTransaction(t *testing.T) {
 		if v, err := settings.InstanceSecret(sys, db.Client(), sealer, settings.SMTPPassword); err != nil || v.Reveal() != "pw" { //nolint:forbidigo // the test reads back what it stored
 			t.Fatalf("read back: %q %v", v.Reveal(), err) //nolint:forbidigo // as above
 		}
-	})
+	}
 }

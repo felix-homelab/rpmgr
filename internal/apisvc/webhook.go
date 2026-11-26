@@ -23,6 +23,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/egress"
 	"github.com/felix-homelab/rpmgr/internal/events"
 	"github.com/felix-homelab/rpmgr/internal/ids"
+	"github.com/felix-homelab/rpmgr/internal/kms"
 	"github.com/felix-homelab/rpmgr/internal/ratelimit"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -252,6 +253,13 @@ func (w *Webhooks) create(ctx context.Context, org string, in *rpmgrv1.Webhook) 
 			return connect.NewError(connect.CodeResourceExhausted,
 				fmt.Errorf("apisvc: at most %d webhook endpoints; delete one first", webhook.MaxPerOrg))
 		}
+		for col, v := range map[string][]byte{"secret_enc": sealed, "url_enc": urlEnc} {
+			if len(v) > 0 { // recorded for `rpmgr kek status`
+				if err := store.RecordSealed(ctx, tx, w.secretContext(id, col), v); err != nil {
+					return err
+				}
+			}
+		}
 		c := tx.Webhook.Create().SetID(id).SetNillableOrgID(owner).SetURL(shown).SetEventTypes(in.GetEventTypes()).
 			SetFormat(ewebhook.Format(f)).SetSecretEnc(sealed).SetMention(opts.Mention).SetMentionWhen(ewebhook.MentionWhen(opts.MentionWhen)).
 			SetDiscordUsername(opts.Username).SetDiscordAvatarURL(opts.AvatarURL).SetThreadName(opts.ThreadName)
@@ -347,7 +355,7 @@ func (w *Webhooks) UpdateWebhook(ctx context.Context, req *connect.Request[rpmgr
 			return err
 		}
 		u := tx.Webhook.UpdateOneID(cur.ID).Where(ewebhook.Version(cur.Version)).SetEventTypes(next.GetEventTypes()).AddVersion(1)
-		if err := w.updateTarget(ctx, u, cur, next, f, slices.Contains(m.GetUpdateMask().GetPaths(), "url")); err != nil {
+		if err := w.updateTarget(ctx, tx, u, cur, next, f, slices.Contains(m.GetUpdateMask().GetPaths(), "url")); err != nil {
 			return err
 		}
 		// The options are checked against the format the endpoint will have, so that a change of
@@ -377,7 +385,7 @@ func (w *Webhooks) UpdateWebhook(ctx context.Context, req *connect.Request[rpmgr
 // which holds the service's token, changes only by a new secret_url, and a new format needs one: a
 // URL belongs to its service. An rpmgr endpoint does not become a chat one without its signing
 // secret going, and a chat one does not become rpmgr, which would need a secret to show once.
-func (w *Webhooks) updateTarget(ctx context.Context, u *ent.WebhookUpdateOne, cur *ent.Webhook, next *rpmgrv1.Webhook, f webhook.Format, urlInMask bool) error {
+func (w *Webhooks) updateTarget(ctx context.Context, tx *ent.Tx, u *ent.WebhookUpdateOne, cur *ent.Webhook, next *rpmgrv1.Webhook, f webhook.Format, urlInMask bool) error {
 	curFormat := webhook.Format(cur.Format)
 	secretURL := next.GetSecretUrl()
 	switch {
@@ -415,6 +423,9 @@ func (w *Webhooks) updateTarget(ctx context.Context, u *ent.WebhookUpdateOne, cu
 	if err != nil {
 		return err
 	}
+	if err := store.RecordSealed(ctx, tx, w.secretContext(cur.ID, "url_enc"), sealed); err != nil {
+		return err
+	}
 	u.SetURL(webhook.RedactURL(secretURL)).SetURLEnc(sealed)
 	if !curFormat.Chat() {
 		u.SetSecretEnc([]byte{}).ClearPreviousSecretEnc().ClearPreviousUntil()
@@ -441,6 +452,11 @@ func (w *Webhooks) DeleteWebhook(ctx context.Context, req *connect.Request[rpmgr
 		if _, err := tx.WebhookMessage.Delete().Where(webhookmessage.WebhookID(id)).Exec(ctx); err != nil {
 			return err
 		}
+		for _, col := range []string{"secret_enc", "previous_secret_enc", "url_enc"} {
+			if err := store.ForgetSealed(ctx, tx, w.secretContext(id, col)); err != nil {
+				return err
+			}
+		}
 		return tx.Webhook.DeleteOneID(id).Where(ewebhook.Version(cur.Version)).Exec(ctx)
 	})
 	if err != nil {
@@ -458,11 +474,11 @@ func (w *Webhooks) RotateWebhookSecret(ctx context.Context, req *connect.Request
 	id := req.Msg.GetWebhookId()
 	sec, err := webhook.NewSecret()
 	if err != nil {
-		return nil, err
+		return nil, keyServiceError(err)
 	}
 	sealed, err := w.Sealer.Seal(ctx, w.secretContext(id, "secret_enc"), sec)
 	if err != nil {
-		return nil, err
+		return nil, keyServiceError(err)
 	}
 	// The old secret is opened and sealed again before the transaction, which a key service may
 	// hold up; the update below fails if the endpoint changed meanwhile.
@@ -479,15 +495,23 @@ func (w *Webhooks) RotateWebhookSecret(ctx context.Context, req *connect.Request
 	}
 	prev, err := w.Sealer.Seal(ctx, w.secretContext(id, "previous_secret_enc"), old)
 	if err != nil {
-		return nil, err
+		return nil, keyServiceError(err)
 	}
 	var row *ent.Webhook
 	err = store.WriteTx(ctx, w.DB, func(tx *ent.Tx) error {
 		var err error
+		for col, v := range map[string][]byte{"secret_enc": sealed, "previous_secret_enc": prev} {
+			if err := store.RecordSealed(ctx, tx, w.secretContext(id, col), v); err != nil {
+				return err
+			}
+		}
 		row, err = tx.Webhook.UpdateOneID(id).Where(ewebhook.Version(cur.Version)).SetSecretEnc(sealed).SetPreviousSecretEnc(prev).
 			SetPreviousUntil(w.now().UTC().Add(webhook.PreviousSigns)).AddVersion(1).Save(ctx)
 		return err
 	})
+	if ent.IsNotFound(err) && w.exists(ctx, id) {
+		return nil, connect.NewError(connect.CodeAborted, errors.New("apisvc: the endpoint changed while its secret was rotated; try again"))
+	}
 	if err != nil {
 		return nil, storeError(err)
 	}
@@ -639,6 +663,9 @@ func (w *Webhooks) test(ctx context.Context, id string) (*rpmgrv1.TestWebhookRes
 // unsealFailed logs that a secret could not be opened, naming the endpoint but never the secret,
 // and returns the error a caller sees.
 func (w *Webhooks) unsealFailed(ctx context.Context, id string, err error) error {
+	if errors.Is(err, kms.ErrUnavailable) || errors.Is(err, kms.ErrPermissionDenied) {
+		return keyServiceError(err)
+	}
 	if w.Logger != nil {
 		w.Logger.ErrorContext(ctx, "a webhook secret cannot be unsealed", "webhook", id, "err", err)
 	}
@@ -702,4 +729,19 @@ func (w *Webhooks) preview(in *rpmgrv1.Webhook, mc webhook.Context) (*connect.Re
 		out.Previews = append(out.Previews, &rpmgrv1.WebhookPreview{EventType: s.EventType, Body: s.Body})
 	}
 	return connect.NewResponse(out), nil
+}
+
+// exists reports whether the endpoint is still there, to tell a version conflict from a deletion.
+func (w *Webhooks) exists(ctx context.Context, id string) bool {
+	ok, err := w.DB.ReadClient().Webhook.Query().Where(ewebhook.ID(id)).Exist(ctx)
+	return err == nil && ok
+}
+
+// keyServiceError turns an error of the KEK's key service being unreachable or refusing the
+// credential into UNAVAILABLE, which a client may retry; any other error is returned as it is.
+func keyServiceError(err error) error {
+	if errors.Is(err, kms.ErrUnavailable) || errors.Is(err, kms.ErrPermissionDenied) {
+		return connect.NewError(connect.CodeUnavailable, errors.New("apisvc: the key service is not available; try again"))
+	}
+	return err
 }

@@ -107,12 +107,17 @@ func deliverWebhooks(ctx context.Context, o WebhookOptions, l lease.Lease) error
 		return nil
 	}
 	var wg sync.WaitGroup
+	outage := false
 	for _, a := range work {
+		if outage { // the pass stops at the first outage: each item would wait out Transit's timeout
+			a.skipped = true
+			continue
+		}
 		d, err := delivery(ctx, c, o, a, now, private, own)
 		if keyServiceDown(err) {
-			a.skipped = true
+			outage, a.skipped = true, true
 			if o.Logger != nil {
-				o.Logger.WarnContext(ctx, "a webhook delivery waits for the key service", "webhook", a.hook.ID, "event", a.event.ID, "err", err)
+				o.Logger.WarnContext(ctx, "webhook deliveries wait for the key service", "webhook", a.hook.ID, "event", a.event.ID, "err", err)
 			}
 			continue
 		}
