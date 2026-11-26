@@ -4,6 +4,7 @@ package kms
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
@@ -12,7 +13,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/secret"
 )
@@ -93,6 +96,155 @@ func TestKeyVersionRefusedIsNotErrOpen(t *testing.T) {
 	if _, err := c.Unwrap(ctxA, []byte("vault:v1:AAAA"), aadA); !errors.Is(err, secret.ErrOpen) {
 		t.Errorf("unwrap of an invalid ciphertext: %v; want ErrOpen", err)
 	}
+}
+
+// S3: a policy denial does not cause a login; an expired token causes exactly one.
+func TestPolicyDenialDoesNotLogIn(t *testing.T) {
+	f := newFakeTransit(t)
+	c, _, _ := testClient(t, f, appRoleCfg(t))
+	if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	f.deny = []string{"decrypt"}
+	f.mu.Unlock()
+	for range 10 {
+		if _, err := c.Unwrap(ctxA, []byte("vault:v1:AAAA"), aadA); !errors.Is(err, ErrPermissionDenied) {
+			t.Fatalf("Unwrap = %v, want ErrPermissionDenied", err)
+		}
+	}
+	if n := f.count("POST /v1/auth/approle/login"); n != 1 {
+		t.Errorf("%d logins after 10 policy denials, want the first one only", n)
+	}
+	if n := f.count("GET /v1/auth/token/lookup-self"); n != 10 {
+		t.Errorf("%d lookups, want 10", n)
+	}
+}
+
+func TestExpiredTokenLogsInExactlyOnce(t *testing.T) {
+	f := newFakeTransit(t)
+	c, _, clk := testClient(t, f, appRoleCfg(t))
+	if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	f.tokens = map[string]bool{}
+	f.mu.Unlock()
+	clk.advance(31 * time.Second)
+	var wg sync.WaitGroup
+	for range 6 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
+				t.Errorf("Wrap after the token ended: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	if n := f.count("POST /v1/auth/approle/login"); n != 2 {
+		t.Errorf("%d logins for six callers, want the first and one more", n)
+	}
+	// Again at once: the interval of 30 s holds the login back, and nothing is sent to Transit
+	// with a dead token more than once.
+	f.mu.Lock()
+	f.tokens = map[string]bool{}
+	f.mu.Unlock()
+	if _, err := c.Wrap(ctxA, dk, aadA); err == nil || !strings.Contains(err.Error(), "at most once") {
+		t.Errorf("a second expiry within 30 s: %v", err)
+	}
+	if n := f.count("POST /v1/auth/approle/login"); n != 2 {
+		t.Errorf("%d logins, want 2", n)
+	}
+	clk.advance(31 * time.Second)
+	if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
+		t.Errorf("after the interval: %v", err)
+	}
+}
+
+func TestLoginIsNotRetriedOnServerError(t *testing.T) {
+	f := newFakeTransit(t)
+	c, sleeps, _ := testClient(t, f, appRoleCfg(t))
+	f.override = func(w http.ResponseWriter, r *http.Request) bool {
+		if strings.HasPrefix(r.URL.Path, "/v1/auth/approle/") {
+			f.fail(w, http.StatusInternalServerError, "internal error")
+			return true
+		}
+		return false
+	}
+	if _, err := c.Wrap(ctxA, dk, aadA); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("Wrap = %v", err)
+	}
+	if n := f.count("POST /v1/auth/approle/login"); n != 1 || len(*sleeps) != 0 {
+		t.Errorf("%d logins and %d sleeps; a login is not repeated on a 5xx", n, len(*sleeps))
+	}
+}
+
+// S4: a caller's deadline holds while another caller's login hangs.
+func TestShortDeadlineWhileLoginHangs(t *testing.T) {
+	f := newFakeTransit(t)
+	c, _, _ := testClient(t, f, appRoleCfg(t))
+	hold := make(chan struct{})
+	f.override = func(w http.ResponseWriter, r *http.Request) bool {
+		if r.URL.Path == "/v1/auth/approle/login" {
+			select {
+			case <-hold:
+			case <-f.release:
+			}
+			return true
+		}
+		return false
+	}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, _ = c.Wrap(ctxA, dk, aadA) // waits for the login
+	}()
+	waitCount(t, f, "POST /v1/auth/approle/login", 1)
+	ctx, cancel := context.WithTimeout(ctxA, 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := c.Wrap(ctx, dk, aadA)
+	if took := time.Since(start); took > time.Second || !errors.Is(err, ErrUnavailable) {
+		t.Errorf("a 50 ms caller returned after %v with %v", took, err)
+	}
+	close(hold)
+	wg.Wait()
+}
+
+// The renewal does not hold up callers: the current token stays in use while it runs.
+func TestRenewalDoesNotBlockCallers(t *testing.T) {
+	f := newFakeTransit(t)
+	f.lease = 100
+	c, _, clk := testClient(t, f, nil)
+	if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
+		t.Fatal(err)
+	}
+	hold := make(chan struct{})
+	f.mu.Lock()
+	f.override = func(w http.ResponseWriter, r *http.Request) bool {
+		if r.URL.Path == "/v1/auth/token/renew-self" {
+			select {
+			case <-hold:
+			case <-f.release:
+			}
+		}
+		return false
+	}
+	f.mu.Unlock()
+	clk.advance(60 * time.Second)
+	done := make(chan error, 1)
+	go func() { _, err := c.Wrap(ctxA, dk, aadA); done <- err }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("Wrap during a renewal: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Error("a caller waited for the renewal")
+	}
+	close(hold)
 }
 
 // N3: an answer of a lower version than the key's latest is refused.
@@ -177,6 +329,9 @@ func TestDotSegmentsAndVersionSpellings(t *testing.T) {
 	for _, m := range []string{".", "a/./b", "./a", "a/.", "a/..", "a//b"} {
 		if _, err := New(Config{Address: f.srv.URL, Key: "k", Mount: m, TokenFile: writeCred(t, "t", testToken)}); err == nil {
 			t.Errorf("mount %q accepted", m)
+		}
+		if _, err := New(Config{Address: f.srv.URL, Key: "k", AppRole: &AppRole{Mount: m, RoleIDFile: "a", SecretIDFile: "b"}}); err == nil {
+			t.Errorf("AppRole mount %q accepted", m)
 		}
 	}
 	c, _, _ := testClient(t, f, nil)

@@ -1354,12 +1354,21 @@ Transit; no boot setting selects it before slice 8.9 (#692).
   in with at start and again when its token ends. **`secret_id_file` is read again at each login**,
   so a secret ID that an operator replaced is used; a single-use secret ID breaks the login that
   follows once the token reaches its maximum TTL, so the role needs a reusable secret ID or a tool
-  that rewrites the file. A token file is read again at the first 403, so a token
-  that an operator replaced is picked up without a restart; the same token again is not tried
-  twice. The files are refused when group or others can read them. This first part of slice 8.8
-  reads the token file only: renewal on the schedule in
-  [03](03-connections.md#timeouts-keepalive-and-backoff), AppRole and the `lookup-self` check follow
-  in its second part. Kubernetes authentication is Phase 3.
+  that rewrites the file. A renewable token is renewed on the schedule in
+  [03](03-connections.md#timeouts-keepalive-and-backoff). The client has no timer: the first
+  request after that time starts the renewal, which runs in the background once for all callers,
+  and every caller keeps the current token meanwhile and gives up at its own deadline. A token
+  that cannot be renewed is replaced by a new login. A token from a file is asked once about its
+  lease with `renew-self`; a root or non-renewable token is used as it is, and a probe that fails
+  because Transit cannot be asked is repeated 30 s later. A failed renewal is tried again after
+  30 s, not at every request.
+  **A 403 with AppRole is first checked with `auth/token/lookup-self`**: a token that is still
+  valid means the policy denies the call, and there is no new login; only a token that is gone logs
+  in again. **Logins are at most one in 30 s**, so after a revoked token or a failed first login the
+  next login waits for that interval and requests fail meanwhile. A token file is read again at the
+  first 403, so a token that an operator replaced is picked up without a restart; the same token
+  again is not tried twice. The files are refused when group or others can read them. Kubernetes
+  authentication is Phase 3.
 - **TLS.** HTTPS only, TLS 1.2 or 1.3, verified against `kek.kms.ca_file` (PEM certificates and
   nothing else) or, without it, the system roots; there is no way to skip the verification. A
   certificate that does not verify is not tried again.

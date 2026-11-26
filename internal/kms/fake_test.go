@@ -337,6 +337,12 @@ func (c *clock) now() time.Time {
 	return c.t
 }
 
+func (c *clock) advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = c.t.Add(d)
+}
+
 // testClient returns a Client for the fake with a token file, the fake's CA, no real sleeping and
 // the list of sleeps it would have made.
 func testClient(t *testing.T, f *fakeTransit, mutate func(*Config)) (*Client, *[]time.Duration, *clock) {
@@ -363,6 +369,15 @@ func testClient(t *testing.T, f *fakeTransit, mutate func(*Config)) (*Client, *[
 	c.now = clk.now
 	t.Cleanup(c.http.CloseIdleConnections)
 	return c, &sleeps, clk
+}
+
+func appRoleCfg(t *testing.T) func(*Config) {
+	return func(cfg *Config) {
+		cfg.TokenFile = ""
+		cfg.AppRole = &AppRole{
+			RoleIDFile: writeCred(t, "role", testRoleID), SecretIDFile: writeCred(t, "secret", testSecretID),
+		}
+	}
 }
 
 func writeFileMode(path, content string, mode os.FileMode) error {

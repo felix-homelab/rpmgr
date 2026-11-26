@@ -457,6 +457,149 @@ func TestCheck(t *testing.T) {
 	}
 }
 
+func TestTokenRenewalFromFile(t *testing.T) {
+	f := newFakeTransit(t)
+	f.lease = 100
+	c, _, clk := testClient(t, f, nil)
+	if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
+		t.Fatal(err)
+	}
+	probe := f.count("POST /v1/auth/token/renew-self")
+	if probe != 1 {
+		t.Fatalf("%d renew-self calls at first use, want the one probe", probe)
+	}
+	clk.advance(49 * time.Second)
+	if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count("POST /v1/auth/token/renew-self"); n != probe {
+		t.Errorf("renewed before half the lease: %d", n)
+	}
+	clk.advance(2 * time.Second)
+	if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
+		t.Fatal(err)
+	}
+	// The renewal runs in the background while the current token stays in use.
+	waitCount(t, f, "POST /v1/auth/token/renew-self", probe+1)
+	// The next renewal is half a lease after this one.
+	clk.advance(49 * time.Second)
+	if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, c)
+	if n := f.count("POST /v1/auth/token/renew-self"); n != probe+1 {
+		t.Errorf("renewed again too early: %d", n)
+	}
+}
+
+func TestNonRenewableTokenIsNotRenewed(t *testing.T) {
+	f := newFakeTransit(t)
+	f.renew = false
+	c, _, clk := testClient(t, f, nil)
+	for range 3 {
+		clk.advance(time.Hour)
+		if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := f.count("POST /v1/auth/token/renew-self"); n != 1 {
+		t.Errorf("%d renew-self calls for a non-renewable token, want the probe only", n)
+	}
+}
+
+func TestAppRoleLoginRenewalAndRelogin(t *testing.T) {
+	f := newFakeTransit(t)
+	f.lease = 100
+	c, _, clk := testClient(t, f, appRoleCfg(t))
+	if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count("POST /v1/auth/approle/login"); n != 1 {
+		t.Fatalf("%d logins, want 1", n)
+	}
+	clk.advance(51 * time.Second)
+	if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
+		t.Fatal(err)
+	}
+	waitCount(t, f, "POST /v1/auth/token/renew-self", 1)
+	if n := f.count("POST /v1/auth/approle/login"); n != 1 {
+		t.Errorf("logged in again though the renewal worked: %d", n)
+	}
+	// The token can no longer be renewed (it ended): the client logs in again.
+	f.mu.Lock()
+	f.tokens = map[string]bool{}
+	f.mu.Unlock()
+	clk.advance(51 * time.Second)
+	if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
+		t.Fatalf("after the token ended: %v", err)
+	}
+	if n := f.count("POST /v1/auth/approle/login"); n != 2 {
+		t.Errorf("%d logins after the token ended, want 2", n)
+	}
+	f.mu.Lock()
+	last := f.seen[len(f.seen)-1]
+	f.mu.Unlock()
+	if last != "approle-token-2" {
+		t.Errorf("last request used %q, want the new token", last)
+	}
+}
+
+func TestAppRoleNonRenewableLogsInAtHalfLease(t *testing.T) {
+	f := newFakeTransit(t)
+	f.lease, f.renew = 100, false
+	c, _, clk := testClient(t, f, appRoleCfg(t))
+	if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
+		t.Fatal(err)
+	}
+	clk.advance(60 * time.Second)
+	if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
+		t.Fatal(err)
+	}
+	waitCount(t, f, "POST /v1/auth/approle/login", 2)
+	if n := f.count("POST /v1/auth/token/renew-self"); n != 0 {
+		t.Errorf("%d renewals of a non-renewable token", n)
+	}
+}
+
+func TestAppRoleSecretIDIsReadAtEachLogin(t *testing.T) {
+	f := newFakeTransit(t)
+	f.renew, f.lease = false, 100
+	var secretPath string
+	c, _, clk := testClient(t, f, func(cfg *Config) {
+		appRoleCfg(t)(cfg)
+		secretPath = cfg.AppRole.SecretIDFile
+	})
+	if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	f.secretID = "test-secret-id-two"
+	f.mu.Unlock()
+	if err := os.WriteFile(secretPath, []byte("test-secret-id-two\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	clk.advance(60 * time.Second)
+	if _, err := c.Wrap(ctxA, dk, aadA); err != nil {
+		t.Fatalf("login with the replaced secret ID: %v", err)
+	}
+}
+
+func TestAppRoleLoginFails(t *testing.T) {
+	f := newFakeTransit(t)
+	f.secretID = "another-secret-id"
+	c, _, _ := testClient(t, f, appRoleCfg(t))
+	_, err := c.Wrap(ctxA, dk, aadA)
+	if err == nil || !strings.Contains(err.Error(), "AppRole login") {
+		t.Fatalf("Wrap = %v, want a login error", err)
+	}
+	if n := f.count("POST /v1/transit/encrypt/rpmgr"); n != 0 {
+		t.Errorf("Transit was called %d times without a token", n)
+	}
+	if strings.Contains(err.Error(), testSecretID) || strings.Contains(err.Error(), testRoleID) {
+		t.Errorf("the login error holds a credential: %v", err)
+	}
+}
+
 func TestConfigErrors(t *testing.T) {
 	f := newFakeTransit(t)
 	ok := func(cfg *Config) {}
@@ -482,9 +625,15 @@ func TestConfigErrors(t *testing.T) {
 		"mount with dots":    func(c *Config) { c.Mount = "a/../b" },
 		"mount with query":   func(c *Config) { c.Mount = "a?b" },
 		"no credential":      func(c *Config) { c.TokenFile = "" },
-		"ca file missing":    func(c *Config) { c.CAFile = filepath.Join(t.TempDir(), "none") },
-		"ca file not PEM":    func(c *Config) { c.CAFile = notPEM },
-		"ca file trailing":   func(c *Config) { c.CAFile = trailing },
+		"both credentials": func(c *Config) {
+			c.AppRole = &AppRole{RoleIDFile: "a", SecretIDFile: "b"}
+		},
+		"approle one file": func(c *Config) {
+			c.TokenFile, c.AppRole = "", &AppRole{RoleIDFile: "a"}
+		},
+		"ca file missing":  func(c *Config) { c.CAFile = filepath.Join(t.TempDir(), "none") },
+		"ca file not PEM":  func(c *Config) { c.CAFile = notPEM },
+		"ca file trailing": func(c *Config) { c.CAFile = trailing },
 	}
 	for name, mut := range cases {
 		cfg := Config{Address: f.srv.URL, Key: "rpmgr", CAFile: writeCA(t, f.ca.caPEM), TokenFile: writeCred(t, "token", testToken)}
@@ -529,5 +678,19 @@ func TestTLSMinimumVersion(t *testing.T) {
 	}
 	if tr.Proxy != nil {
 		t.Error("a proxy is set")
+	}
+}
+
+// waitCount waits until the fake has seen n requests of a kind; a background step makes them.
+func waitCount(t *testing.T, f *fakeTransit, key string, n int) {
+	t.Helper()
+	for range 200 {
+		if f.count(key) >= n {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := f.count(key); got != n {
+		t.Fatalf("%d requests of %s, want %d", got, key, n)
 	}
 }
