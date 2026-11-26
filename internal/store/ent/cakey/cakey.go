@@ -36,6 +36,8 @@ const (
 	FieldCrossCertificate = "cross_certificate"
 	// FieldRotatedAt holds the string denoting the rotated_at field in the database.
 	FieldRotatedAt = "rotated_at"
+	// FieldDropAfter holds the string denoting the drop_after field in the database.
+	FieldDropAfter = "drop_after"
 	// Table holds the table name of the cakey in the database.
 	Table = "ca_keys"
 )
@@ -54,6 +56,7 @@ var Columns = []string{
 	FieldStatus,
 	FieldCrossCertificate,
 	FieldRotatedAt,
+	FieldDropAfter,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -171,4 +174,9 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 // ByRotatedAt orders the results by the rotated_at field.
 func ByRotatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRotatedAt, opts...).ToFunc()
+}
+
+// ByDropAfter orders the results by the drop_after field.
+func ByDropAfter(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDropAfter, opts...).ToFunc()
 }

@@ -54,6 +54,12 @@ func CARotation(o CAOptions) lease.Job {
 			if err != nil {
 				return err
 			}
+			// A switch records the overlap of this moment as the earliest drop date of the old root.
+			overlap, err := RotationOverlap(ctx, o.DB.ReadClient())
+			if err != nil {
+				return err
+			}
+			plan.WithOverlap(overlap)
 			write := func(tx *ent.Tx) error {
 				if err := o.Leases.Fence(ctx, tx, l); err != nil {
 					return err

@@ -138,6 +138,26 @@ func (_u *CAKeyUpdate) ClearRotatedAt() *CAKeyUpdate {
 	return _u
 }
 
+// SetDropAfter sets the "drop_after" field.
+func (_u *CAKeyUpdate) SetDropAfter(v time.Time) *CAKeyUpdate {
+	_u.mutation.SetDropAfter(v)
+	return _u
+}
+
+// SetNillableDropAfter sets the "drop_after" field if the given value is not nil.
+func (_u *CAKeyUpdate) SetNillableDropAfter(v *time.Time) *CAKeyUpdate {
+	if v != nil {
+		_u.SetDropAfter(*v)
+	}
+	return _u
+}
+
+// ClearDropAfter clears the value of the "drop_after" field.
+func (_u *CAKeyUpdate) ClearDropAfter() *CAKeyUpdate {
+	_u.mutation.ClearDropAfter()
+	return _u
+}
+
 // Mutation returns the CAKeyMutation object of the builder.
 func (_u *CAKeyUpdate) Mutation() *CAKeyMutation {
 	return _u.mutation
@@ -230,6 +250,12 @@ func (_u *CAKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.RotatedAtCleared() {
 		_spec.ClearField(cakey.FieldRotatedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.DropAfter(); ok {
+		_spec.SetField(cakey.FieldDropAfter, field.TypeTime, value)
+	}
+	if _u.mutation.DropAfterCleared() {
+		_spec.ClearField(cakey.FieldDropAfter, field.TypeTime)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -361,6 +387,26 @@ func (_u *CAKeyUpdateOne) ClearRotatedAt() *CAKeyUpdateOne {
 	return _u
 }
 
+// SetDropAfter sets the "drop_after" field.
+func (_u *CAKeyUpdateOne) SetDropAfter(v time.Time) *CAKeyUpdateOne {
+	_u.mutation.SetDropAfter(v)
+	return _u
+}
+
+// SetNillableDropAfter sets the "drop_after" field if the given value is not nil.
+func (_u *CAKeyUpdateOne) SetNillableDropAfter(v *time.Time) *CAKeyUpdateOne {
+	if v != nil {
+		_u.SetDropAfter(*v)
+	}
+	return _u
+}
+
+// ClearDropAfter clears the value of the "drop_after" field.
+func (_u *CAKeyUpdateOne) ClearDropAfter() *CAKeyUpdateOne {
+	_u.mutation.ClearDropAfter()
+	return _u
+}
+
 // Mutation returns the CAKeyMutation object of the builder.
 func (_u *CAKeyUpdateOne) Mutation() *CAKeyMutation {
 	return _u.mutation
@@ -483,6 +529,12 @@ func (_u *CAKeyUpdateOne) sqlSave(ctx context.Context) (_node *CAKey, err error)
 	}
 	if _u.mutation.RotatedAtCleared() {
 		_spec.ClearField(cakey.FieldRotatedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.DropAfter(); ok {
+		_spec.SetField(cakey.FieldDropAfter, field.TypeTime, value)
+	}
+	if _u.mutation.DropAfterCleared() {
+		_spec.ClearField(cakey.FieldDropAfter, field.TypeTime)
 	}
 	_node = &CAKey{config: _u.config}
 	_spec.Assign = _node.assignValues

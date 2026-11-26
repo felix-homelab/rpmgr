@@ -94,6 +94,20 @@ func (_c *CAKeyCreate) SetNillableRotatedAt(v *time.Time) *CAKeyCreate {
 	return _c
 }
 
+// SetDropAfter sets the "drop_after" field.
+func (_c *CAKeyCreate) SetDropAfter(v time.Time) *CAKeyCreate {
+	_c.mutation.SetDropAfter(v)
+	return _c
+}
+
+// SetNillableDropAfter sets the "drop_after" field if the given value is not nil.
+func (_c *CAKeyCreate) SetNillableDropAfter(v *time.Time) *CAKeyCreate {
+	if v != nil {
+		_c.SetDropAfter(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *CAKeyCreate) SetID(v string) *CAKeyCreate {
 	_c.mutation.SetID(v)
@@ -278,6 +292,10 @@ func (_c *CAKeyCreate) createSpec() (*CAKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RotatedAt(); ok {
 		_spec.SetField(cakey.FieldRotatedAt, field.TypeTime, value)
 		_node.RotatedAt = &value
+	}
+	if value, ok := _c.mutation.DropAfter(); ok {
+		_spec.SetField(cakey.FieldDropAfter, field.TypeTime, value)
+		_node.DropAfter = &value
 	}
 	return _node, _spec
 }

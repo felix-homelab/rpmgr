@@ -539,7 +539,8 @@ same trust domain as R1 (the URI SAN `spiffe://<td>`).
    --strand-stragglers` to drop R1 and let it re-enroll [D181](14-open-decisions.md#engineering).
    The alert is the error line "root rotation stalled" the job logs at each run, and the
    stragglers `rpmgr ca status` lists. The longest agent leaf lifetime and the Reauth grace period
-   are those of the instance settings when the drop is asked for. A **straggler** is an enabled
+   are those of the instance settings when issuing moved, which fix the earliest drop date; a later
+   change of the settings can lengthen the overlap but never shorten it. A **straggler** is an enabled
    gateway or connector whose session was seen since issuing moved and whose `Hello` digest is not
    that of R2 alone or of R2 with R1: it holds no R2, or it announced no `trust.roots`. A drop
    re-checks the date and the stragglers in its own transaction. The bundle becomes {R2}, R1 is

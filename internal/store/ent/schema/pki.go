@@ -52,6 +52,9 @@ func (CAKey) Fields() []ent.Field {
 		field.Bytes("cross_certificate").Optional(),
 		// rotated_at is when a root entered the overlap, that is when issuing moved to the new root.
 		field.Time("rotated_at").Optional().Nillable(),
+		// drop_after is the earliest date the old root may be dropped, fixed when issuing moved: the overlap
+		// of that moment, so that a later change of the leaf lifetime or the grace cannot shorten it.
+		field.Time("drop_after").Optional().Nillable(),
 	}
 }
 

@@ -162,6 +162,11 @@ func NewRoot(ctx context.Context, path, csrOut string, getenv func(string) strin
 			return res, fmt.Errorf("%w: the old root is offline, so the new root's request goes to a file for it to sign: "+
 				"run with --csr-out <file>", castore.ErrRootOffline)
 		}
+		overlap, oerr := RotationOverlap(sys, db.ReadClient())
+		if oerr != nil {
+			return res, oerr
+		}
+		plan.WithOverlap(overlap)
 		if err = fault("planned", csrOut); err != nil {
 			return res, err
 		}
@@ -364,7 +369,7 @@ func rotationStatus(sys context.Context, db *store.DB, now time.Time) (RotationS
 	if err != nil {
 		return st, err
 	}
-	st.DropAfter = old.RotatedAt.Add(overlap)
+	st.DropAfter = castore.DropAfter(old, overlap)
 	// A read transaction for the stragglers, which read through one.
 	err = store.ReadTx(sys, db, func(tx *ent.Tx, _ store.Revision) error {
 		var err error

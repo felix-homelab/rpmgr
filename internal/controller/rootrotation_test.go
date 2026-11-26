@@ -16,11 +16,16 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
+
+	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/pki/castore"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
@@ -382,5 +387,41 @@ func TestRotationStatusOfAnIntermediateRequest(t *testing.T) {
 	rs, err := controller.CARotationStatus(ctx, h.cfg, time.Now)
 	if err != nil || rs.Waiting || rs.NeedsCross || rs.NeedsInter || len(rs.KeyHashes) != 0 {
 		t.Fatalf("status with a next intermediate only: %+v, %v", rs, err)
+	}
+}
+
+// TestDropRootKeepsTheRecordedOverlap: the earliest drop date is fixed when issuing moves; lowering the leaf
+// lifetime afterwards does not make the old root droppable sooner, and the status shows the recorded date.
+func TestDropRootKeepsTheRecordedOverlap(t *testing.T) {
+	ctx := context.Background()
+	h, _ := initHost(t)
+	now := time.Now()
+	if _, err := controller.NewRoot(ctx, h.cfg, "", noEnv, func() time.Time { return now }); err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.OpenSQLite(ctx, h.db, store.SQLiteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sys := storetest.SystemCtx(t)
+	if _, err := settings.UpdateInstance(sys, db, &rpmgrv1.InstanceSettings{LeafCertificateLifetime: durationpb.New(rotationDay)},
+		&fieldmaskpb.FieldMask{Paths: []string{"leaf_certificate_lifetime"}}, 0); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+	// With the lowered lifetime the overlap would be 1 + 30 days: 32 days in, the recorded 37 still hold.
+	var early *castore.DropEarlyError
+	if _, err := controller.DropRoot(ctx, h.cfg, false, false, func() time.Time { return now.Add(32 * rotationDay) }); !errors.As(err, &early) {
+		t.Fatalf("a drop within the recorded overlap = %v, want DropEarlyError", err)
+	}
+	if want := now.Add(37 * rotationDay); early.Earliest.Sub(want).Abs() > time.Minute {
+		t.Fatalf("the earliest date is %v, want about %v", early.Earliest, want)
+	}
+	rs, err := controller.CARotationStatus(ctx, h.cfg, func() time.Time { return now })
+	if err != nil || rs.DropAfter.Sub(now.Add(37*rotationDay)).Abs() > time.Minute {
+		t.Fatalf("status shows %v, %v", rs.DropAfter, err)
+	}
+	if _, err := controller.DropRoot(ctx, h.cfg, false, false, func() time.Time { return now.Add(38 * rotationDay) }); err != nil {
+		t.Fatalf("the drop after the recorded overlap: %v", err)
 	}
 }

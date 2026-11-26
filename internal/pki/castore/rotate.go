@@ -53,6 +53,16 @@ type Plan struct {
 	requests *RootRequests
 	// newRoot is the new root of a PlanNewRoot that makes one.
 	newRoot *x509.Certificate
+	// overlap, when set, is how long the old root stays after a step that starts an overlap: the date is
+	// recorded on the old root, so that a later change of the settings cannot shorten it.
+	overlap time.Duration
+}
+
+// WithOverlap sets the overlap a plan that moves issuing to a new root records: the earliest drop
+// date of the old root is the moment issuing moved plus d.
+func (p *Plan) WithOverlap(d time.Duration) *Plan {
+	p.overlap = d
+	return p
 }
 
 // NewRoot returns the new root that a plan of PlanNewRoot makes; nil for a plan that makes none.
@@ -304,8 +314,12 @@ func (p *Plan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
 	var done []string
 	for _, st := range p.steps {
 		if st.overlap != "" {
-			n, err := tx.CAKey.Update().Where(cakey.ID(st.overlap), cakey.StatusEQ(cakey.StatusActive)).
-				SetStatus(cakey.StatusOverlap).SetRotatedAt(p.now).Save(ctx)
+			u := tx.CAKey.Update().Where(cakey.ID(st.overlap), cakey.StatusEQ(cakey.StatusActive)).
+				SetStatus(cakey.StatusOverlap).SetRotatedAt(p.now)
+			if p.overlap > 0 {
+				u.SetDropAfter(p.now.Add(p.overlap))
+			}
+			n, err := u.Save(ctx)
 			if err != nil {
 				return nil, err
 			}

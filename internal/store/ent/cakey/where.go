@@ -109,6 +109,11 @@ func RotatedAt(v time.Time) predicate.CAKey {
 	return predicate.CAKey(sql.FieldEQ(FieldRotatedAt, v))
 }
 
+// DropAfter applies equality check predicate on the "drop_after" field. It's identical to DropAfterEQ.
+func DropAfter(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldEQ(FieldDropAfter, v))
+}
+
 // KindEQ applies the EQ predicate on the "kind" field.
 func KindEQ(v Kind) predicate.CAKey {
 	return predicate.CAKey(sql.FieldEQ(FieldKind, v))
@@ -582,6 +587,56 @@ func RotatedAtIsNil() predicate.CAKey {
 // RotatedAtNotNil applies the NotNil predicate on the "rotated_at" field.
 func RotatedAtNotNil() predicate.CAKey {
 	return predicate.CAKey(sql.FieldNotNull(FieldRotatedAt))
+}
+
+// DropAfterEQ applies the EQ predicate on the "drop_after" field.
+func DropAfterEQ(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldEQ(FieldDropAfter, v))
+}
+
+// DropAfterNEQ applies the NEQ predicate on the "drop_after" field.
+func DropAfterNEQ(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldNEQ(FieldDropAfter, v))
+}
+
+// DropAfterIn applies the In predicate on the "drop_after" field.
+func DropAfterIn(vs ...time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldIn(FieldDropAfter, vs...))
+}
+
+// DropAfterNotIn applies the NotIn predicate on the "drop_after" field.
+func DropAfterNotIn(vs ...time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldNotIn(FieldDropAfter, vs...))
+}
+
+// DropAfterGT applies the GT predicate on the "drop_after" field.
+func DropAfterGT(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldGT(FieldDropAfter, v))
+}
+
+// DropAfterGTE applies the GTE predicate on the "drop_after" field.
+func DropAfterGTE(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldGTE(FieldDropAfter, v))
+}
+
+// DropAfterLT applies the LT predicate on the "drop_after" field.
+func DropAfterLT(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldLT(FieldDropAfter, v))
+}
+
+// DropAfterLTE applies the LTE predicate on the "drop_after" field.
+func DropAfterLTE(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldLTE(FieldDropAfter, v))
+}
+
+// DropAfterIsNil applies the IsNil predicate on the "drop_after" field.
+func DropAfterIsNil() predicate.CAKey {
+	return predicate.CAKey(sql.FieldIsNull(FieldDropAfter))
+}
+
+// DropAfterNotNil applies the NotNil predicate on the "drop_after" field.
+func DropAfterNotNil() predicate.CAKey {
+	return predicate.CAKey(sql.FieldNotNull(FieldDropAfter))
 }
 
 // And groups predicates with the AND operator between them.

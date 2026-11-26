@@ -393,7 +393,9 @@ func (p *DropPlan) check(ctx context.Context, rows []*ent.CAKey, tx *ent.Tx) (*e
 		return nil, err
 	}
 	p.swaps = swaps
-	earliest := r1.RotatedAt.Add(p.o.Overlap)
+	// The later of the date recorded when issuing moved and the one the settings give now: lowering the
+	// leaf lifetime meanwhile does not shorten the overlap that agents were promised.
+	earliest := DropAfter(r1, p.o.Overlap)
 	early := p.now.Before(earliest)
 	if early && !p.o.Force {
 		return nil, &DropEarlyError{Earliest: earliest}
@@ -506,4 +508,18 @@ func signerSwaps(rows []*ent.CAKey) ([]signerSwap, error) {
 		}
 	}
 	return swaps, nil
+}
+
+// DropAfter is the earliest date the old root in the overlap, row r, may be dropped: the later of the
+// date recorded when issuing moved and its start plus overlap, the one the settings give now. It is
+// zero for a row that does not record when issuing moved.
+func DropAfter(r *ent.CAKey, overlap time.Duration) time.Time {
+	if r.RotatedAt == nil {
+		return time.Time{}
+	}
+	d := r.RotatedAt.Add(overlap)
+	if r.DropAfter != nil && r.DropAfter.After(d) {
+		d = *r.DropAfter
+	}
+	return d
 }

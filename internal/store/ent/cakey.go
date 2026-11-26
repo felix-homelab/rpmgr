@@ -38,7 +38,9 @@ type CAKey struct {
 	// CrossCertificate holds the value of the "cross_certificate" field.
 	CrossCertificate []byte `json:"cross_certificate,omitempty"`
 	// RotatedAt holds the value of the "rotated_at" field.
-	RotatedAt    *time.Time `json:"rotated_at,omitempty"`
+	RotatedAt *time.Time `json:"rotated_at,omitempty"`
+	// DropAfter holds the value of the "drop_after" field.
+	DropAfter    *time.Time `json:"drop_after,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -51,7 +53,7 @@ func (*CAKey) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case cakey.FieldID, cakey.FieldKind, cakey.FieldAlgorithm, cakey.FieldStatus:
 			values[i] = new(sql.NullString)
-		case cakey.FieldNotBefore, cakey.FieldNotAfter, cakey.FieldRotatedAt:
+		case cakey.FieldNotBefore, cakey.FieldNotAfter, cakey.FieldRotatedAt, cakey.FieldDropAfter:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -141,6 +143,13 @@ func (_m *CAKey) assignValues(columns []string, values []any) error {
 				_m.RotatedAt = new(time.Time)
 				*_m.RotatedAt = value.Time
 			}
+		case cakey.FieldDropAfter:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field drop_after", values[i])
+			} else if value.Valid {
+				_m.DropAfter = new(time.Time)
+				*_m.DropAfter = value.Time
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -208,6 +217,11 @@ func (_m *CAKey) String() string {
 	builder.WriteString(", ")
 	if v := _m.RotatedAt; v != nil {
 		builder.WriteString("rotated_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.DropAfter; v != nil {
+		builder.WriteString("drop_after=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteByte(')')
