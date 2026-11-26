@@ -188,8 +188,8 @@ re-enroll agents enrolled after the backup.
 | Flag | Meaning |
 |---|---|
 | `--in <file>` | Required. The archive of `rpmgr backup` |
-| `--revocation-log <dir or file>` | A revocation-log sink directory, or a controller's `revocations.log`. Repeat it for each. Default: the state directory's `revocations.log` |
-| `--replaces <boot file>` | For a restore into a new PostgreSQL database: the boot file of the database it replaces. The restore refuses while a controller holds that database's lock. Without it, stop every controller yourself first |
+| `--revocation-log <dir or file>` | A revocation-log sink directory, or a controller's `revocations.log`. Repeat it for each. Default: the state directory's `revocations.log`; required for a restore into PostgreSQL |
+| `--replaces <boot file>` | For a restore into a new PostgreSQL database: the boot file, or the SQLite file, of the database it replaces. The restore refuses while a controller holds that database's lock. Without it, stop every controller yourself first. Refused for a SQLite restore |
 | `--config <file>` | The boot file, as for `rpmgr backup` |
 
 The restore refuses to run while a controller holds the database. It prepares everything next to
@@ -213,8 +213,10 @@ lock, so it refuses while any controller runs on it. The lock is per database, s
 the **old** database is not seen unless `--replaces` names it; the restore then refuses while it
 holds its lock, and warns when `rpmgr migrate-db` retired that database. A new database gets a new
 epoch like any restore. The restore prepares everything first and fills the database in one
-transaction, so a failed restore leaves it without a row, and the logs in the state directory
-stay as they were.
+transaction, so a restore that fails before it commits leaves the database without a row, and the
+logs in the state directory as they were. If it fails after the commit, the database holds the
+restore: the error names the log files to put in place by hand, and a second restore into that
+database is refused. An archive of a database that `rpmgr migrate-db` retired is refused.
 
 ### On a new host
 

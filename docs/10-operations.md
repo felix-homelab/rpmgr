@@ -927,9 +927,10 @@ service that still runs the previous binary, with the command that restarts it.
 - **Restore side effects**, applied automatically:
   - the restore merges the sink with every reachable replica's local log, checks the sink's hash
     chain, then re-applies every entry newer than the backup, with its original time and reason;
-    without `--revocation-log` it reads the local `revocations.log` of the host it runs on. The
-    re-applied entries are appended to the restored local log, so a later restore finds them
-    without the sink.
+    without `--revocation-log` it reads the local `revocations.log` of the host it runs on, except
+    into PostgreSQL, where the option is required: the host's own log says nothing of what other
+    controllers on that database revoked. The re-applied entries are appended to the restored local
+    log, so a later restore finds them without the sink.
   - **Re-applying:** a revoked certificate the backup does not hold, because it was issued after
     the backup, stays on the deny-list until it expires; so does a revoked identity of an org created
     after the backup. A role downgrade never raises a role. A password changed after the backup is
@@ -983,9 +984,16 @@ service that still runs the previous binary, with the command that restarts it.
   (on PostgreSQL its exclusive advisory lock, which a replica's shared one also blocks) and refuses
   while a controller holds it. It prepares the restored database and logs next to the
   live ones (`*.restoring`) and renames them into place only when every step succeeded, so a failed
-  restore changes nothing; on PostgreSQL the single transaction is what leaves the empty database
-  empty after a failure. The replaced database and logs stay in the state directory with the
-  suffix `.before-restore-<time>`; delete them once the restored controller runs.
+  restore changes nothing. On PostgreSQL the live logs are moved aside first and put back when the
+  copy fails, and the single transaction leaves the database without a row; the one thing a failure
+  can leave behind is the migration of an empty target, which holds no row. Once that transaction
+  has committed, a failure to put the logs in place keeps every file and the error names them, with
+  the epoch the database holds, for the operator to move into place by hand: a second restore into
+  that database is refused, because it is no longer empty. The replaced logs, and a SQLite
+  database, stay in the state directory with the suffix `.before-restore-<time>`, which has a
+  number added when a file of that name exists; delete them once the restored controller runs. An
+  archive of a database that `migrate-db` retired is refused, because the restored database would
+  refuse to start.
 - [R] Back up daily and before every controller upgrade; test a restore at least quarterly.
 
 ## High availability
