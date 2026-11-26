@@ -390,3 +390,39 @@ func newOfflineRootFor(t *testing.T, dir string) string {
 	}
 	return p
 }
+
+// A backup taken while the ceremony is in flight can hold the database from before its commit and a
+// copy of the log from after the marker was appended. The restore applies the archive's own markers
+// too, so the root does not come back online.
+func TestRestore_MarkerInTheArchivesOwnLog(t *testing.T) {
+	ctx := context.Background()
+	h, _ := initHost(t)
+	db, err := store.OpenSQLite(ctx, h.db, store.SQLiteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := db.Client().CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot)).OnlyX(storetest.SystemCtx(t))
+	_ = db.Close()
+	hash := pki.PublicKeyHash(row.PublicKey)
+	rl, err := revlog.Open(filepath.Join(filepath.Dir(h.db), "revocations.log"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rl.Append(revlog.Entry{Kind: revlog.RootOffline, Subject: hash, Detail: "0123456789abcdef"}); err != nil {
+		t.Fatal(err)
+	}
+	archive := filepath.Join(t.TempDir(), "mid-ceremony.backup")
+	if _, err := controller.Backup(ctx, h.cfg, archive, "0.1.0", time.Now); err != nil {
+		t.Fatal(err)
+	}
+	if off, _, _ := rootRowOf(t, h); off {
+		t.Fatal("the premise: the database still holds the key")
+	}
+	r, err := controller.Restore(ctx, controller.RestoreOptions{ConfigPath: h.cfg, Archive: archive})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if off, _, _ := rootRowOf(t, h); !off || len(r.RootKeysDropped) != 1 || r.RootKeysDropped[0] != hash {
+		t.Errorf("the root is online after the restore: %+v", r)
+	}
+}

@@ -173,10 +173,12 @@ It cannot sign an intermediate itself, and it has no command that brings the roo
    sudo rpmgr ca offline-root --out /root/rpmgr-root.age
    ```
 
-   It writes the file, reads it back, checks that its key is the database's, and only then removes
-   the key from the database. It never overwrites a file. It generates a passphrase and shows it
-   once, and stores it nowhere. Pass `--passphrase-file <file>` or `--prompt` to use your own; it
-   must be long and unpredictable enough, and is never an argument.
+   It writes the file, reads it again from disk, checks that its key is the database's, and only
+   then removes the key from the database. It never overwrites a file. It generates a passphrase
+   and shows it once, and stores it nowhere. Pass `--passphrase-file <file>` or `--prompt` to use your own; it
+   must be long and unpredictable enough, and is never an argument. If the command fails after the
+   key may already be marked as offline, it keeps the file and shows the generated passphrase with
+   the error: write it down, and read `rpmgr ca status` before you go on.
 2. Write the passphrase down and keep it apart from the media. Move the file to offline media and
    delete every other copy, on the controller host too. Keep a second copy of the media.
 3. **Rotate the KEK** and destroy the old one. Removing the key from the database does not erase

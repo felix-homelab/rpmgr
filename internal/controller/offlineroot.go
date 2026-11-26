@@ -84,12 +84,12 @@ func OfflineRoot(ctx context.Context, o OfflineRootOptions) (OfflineRootResult, 
 	}
 	_, db, sys, err := openLocal(ctx, o.ConfigPath, "rpmgr ca offline-root")
 	if err != nil {
-		return res, err
+		return OfflineRootResult{}, err
 	}
 	defer func() { _ = db.Close() }()
 	rl, err := revlog.Open(filepath.Join(filepath.Dir(cfg.Database.DSN), "revocations.log"), o.Now)
 	if err != nil {
-		return res, err
+		return OfflineRootResult{}, err
 	}
 	var created, marked bool
 	err = store.WriteTx(sys, db, func(tx *ent.Tx) error {
@@ -100,6 +100,9 @@ func OfflineRoot(ctx context.Context, o OfflineRootOptions) (OfflineRootResult, 
 				return nil, err
 			}
 			created = true
+			if err := fault("written", o.Out); err != nil {
+				return nil, err
+			}
 			return readCeremonyFile(o.Out)
 		})
 		if err != nil {
@@ -110,17 +113,26 @@ func OfflineRoot(ctx context.Context, o OfflineRootOptions) (OfflineRootResult, 
 			Reason: "the root's key moved to an offline file with the SHA-256 " + res.FileSHA256}); err != nil {
 			return err
 		}
-		// Last, so that nothing after it can fail the transaction but its commit.
+		if err := fault("before-marker", o.Out); err != nil {
+			return err
+		}
+		// From here on the marker may be in the log, even if the append fails (its sync): a restore
+		// would null the key, so the file must stay.
+		marked = true
 		if _, err := rl.Append(revlog.Entry{Kind: revlog.RootOffline, Subject: res.PublicKeyHash, Detail: res.KEK, Actor: "local-cli"}); err != nil {
 			return err
 		}
-		marked = true
-		return nil
+		if err := fault("appended", o.Out); err != nil {
+			return err
+		}
+		return fault("commit", o.Out)
 	})
 	switch {
 	case err != nil && marked:
-		return OfflineRootResult{}, fmt.Errorf("controller: the commit failed after the marker was logged; %s holds the root's key, "+
-			"keep it and check `rpmgr ca status`: %w", o.Out, err)
+		// The passphrase goes back with the error: the file is kept and opens only with it.
+		return res, fmt.Errorf("controller: the ceremony failed after the marker was logged, so the key stays online and %s, "+
+			"which holds the root's key, is kept: do not delete it, and run `rpmgr ca offline-root` again with a new file "+
+			"only after `rpmgr ca status` shows the state: %w", o.Out, err)
 	case err != nil && created:
 		_ = os.Remove(o.Out) // the root stays online, so a file that holds its key is of no use
 	}

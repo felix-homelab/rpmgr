@@ -101,7 +101,8 @@ func TestCAOfflineRootRoundTrip(t *testing.T) {
 	}
 
 	// The passphrase from the terminal, asked twice; two that differ are refused.
-	t.Cleanup(func() { passphrasePrompt = nil })
+	origPrompt := passphrasePrompt
+	t.Cleanup(func() { passphrasePrompt = origPrompt })
 	passphrasePrompt = func(twice bool) (string, error) {
 		if !twice {
 			t.Error("offline-root must ask twice")
@@ -157,7 +158,8 @@ func TestCAOfflineRootRoundTrip(t *testing.T) {
 	if code, _, stderr := sign("--passphrase-file", wrong, "--yes"); code != cli.ExitError || !strings.Contains(stderr, "does not open") || strings.Contains(stderr, "Not-The") {
 		t.Errorf("a wrong passphrase: exit %d, %q", code, stderr)
 	}
-	t.Cleanup(func() { confirmPrompt = nil })
+	origConfirm := confirmPrompt
+	t.Cleanup(func() { confirmPrompt = origConfirm })
 	confirmPrompt = func(string) (bool, error) { return false, nil }
 	if code, stdout, stderr := sign("--passphrase-file", passFile); code != cli.ExitError || !strings.Contains(stderr, "not confirmed") ||
 		!strings.Contains(stdout, hash[1]) || !strings.Contains(stdout, "path length 0") {
@@ -195,5 +197,44 @@ func TestCAOfflineRootRoundTrip(t *testing.T) {
 	}
 	if out := run("ca", "status"); !strings.Contains(out, "next") || strings.Contains(out, "needs the offline root's signature") {
 		t.Errorf("status after the import shows no next intermediate, or still asks for a signature: %q", out)
+	}
+}
+
+// TestAskSecret: a passphrase is read with echo off, through readPassword, once or twice, and the
+// prompt goes to the terminal, not to the output.
+func TestAskSecret(t *testing.T) {
+	tty, err := os.CreateTemp(t.TempDir(), "tty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	origTTY, origRead := openTTY, readPassword
+	t.Cleanup(func() { openTTY, readPassword = origTTY, origRead })
+	openTTY = func() (*os.File, error) { return tty, nil }
+	var asked []int
+	answers := []string{"Tr4ffic-Light-Mango-91x", "Tr4ffic-Light-Mango-91x"}
+	readPassword = func(fd int) ([]byte, error) {
+		asked = append(asked, fd)
+		a := answers[0]
+		answers = answers[1:]
+		return []byte(a), nil
+	}
+	if p, err := passphrasePrompt(true); err != nil || p != "Tr4ffic-Light-Mango-91x" || len(asked) != 2 {
+		t.Fatalf("passphrase %q %v after %d reads without echo", p, err, len(asked))
+	}
+	b, _ := os.ReadFile(tty.Name())
+	if !strings.Contains(string(b), "Passphrase again: ") || strings.Contains(string(b), "Mango") {
+		t.Errorf("the terminal got %q", b)
+	}
+	// Two answers that differ are refused.
+	tty2, _ := os.CreateTemp(t.TempDir(), "tty")
+	openTTY = func() (*os.File, error) { return tty2, nil }
+	answers = []string{"Tr4ffic-Light-Mango-91x", "another"}
+	if _, err := passphrasePrompt(true); err == nil || !strings.Contains(err.Error(), "differ") {
+		t.Errorf("answers that differ: %v", err)
+	}
+	// No terminal: a clear refusal.
+	openTTY = func() (*os.File, error) { return nil, errors.New("no tty") }
+	if _, err := passphrasePrompt(false); err == nil || !strings.Contains(err.Error(), "--passphrase-file") {
+		t.Errorf("no terminal: %v", err)
 	}
 }

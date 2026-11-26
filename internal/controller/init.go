@@ -325,7 +325,16 @@ func writeNew(path string, data []byte, perm os.FileMode) error {
 		_ = f.Close()
 		return err
 	}
-	return f.Close()
+	if err := f.Close(); err != nil {
+		return err
+	}
+	// The new directory entry too, so that a crash does not lose the file just written. Where a
+	// directory cannot be opened or synced (Windows) there is nothing more to do.
+	if d, err := os.Open(filepath.Dir(path)); err == nil { //nolint:gosec // G304: the operator's path
+		_ = d.Sync()
+		_ = d.Close()
+	}
+	return nil
 }
 
 // systemdCredsEncrypt encrypts b into the credential file path with systemd-creds (systemd ≥ 250),

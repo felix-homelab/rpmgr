@@ -483,6 +483,23 @@ func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer
 			return err
 		}
 		res.DNSZones = n
+		// The archive's own log may hold a marker its database does not show: a backup's snapshot of
+		// the database can precede the commit that nulled the key, while its copy of the log, taken
+		// after, holds the marker. Applying a marker again is harmless.
+		own, err := revlog.Read(logPath)
+		if err != nil {
+			return err
+		}
+		for _, e := range own {
+			if e.Kind != revlog.RootOffline {
+				continue
+			}
+			if _, err := reapply(sys, tx, info.TrustDomain, e); errors.Is(err, errDroppedRootKey) {
+				res.RootKeysDropped = append(res.RootKeysDropped, e.Subject)
+			} else if err != nil {
+				return fmt.Errorf("controller: applying %s %s again: %w", e.Kind, e.Subject, err)
+			}
+		}
 		for _, e := range newer {
 			known, err := reapply(sys, tx, info.TrustDomain, e)
 			if errors.Is(err, errKeptInstanceAdmin) {

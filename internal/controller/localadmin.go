@@ -20,7 +20,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/config"
+	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/pki/castore"
+	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -91,6 +93,43 @@ func CAStatus(ctx context.Context, path string) (*rpmgrv1.GetPkiStatusResponse, 
 		return nil, err
 	}
 	return resp.Msg, nil
+}
+
+// CAStatusWarnings are what `rpmgr ca status` adds to the status of the API: a root_offline marker
+// in this host's revocation log that names a root whose key is still in the database, as a failed
+// ceremony leaves it. A restore would null that key, so the file the ceremony kept is the only
+// copy to trust. It needs no KEK.
+func CAStatusWarnings(ctx context.Context, path string) ([]string, error) {
+	cfg, db, sys, err := openLocal(ctx, path, "rpmgr ca status")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = db.Close() }()
+	log := filepath.Join(filepath.Dir(cfg.Database.DSN), "revocations.log")
+	if _, err := os.Stat(log); err != nil {
+		return nil, nil
+	}
+	entries, err := revlog.Read(log)
+	if err != nil {
+		return nil, err
+	}
+	roots, err := db.ReadClient().CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.KeyEncNotNil()).All(sys)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, e := range entries {
+		if e.Kind != revlog.RootOffline {
+			continue
+		}
+		for _, r := range roots {
+			if len(*r.KeyEnc) > 0 && pki.PublicKeyHash(r.PublicKey) == e.Subject {
+				out = append(out, fmt.Sprintf("the revocation log says the root %s went offline, but its key is still in the database: a failed "+
+					"ceremony. The file it wrote is kept and holds the key; a restore would take the key out of the database", e.Subject))
+			}
+		}
+	}
+	return out, nil
 }
 
 // RotateIntermediate is `rpmgr ca rotate-intermediate`: a new issuing intermediate now, beside a
