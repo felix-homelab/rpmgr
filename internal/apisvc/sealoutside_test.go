@@ -211,3 +211,49 @@ func TestWebhookRotationVersionGuard(t *testing.T) {
 	}
 }
 
+// TestWebhookUpdateSealsChatURLOutsideTheTransaction: a changed chat URL is sealed before the write
+// transaction, so a key service that does not answer holds no writer, and the new URL is stored and
+// recorded once it answers; a key service that is down is UNAVAILABLE and changes nothing.
+func TestWebhookUpdateSealsChatURLOutsideTheTransaction(t *testing.T) {
+	e, ada, org, _ := gatewayEnv(t)
+	ctx := context.Background()
+	created, err := newChat(t, e, ada, org, rpmgrv1.WebhookFormat_WEBHOOK_FORMAT_DISCORD, discordURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := created.GetWebhook()
+	id := w.GetId()
+	g := gateFor(t, 1)
+	sealer, err := secret.NewSealerWith(g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The stored URL is sealed under the env's KEK; the gate's KEK must open it for the check below.
+	sc := secret.Context{Table: "webhooks", Column: "url_enc", RowID: id}
+	e.webhooks.Sealer = sealer
+	update := func(url string) error {
+		_, err := updateHook(ada, &rpmgrv1.Webhook{Id: id, SecretUrl: url}, "", "secret_url")
+		return err
+	}
+	g.down.Store(true)
+	if err := update(discordURL + "1"); connect.CodeOf(err) != connect.CodeUnavailable {
+		t.Fatalf("an update with the key service down: %v, want UNAVAILABLE", err)
+	}
+	g.down.Store(false)
+	g.arm()
+	upd := make(chan error, 1)
+	go func() { upd <- update(discordURL + "2") }()
+	<-g.entered
+	unrelatedWriteGoesThrough(t, e)
+	close(g.release)
+	if err := <-upd; err != nil {
+		t.Fatal(err)
+	}
+	row := e.db.Client().Webhook.GetX(e.sys, id)
+	if v, err := sealer.Open(ctx, sc, *row.URLEnc); err != nil || v.Reveal() != discordURL+"2" { //nolint:forbidigo // the test reads back what it stored
+		t.Fatalf("the new URL is not stored: %v", err)
+	}
+	if n := e.db.Client().SecretMeta.Query().Where(secretmeta.TableName("webhooks"), secretmeta.RowID(id), secretmeta.ColumnName("url_enc")).CountX(e.sys); n != 1 {
+		t.Errorf("%d secrets_meta rows of the URL, want 1", n)
+	}
+}

@@ -337,6 +337,15 @@ func (w *Webhooks) UpdateWebhook(ctx context.Context, req *connect.Request[rpmgr
 	*connect.Response[rpmgrv1.UpdateWebhookResponse], error) {
 	ctx = w.scope(ctx)
 	m := req.Msg
+	// A new chat URL is sealed before the transaction, which a key service may hold up; the
+	// version check inside it guards the update. It is sealed for the row it names.
+	var sealedURL []byte
+	if su := m.GetWebhook().GetSecretUrl(); su != "" {
+		var err error
+		if sealedURL, err = w.Sealer.Seal(ctx, w.secretContext(m.GetWebhook().GetId(), "url_enc"), secret.New(su)); err != nil {
+			return nil, keyServiceError(err)
+		}
+	}
 	var row *ent.Webhook
 	err := store.WriteTx(ctx, w.DB, func(tx *ent.Tx) error {
 		cur, err := tx.Webhook.Get(ctx, m.GetWebhook().GetId())
@@ -355,7 +364,7 @@ func (w *Webhooks) UpdateWebhook(ctx context.Context, req *connect.Request[rpmgr
 			return err
 		}
 		u := tx.Webhook.UpdateOneID(cur.ID).Where(ewebhook.Version(cur.Version)).SetEventTypes(next.GetEventTypes()).AddVersion(1)
-		if err := w.updateTarget(ctx, tx, u, cur, next, f, slices.Contains(m.GetUpdateMask().GetPaths(), "url")); err != nil {
+		if err := w.updateTarget(ctx, tx, u, cur, next, sealedURL, f, slices.Contains(m.GetUpdateMask().GetPaths(), "url")); err != nil {
 			return err
 		}
 		// The options are checked against the format the endpoint will have, so that a change of
@@ -385,7 +394,7 @@ func (w *Webhooks) UpdateWebhook(ctx context.Context, req *connect.Request[rpmgr
 // which holds the service's token, changes only by a new secret_url, and a new format needs one: a
 // URL belongs to its service. An rpmgr endpoint does not become a chat one without its signing
 // secret going, and a chat one does not become rpmgr, which would need a secret to show once.
-func (w *Webhooks) updateTarget(ctx context.Context, tx *ent.Tx, u *ent.WebhookUpdateOne, cur *ent.Webhook, next *rpmgrv1.Webhook, f webhook.Format, urlInMask bool) error {
+func (w *Webhooks) updateTarget(ctx context.Context, tx *ent.Tx, u *ent.WebhookUpdateOne, cur *ent.Webhook, next *rpmgrv1.Webhook, sealed []byte, f webhook.Format, urlInMask bool) error {
 	curFormat := webhook.Format(cur.Format)
 	secretURL := next.GetSecretUrl()
 	switch {
@@ -419,9 +428,8 @@ func (w *Webhooks) updateTarget(ctx context.Context, tx *ent.Tx, u *ent.WebhookU
 	if err := webhook.ValidateChatURL(secretURL, cur.OrgID == nil); err != nil {
 		return invalid(err)
 	}
-	sealed, err := w.Sealer.Seal(ctx, w.secretContext(cur.ID, "url_enc"), secret.New(secretURL))
-	if err != nil {
-		return err
+	if sealed == nil { // secret_url that came with the mask but not in the request
+		return invalid(errors.New("apisvc: secret_url is not in the request"))
 	}
 	if err := store.RecordSealed(ctx, tx, w.secretContext(cur.ID, "url_enc"), sealed); err != nil {
 		return err
