@@ -129,7 +129,8 @@ TestCache_IgnoreCookiesRuleNeverStoresSetCookie	p3	-	-	gateway cache (Phase 3, D
 TestCache_IgnoreCookiesRuleDoesNotForwardCookie	p3	-	-	gateway cache (Phase 3, D172)
 TestPostgres_RequiresVerifiedTLS	done	8.2	#685	internal/store: the TLS configuration of every remote host (P2-M08, D177)
 TestMigrateDB_SecretsStaySealed	pending	8.4	#687	migrate-db (P2-M08, D175)
-TestKMS_CredentialsNeverLogged	pending	8.8	#691	Transit KEK (P2-M08, D178)
+TestKMS_CredentialsNeverLogged	done	8.8	#691	Transit client; log and error clauses
+TestKMS_CredentialsNeverLoggedInAuditAndStatus	pending	8.9	#692	audit, metric and `kek status` clauses of the Transit client
 TestCA_OfflineRootNeverStored	pending	8.10	#693	offline root (P2-M08, D179)
 TestCA_ImportedIntermediateMustChainAndConstrain	pending	8.10	#693	offline root (P2-M08, D179)
 TestCA_RotationChainsVerifyWithOldRootOnly	pending	8.14	#697	root rotation (P2-M08, D180)
