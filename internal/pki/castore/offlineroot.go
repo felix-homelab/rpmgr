@@ -255,10 +255,13 @@ var ErrRootOnline = errors.New("pki: the root is online and signs the intermedia
 // lockRoot makes concurrent requests take turns. PostgreSQL runs at READ COMMITTED, so two
 // transactions could both find no pending request: an update of the root row, to the value it has,
 // takes its row lock, so the second waits and then sees the first's request. SQLite has one writer.
+// The update matches the planned root only while it is active, so a plan for a root that is no
+// longer active is stale (ErrRotated) instead of making that root active again.
 func lockRoot(ctx context.Context, tx *ent.Tx, id string) error {
-	// Only while the row is still active, so that a plan made before the root changed neither takes a
-	// lock on a row that is not the root any more nor makes it active again.
-	n, err := tx.CAKey.Update().Where(cakey.ID(id), cakey.StatusEQ(cakey.StatusActive)).SetStatus(cakey.StatusActive).Save(ctx)
+	n, err := tx.CAKey.Update().
+		Where(cakey.ID(id), cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusActive)).
+		SetStatus(cakey.StatusActive).
+		Save(ctx)
 	if err != nil {
 		return err
 	}
