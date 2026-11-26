@@ -5,6 +5,7 @@ package controller_test
 import (
 	"context"
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -114,13 +115,20 @@ func TestPostgres_PasswordFileRefused(t *testing.T) {
 		"a file that others can read": func(o *controller.RunOptions) { o.Config.Database.PasswordFile = loose },
 		"a file that is not there":    func(o *controller.RunOptions) { o.Config.Database.PasswordFile += ".missing" },
 		"a password in the DSN": func(o *controller.RunOptions) {
-			o.Config.Database.DSN = strings.Replace(o.Config.Database.DSN, "postgres@", "postgres:unused@", 1)
+			u, err := url.Parse(o.Config.Database.DSN)
+			if err != nil {
+				t.Fatal(err)
+			}
+			u.User = url.UserPassword(u.User.Username(), "unused")
+			o.Config.Database.DSN = u.String()
 		},
 	} {
 		o := r.replica(t)
-		o.Listening = func() { t.Errorf("%s: the controller started", name) }
+		ctx, cancel := context.WithCancel(context.Background())
+		o.Listening = func() { t.Errorf("%s: the controller started", name); cancel() }
 		edit(&o)
-		err := controller.Run(context.Background(), o)
+		err := controller.Run(ctx, o)
+		cancel()
 		if err == nil || strings.Contains(err.Error(), "unused") {
 			t.Errorf("%s: %v, want an error that does not show the password", name, err)
 		}
