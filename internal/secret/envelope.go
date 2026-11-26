@@ -61,6 +61,13 @@ const (
 // another row, or under an unknown KEK. The cases are deliberately not told apart.
 var ErrOpen = errors.New("secret: sealed value does not open")
 
+// ErrUnknownKey is returned for a sealed secret whose KEK identifier or kind is not one of the
+// Sealer's: sealed under another KEK, another Transit key, or a wrapper this controller has not
+// configured. It wraps ErrOpen, so a caller that tests for ErrOpen sees it as every other value that
+// does not open, and boot and `rpmgr kek status` can still name the case. It is returned before
+// any call to a key service.
+var ErrUnknownKey = fmt.Errorf("%w: it is wrapped under a KEK that is not configured", ErrOpen)
+
 // Context names where a sealed secret is stored; it is bound to the ciphertext.
 type Context struct {
 	Table, Column, RowID string
@@ -84,6 +91,9 @@ func NewKEK(key []byte) (KEK, error) {
 	k.key = FromBytes(key)
 	return k, nil
 }
+
+// IsZero reports whether k is the zero KEK, which holds no key.
+func (k KEK) IsZero() bool { return k.key.IsZero() }
 
 // Version returns the KEK version as 16 hexadecimal digits.
 func (k KEK) Version() string { return hex.EncodeToString(k.id[:]) }
@@ -133,8 +143,8 @@ func NewSealerWith(current Wrapper, previous ...Wrapper) (*Sealer, error) {
 	return s, nil
 }
 
-// Seal encrypts v for storage at ctx, as a version 2 value.
-func (s *Sealer) Seal(ctx Context, v Value) ([]byte, error) {
+// Seal encrypts v for storage at sc, as a version 2 value. ctx bounds the call to a key service.
+func (s *Sealer) Seal(ctx context.Context, sc Context, v Value) ([]byte, error) {
 	plain := []byte(v.Reveal())
 	if len(plain) > maxSealSize {
 		return nil, fmt.Errorf("secret: %d bytes is more than the %d a secret may have", len(plain), maxSealSize)
@@ -144,8 +154,8 @@ func (s *Sealer) Seal(ctx Context, v Value) ([]byte, error) {
 		return nil, err
 	}
 	defer clear(dataKey)
-	ad := dataAD(formatV2, ctx)
-	out, err := s.wrapHeader(dataKey, ad)
+	ad := dataAD(formatV2, sc)
+	out, err := s.wrapHeader(ctx, dataKey, ad)
 	if err != nil {
 		return nil, err
 	}
@@ -154,12 +164,17 @@ func (s *Sealer) Seal(ctx Context, v Value) ([]byte, error) {
 
 // wrapHeader returns the version 2 header up to and including the wrapped data key, wrapped by the
 // current Wrapper.
-func (s *Sealer) wrapHeader(dataKey, ad []byte) ([]byte, error) {
-	w := s.current
-	wrapped, err := w.Wrap(context.Background(), dataKey, ad)
+func (s *Sealer) wrapHeader(ctx context.Context, dataKey, ad []byte) ([]byte, error) {
+	wrapped, err := s.current.Wrap(ctx, dataKey, ad)
 	if err != nil {
 		return nil, err
 	}
+	return s.header(wrapped)
+}
+
+// header returns the version 2 header up to and including wrapped, which the current Wrapper made.
+func (s *Sealer) header(wrapped []byte) ([]byte, error) {
+	w := s.current
 	id := w.ID()
 	if len(id) == 0 || len(id) > maxIDLen {
 		return nil, fmt.Errorf("secret: a KEK identifier of %d bytes is outside 1 to %d", len(id), maxIDLen)
@@ -175,15 +190,15 @@ func (s *Sealer) wrapHeader(dataKey, ad []byte) ([]byte, error) {
 	return append(out, wrapped...), nil
 }
 
-// Open decrypts a secret sealed for ctx. Every failure to open returns ErrOpen; a wrapper that
-// cannot be reached returns its own error.
-func (s *Sealer) Open(ctx Context, sealed []byte) (Value, error) {
-	p, err := s.unwrap(ctx, sealed)
+// Open decrypts a secret sealed for sc. Every failure to open returns ErrOpen; a wrapper that
+// cannot be reached returns its own error. ctx bounds the call to a key service.
+func (s *Sealer) Open(ctx context.Context, sc Context, sealed []byte) (Value, error) {
+	p, err := s.unwrap(ctx, sc, sealed)
 	if err != nil {
 		return Value{}, err
 	}
 	defer clear(p.dataKey)
-	plain, err := openGCM(p.dataKey, p.rest, dataAD(p.format, ctx))
+	plain, err := openGCM(p.dataKey, p.rest, dataAD(p.format, sc))
 	if err != nil {
 		return Value{}, ErrOpen
 	}
@@ -192,25 +207,48 @@ func (s *Sealer) Open(ctx Context, sealed []byte) (Value, error) {
 
 // Rewrap re-wraps the data key of a sealed secret under the current Wrapper; the encrypted secret
 // itself is kept as it is. A version 2 secret already under the current Wrapper is returned
-// unchanged. A version 1 secret is sealed again as version 2 with a new data key, because its
-// associated data carries the version 1 label.
-func (s *Sealer) Rewrap(ctx Context, sealed []byte) ([]byte, error) {
-	p, err := s.unwrap(ctx, sealed)
+// unchanged, unless the Wrapper is a Rewrapper, which decides: a Transit key keeps its identifier
+// when it is rotated and changes its version only. A version 1 secret is sealed again as version 2
+// with a new data key, because its associated data carries the version 1 label.
+func (s *Sealer) Rewrap(ctx context.Context, sc Context, sealed []byte) ([]byte, error) {
+	if rw, ok := s.current.(Rewrapper); ok && len(sealed) > 0 && sealed[0] == formatV2 {
+		h, err := parseV2(sealed)
+		if err != nil {
+			return nil, err
+		}
+		if h.kind == rw.Kind() && string(h.id) == string(rw.ID()) {
+			wrapped, err := rw.Rewrap(ctx, h.wrapped, dataAD(formatV2, sc))
+			if err != nil {
+				return nil, err
+			}
+			if bytes.Equal(wrapped, h.wrapped) {
+				return sealed, nil
+			}
+			out, err := s.header(wrapped)
+			if err != nil {
+				return nil, err
+			}
+			return append(out, h.rest...), nil
+		}
+	}
+	p, err := s.unwrap(ctx, sc, sealed)
 	if err != nil {
 		return nil, err
 	}
 	defer clear(p.dataKey)
 	if p.format == formatV1 {
-		plain, err := openGCM(p.dataKey, p.rest, dataAD(formatV1, ctx))
+		plain, err := openGCM(p.dataKey, p.rest, dataAD(formatV1, sc))
 		if err != nil {
 			return nil, ErrOpen
 		}
-		return s.Seal(ctx, FromBytes(plain))
+		return s.Seal(ctx, sc, FromBytes(plain))
 	}
 	if p.wrapper.Kind() == s.current.Kind() && string(p.wrapper.ID()) == string(s.current.ID()) {
-		return sealed, nil
+		if _, ok := s.current.(Rewrapper); !ok {
+			return sealed, nil
+		}
 	}
-	out, err := s.wrapHeader(p.dataKey, dataAD(formatV2, ctx))
+	out, err := s.wrapHeader(ctx, p.dataKey, dataAD(formatV2, sc))
 	if err != nil {
 		return nil, err
 	}
@@ -245,6 +283,13 @@ func KEKVersion(sealed []byte) (string, error) {
 	return string(h.id), nil
 }
 
+// KEKIdentity is a KEK version without the key version: "<mount>/<key>" for "<mount>/<key>@v<n>",
+// and a local KEK's version as it is. Two versions of one Transit key share it.
+func KEKIdentity(version string) string {
+	id, _, _ := strings.Cut(version, "@v")
+	return id
+}
+
 // validKeyVersion is a decimal number from 1 to 9999999999 without a leading zero, the form
 // Transit writes, so that one key version has one spelling in secrets_meta.
 func validKeyVersion(n string) bool {
@@ -259,13 +304,13 @@ type parsed struct {
 	rest    []byte // the secret's nonce, ciphertext and tag
 }
 
-func (s *Sealer) unwrap(ctx Context, sealed []byte) (parsed, error) {
+func (s *Sealer) unwrap(ctx context.Context, sc Context, sealed []byte) (parsed, error) {
 	if len(sealed) == 0 {
 		return parsed{}, ErrOpen
 	}
 	switch sealed[0] {
 	case formatV1:
-		return s.unwrapV1(ctx, sealed)
+		return s.unwrapV1(sc, sealed)
 	case formatV2:
 		h, err := parseV2(sealed)
 		if err != nil {
@@ -273,9 +318,9 @@ func (s *Sealer) unwrap(ctx Context, sealed []byte) (parsed, error) {
 		}
 		w, ok := s.byID[wrapperID{h.kind, string(h.id)}]
 		if !ok {
-			return parsed{}, ErrOpen
+			return parsed{}, ErrUnknownKey
 		}
-		dataKey, err := w.Unwrap(context.Background(), h.wrapped, dataAD(formatV2, ctx))
+		dataKey, err := w.Unwrap(ctx, h.wrapped, dataAD(formatV2, sc))
 		if err != nil {
 			return parsed{}, err
 		}

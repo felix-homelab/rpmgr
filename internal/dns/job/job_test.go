@@ -83,7 +83,7 @@ func newEnv(t *testing.T, db *store.DB) *env {
 	e.sealer, _ = secret.NewSealer(kek)
 	c := db.Client()
 	pid := ids.New("dnp")
-	sealed, err := e.sealer.Seal(providers.SecretContext(pid), secret.New(token))
+	sealed, err := e.sealer.Seal(context.Background(), providers.SecretContext(pid), secret.New(token))
 	if err != nil {
 		t.Fatal(err)
 	}

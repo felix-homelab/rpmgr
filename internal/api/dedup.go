@@ -105,7 +105,7 @@ func (s *Server) store(id string, resp proto.Message) error {
 	if err != nil {
 		return err
 	}
-	sealed, err := s.o.Sealer.Seal(responseContext(id), secret.FromBytes(b))
+	sealed, err := s.o.Sealer.Seal(s.o.Sys, responseContext(id), secret.FromBytes(b))
 	if err != nil {
 		return err
 	}
@@ -114,7 +114,7 @@ func (s *Server) store(id string, resp proto.Message) error {
 
 // storedResponse returns the stored response as a T.
 func storedResponse[T proto.Message](s *Server, row *ent.APIRequest, zero T) (T, error) {
-	v, err := s.o.Sealer.Open(responseContext(row.ID), *row.ResponseEnc)
+	v, err := s.o.Sealer.Open(s.o.Sys, responseContext(row.ID), *row.ResponseEnc)
 	if err != nil {
 		return zero, err
 	}

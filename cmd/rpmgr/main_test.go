@@ -483,11 +483,11 @@ func TestCommandLineErrors(t *testing.T) {
 		{"release", "import"},        // no directory
 		{"systemd-unit"},             // no role
 		{"systemd-unit", "relay"},    // no such role
-		{"kek", "rotate"},            // no previous KEK
-		{"migrate", "extra"},         // a local command takes no arguments
-		{"status", "extra"},          // an agent command takes no arguments
-		{"restore"},                  // no archive
-		{"backup"},                   // no archive
+		{"kek", "rotate", "--previous-file", "a", "--previous-config", "b"}, // two previous KEKs
+		{"migrate", "extra"}, // a local command takes no arguments
+		{"status", "extra"},  // an agent command takes no arguments
+		{"restore"},          // no archive
+		{"backup"},           // no archive
 	} {
 		code, stdout, stderr := runRpmgr(args...)
 		if code != cli.ExitUsage || stdout != "" || !strings.Contains(stderr, "Usage:") {
@@ -559,5 +559,21 @@ func TestVersionFromLinkerFlags(t *testing.T) {
 	var exitErr *exec.ExitError
 	if err := exec.Command(bin).Run(); !errors.As(err, &exitErr) || exitErr.ExitCode() != cli.ExitUsage {
 		t.Errorf("rpmgr without a command: %v, want exit code %d", err, cli.ExitUsage)
+	}
+}
+
+// TestKEKRotateNeedsPreviousKEK: with a file KEK, `kek rotate` needs --previous-file or
+// --previous-config and says so as a usage error; only a Transit key has none to name.
+func TestKEKRotateNeedsPreviousKEK(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "controller.yaml")
+	boot := "version: 1\npublic_url: https://panel.example.com\ndatabase: {dsn: " + filepath.Join(dir, "controller.db") + "}\n" +
+		"kek: {source: file, path: " + filepath.Join(dir, "kek") + "}\n"
+	if err := os.WriteFile(cfg, []byte(boot), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runRpmgr("kek", "rotate", "--config", cfg)
+	if code != cli.ExitUsage || stdout != "" || !strings.Contains(stderr, "--previous-file or --previous-config") {
+		t.Errorf("exit %d, stdout %q, stderr %q; want exit 2 naming the flags", code, stdout, stderr)
 	}
 }

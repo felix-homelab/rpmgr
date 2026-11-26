@@ -510,7 +510,7 @@ func (j *Job) provider(ctx context.Context, z *ent.DNSZone) (dns.Provider, error
 	if err != nil {
 		return nil, err
 	}
-	tok, err := j.o.Sealer.Open(providers.SecretContext(p.ID), p.CredentialEnc)
+	tok, err := j.o.Sealer.Open(ctx, providers.SecretContext(p.ID), p.CredentialEnc)
 	if err != nil {
 		return nil, fmt.Errorf("the provider's token cannot be opened: %w", err)
 	}

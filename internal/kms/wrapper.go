@@ -28,7 +28,10 @@ const keyType = "aes256-gcm96"
 
 var ciphertextRe = regexp.MustCompile(`^vault:v([1-9][0-9]{0,9}):[A-Za-z0-9+/]+={0,2}$`)
 
-var _ secret.Wrapper = (*Client)(nil)
+var (
+	_ secret.Wrapper   = (*Client)(nil)
+	_ secret.Rewrapper = (*Client)(nil)
+)
 
 // ErrKeyVersion means Transit refuses the key version of a ciphertext: the minimum decryption
 // version was raised past it, or the key was restored from an older state and does not know it yet.
@@ -54,6 +57,7 @@ func (c *Client) Wrap(ctx context.Context, dataKey, aad []byte) ([]byte, error) 
 		"plaintext": pt,
 		"context":   transitContext(aad),
 	}, secret.FromBytes(dataKey), secret.New(pt))
+	c.observe("encrypt", err)
 	if err != nil {
 		return nil, err
 	}
@@ -76,6 +80,7 @@ func (c *Client) Unwrap(ctx context.Context, wrapped, aad []byte) ([]byte, error
 		return nil, err
 	}
 	err = c.do(ctx, http.MethodPost, c.path("decrypt"), body, &out)
+	c.observe("decrypt", err)
 	if err != nil {
 		return nil, mapOpenError(err)
 	}
@@ -88,16 +93,23 @@ func (c *Client) Unwrap(ctx context.Context, wrapped, aad []byte) ([]byte, error
 	return key, nil
 }
 
-// Rewrap moves a ciphertext to the key's latest version without the data key leaving Transit. It
-// is for `rpmgr kek rotate`; the result is a new wrapped data key for the same row.
+// Rewrap implements secret.Rewrapper. It moves a ciphertext to the key's latest version without
+// the data key leaving Transit; it is for `rpmgr kek rotate`. A ciphertext of the latest version
+// that the last Check read is returned as it is, and only then: the key keeps its identifier when
+// Transit rotates it, so the version is all that tells a value to re-wrap. Without a Check every
+// value is sent to Transit, since an earlier answer may be older than Transit's key.
 func (c *Client) Rewrap(ctx context.Context, wrapped, aad []byte) ([]byte, error) {
 	if !ciphertextRe.Match(wrapped) {
 		return nil, secret.ErrOpen
+	}
+	if checked := int(c.checked.Load()); checked > 0 && versionOf(string(wrapped)) == checked {
+		return wrapped, nil
 	}
 	ct, err := c.transit(ctx, "rewrap", map[string]string{
 		"ciphertext": string(wrapped),
 		"context":    transitContext(aad),
 	})
+	c.observe("rewrap", err)
 	if err != nil {
 		return nil, mapOpenError(err)
 	}
@@ -107,6 +119,14 @@ func (c *Client) Rewrap(ctx context.Context, wrapped, aad []byte) ([]byte, error
 // Check reads the key and refuses one that is missing, of another type or not derived. It also
 // returns the key's latest version. The controller calls it at start.
 func (c *Client) Check(ctx context.Context) (latest int, err error) {
+	latest, err = c.check(ctx)
+	// Observed after the key is validated: a key that is missing, of another type or not derived
+	// is a failed check, not an answered one.
+	c.observe("check", err)
+	return latest, err
+}
+
+func (c *Client) check(ctx context.Context) (latest int, err error) {
 	var out struct {
 		Data struct {
 			Type          string `json:"type"`
@@ -114,7 +134,8 @@ func (c *Client) Check(ctx context.Context) (latest int, err error) {
 			LatestVersion int    `json:"latest_version"`
 		} `json:"data"`
 	}
-	if err := c.do(ctx, http.MethodGet, "/"+c.mount+"/keys/"+c.key, nil, &out); err != nil {
+	err = c.do(ctx, http.MethodGet, "/"+c.mount+"/keys/"+c.key, nil, &out)
+	if err != nil {
 		var te *Error
 		if errors.As(err, &te) && te.Status == http.StatusNotFound {
 			return 0, fmt.Errorf("kms: key %s/%s or mount %s not found: %w", c.mount, c.key, c.mount, err)
@@ -131,6 +152,7 @@ func (c *Client) Check(ctx context.Context) (latest int, err error) {
 		return 0, fmt.Errorf("kms: key %s/%s reports no latest version", c.mount, c.key)
 	}
 	c.noteVersion(out.Data.LatestVersion)
+	c.checked.Store(int64(out.Data.LatestVersion))
 	return out.Data.LatestVersion, nil
 }
 

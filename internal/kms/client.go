@@ -84,6 +84,10 @@ type Config struct {
 	AppRole   *AppRole
 	// Logger receives debug and warning lines without any credential; nil logs nothing.
 	Logger *slog.Logger
+	// Observe, if set, is called after every request to Transit with the operation (encrypt,
+	// decrypt, rewrap, check or login) and its result: ok, denied, unavailable or error. Both are
+	// fixed words; nothing of the request or the answer is passed.
+	Observe func(op, result string)
 }
 
 // Client is a Transit client for one key. It implements secret.Wrapper. It is safe for concurrent
@@ -100,6 +104,7 @@ type Client struct {
 	reqTTL time.Duration
 
 	latest    atomic.Int64                   // highest key version seen
+	checked   atomic.Int64                   // the latest version the last Check read; 0 before one
 	creds     atomic.Pointer[[]secret.Value] // role and secret ID of the last login, to redact
 	mu        sync.Mutex
 	token     secret.Value
@@ -455,7 +460,31 @@ func (c *Client) login(ctx context.Context) error {
 	c.mu.Lock()
 	c.lastLogin = err
 	c.mu.Unlock()
+	c.observe("login", err)
 	return err
+}
+
+func isNotFound(err error) bool {
+	var te *Error
+	return errors.As(err, &te) && te.Status == http.StatusNotFound
+}
+
+// observe reports the result of a request to Config.Observe.
+func (c *Client) observe(op string, err error) {
+	if c.cfg.Observe == nil {
+		return
+	}
+	switch {
+	case err == nil:
+		c.cfg.Observe(op, "ok")
+	case errors.Is(err, ErrPermissionDenied):
+		c.cfg.Observe(op, "denied")
+	case errors.Is(err, ErrUnavailable), isNotFound(err):
+		// Transit cannot serve the key: it is down, or the key or the mount is gone.
+		c.cfg.Observe(op, "unavailable")
+	default:
+		c.cfg.Observe(op, "error")
+	}
 }
 
 func (c *Client) loginOnce(ctx context.Context) error {

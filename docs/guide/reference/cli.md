@@ -674,7 +674,8 @@ rpmgr kek rotate [flags]
 | Flag | Default | Description |
 |---|---|---|
 | `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
-| `--previous-file string` |  | the KEK before, in a file of the format of kek.source file, mode 0600 (required) |
+| `--previous-config string` |  | the boot file whose kek section names the KEK before, of any source, to move between a file or credential and Transit |
+| `--previous-file string` |  | the KEK before, in a file of the format of kek.source file, mode 0600 |
 
 ## rpmgr user
 

@@ -252,7 +252,7 @@ func (a *AuditSinks) CreateAuditSink(ctx context.Context, req *connect.Request[r
 			return nil, err
 		}
 		var err error
-		if sealed, err = a.Sealer.Seal(sinkSecretContext(id), secret.New(in.GetSecret())); err != nil {
+		if sealed, err = a.Sealer.Seal(ctx, sinkSecretContext(id), secret.New(in.GetSecret())); err != nil {
 			return nil, err
 		}
 		kind, settings["url"] = eauditsink.KindWebhook, in.GetUrl()
@@ -273,7 +273,7 @@ func (a *AuditSinks) CreateAuditSink(ctx context.Context, req *connect.Request[r
 			return nil, err
 		}
 		var err error
-		if sealed, err = a.Sealer.Seal(sinkSecretContext(id), secret.New(in.GetSecret())); err != nil {
+		if sealed, err = a.Sealer.Seal(ctx, sinkSecretContext(id), secret.New(in.GetSecret())); err != nil {
 			return nil, err
 		}
 		kind, settings = eauditsink.KindS3, set.Map()
@@ -418,7 +418,7 @@ func (a *AuditSinks) UpdateAuditSink(ctx context.Context, req *connect.Request[r
 		if newSecret || !maps.Equal(settings, pre.Settings) {
 			key := secret.New(in.GetSecret())
 			if !newSecret {
-				v, err := a.Sealer.Open(sinkSecretContext(pre.ID), *pre.SecretEnc)
+				v, err := a.Sealer.Open(ctx, sinkSecretContext(pre.ID), *pre.SecretEnc)
 				if err != nil {
 					return nil, badSink("the stored secret key cannot be opened; set it again")
 				}
@@ -449,7 +449,7 @@ func (a *AuditSinks) UpdateAuditSink(ctx context.Context, req *connect.Request[r
 			if err := checkSecret(in.GetSecret()); err != nil {
 				return err
 			}
-			sealed, err := a.Sealer.Seal(sinkSecretContext(cur.ID), secret.New(in.GetSecret()))
+			sealed, err := a.Sealer.Seal(ctx, sinkSecretContext(cur.ID), secret.New(in.GetSecret()))
 			if err != nil {
 				return err
 			}

@@ -146,13 +146,23 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return fmt.Errorf("controller: %w", err)
 	}
-	var kek secret.KEK
-	if o.KEK != nil {
-		kek = *o.KEK
-	} else if kek, err = loadKEK(cfg, o.Getenv); err != nil {
+	var health *kmsHealth
+	var observe func(op, result string)
+	if cfg.KEK.Source == config.KEKKMS {
+		health = newKMSHealth()
+		observe = health.observe
+	}
+	local := func(cfg config.Controller) (secret.KEK, error) {
+		if o.KEK != nil && !o.KEK.IsZero() {
+			return *o.KEK, nil
+		}
+		return loadKEK(cfg, o.Getenv)
+	}
+	kekw, err := openKEK(ctx, cfg, local, o.Logger, observe)
+	if err != nil {
 		return err
 	}
-	sealer, err := secret.NewSealer(kek)
+	sealer, err := secret.NewSealerWith(kekw.Wrapper)
 	if err != nil {
 		return err
 	}
@@ -181,7 +191,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	ca, err := castore.LoadCA(sys, db, sealer, o.Now)
 	if err != nil {
-		return err
+		return explainOpen(err)
 	}
 	td := ca.TrustDomain()
 	stateDir := filepath.Dir(cfg.Database.DSN)
@@ -220,6 +230,15 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	ready := NewReadiness(db, dir, sys)
+	if health != nil {
+		health.probe = kekw.Probe
+		ready.KMS = health
+		for _, c := range health.Collectors() {
+			if err := reg.Register(c); err != nil {
+				return err
+			}
+		}
+	}
 
 	roots := x509.NewCertPool()
 	roots.AddCert(ca.Root())

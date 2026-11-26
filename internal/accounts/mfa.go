@@ -225,7 +225,7 @@ func (m *MFA) VerifySecondFactor(userID, code string) (string, error) {
 }
 
 func (m *MFA) seed(cred *ent.TOTPCredential) ([]byte, error) {
-	v, err := m.Sealer.Open(seedContext(cred.ID), cred.SeedEnc)
+	v, err := m.Sealer.Open(m.sys, seedContext(cred.ID), cred.SeedEnc)
 	if err != nil {
 		return nil, err
 	}

@@ -1304,9 +1304,13 @@ n + 16    the secret under the data key with AES-256-GCM, and its tag
 - **Bounds.** K is at most 256 and W at most 512, and a value is at most the secret's limit of
   1 MiB plus its header. A value that is shorter than its lengths say, longer than the bounds, of
   another version or kind than the controller has a wrapper for, or whose tag fails does not open:
-  every such case is the one error of the sealer, so nothing tells them apart. **Transit being
-  down is a different error** (unavailable, or permission denied), never reported as a value that
-  does not open, so that a caller can retry it.
+  every such case is the one error of the sealer (`ErrOpen`), so nothing tells them apart, **with
+  one exception**: a value whose KEK identifier or kind is none of the controller's returns
+  `ErrUnknownKey`, an error that wraps `ErrOpen`. A caller that tests for `ErrOpen` sees it as any
+  other value that does not open, and the start and `rpmgr kek status` can still say that the
+  database is sealed under another KEK. It is returned before any call to a key service.
+  **Transit being down is a different error** (unavailable, or permission denied), never reported
+  as a value that does not open, so that a caller can retry it.
 - **Version 1 stays readable** for ever: it is the layout of Phase 1, a local KEK, an 8-byte version
   and a 48-byte wrapped key. Everything written from slice 8.7 on is version 2, and a version 1
   value becomes version 2 only when it is sealed again. **A version 2 value is re-wrapped**: only
@@ -1322,7 +1326,9 @@ controller asks a Transit key to wrap and unwrap the data keys, and never holds 
 small client of its own ([08](08-software-stack.md#data)) and treats Vault and OpenBao as one API
 [V VB-28] [V VB-31]. Slice 8.8 builds the client in `internal/kms`, which implements the
 `Wrapper` of [Envelope format v2](#secrets-at-rest-and-in-logs) and is tested against a fake
-Transit; no boot setting selects it before slice 8.9 (#692).
+Transit; slice 8.9 adds the boot setting `kek.source: kms` ([10](10-operations.md#boot-files)),
+which `rpmgr controller init`, the controller and the local commands of the controller host all
+follow.
 
 - **The key** is created by the operator in Transit: type `aes256-gcm96` and `derived` (so that a
   context binds a wrap to its row). At start the controller reads the key and **refuses to start**
@@ -1376,18 +1382,34 @@ Transit; no boot setting selects it before slice 8.9 (#692).
   holds one are never logged or returned. An error carries Transit's status and the first message
   of its `errors` list, at most 200 bytes, after the redaction that the logs below describe.
 - **One key.** A value whose key identifier (`<mount>/<key>` in the envelope) is not the
-  configured one is refused with an error of its own, before any call to Transit, so a value sealed
-  under another key, or a Transit that has been repointed, is not sent to the wrong key.
+  configured one is refused with `ErrUnknownKey` (an `ErrOpen`, see
+  [Envelope format v2](#secrets-at-rest-and-in-logs)), before any call to Transit, so a value
+  sealed under another key, or a Transit that has been repointed, is not sent to the wrong key.
+  A Transit ciphertext does not name its key, so a key of the same name in another cluster is not
+  told apart this way. **There is no canary value.** Loading the CA's keys is the check: the
+  controller opens the intermediate and the signing keys at every start, and a key that is not
+  the one that wrapped them fails there with the reason that the KEK does not open the database's
+  secrets, before the controller listens. A wrap made by the wrong key after that start would need
+  a Transit that changed its key under a running controller, which the highest key version the
+  client has seen does not cover and a canary would catch only at the next start; the operator
+  controls that change, and the next start or `rpmgr kek rotate` reports it.
 - **Unloaded secrets need Transit.** The controller keeps no cache of data keys: a secret is
   opened when it is read. The CA's keys, the signing keys and the like are loaded and reloaded
   every minute ([CA rotation](#ca-rotation)), so a Transit outage does not stop sessions,
   enforcement or issuance from the keys the controller already holds; it stops what has to open a
   value that is not loaded, such as a DNS-provider token or a new key. `/readyz` reports it, and
   an alert fires ([10](10-operations.md#suggested-alerts)). [D181](14-open-decisions.md#engineering)
-- **Rotation.** The operator rotates the key in Transit. `rpmgr kek rotate` then calls `rewrap` for
-  every wrapped key, in batches, writing each value back only if it is unchanged, which Transit
-  makes possible beside running replicas (the command takes the controller lock shared, so a single
-  controller is stopped for it): old key versions stay usable until the operator raises the key's
+- **Rotation.** The operator rotates the key in Transit. The key keeps its identifier and changes
+  its version, so the envelope's identifier cannot tell a value to re-wrap: the Transit wrapper is a
+  `Rewrapper` that the sealer asks for a value with the current identifier, and it skips the value
+  only when its key version is the latest one that the command's own read of the key reported.
+  `rpmgr kek rotate` then reads the key, calls `rewrap` once per value that is not on the latest
+  version, and writes all values in one transaction while it holds the controller lock exclusively,
+  so every controller is stopped for it (SQLite is the only database so far). It reads the key
+  again before it commits and fails, changing nothing, if the latest version changed meanwhile, so
+  it never reports success for values that a key rotated during the run left behind. Batches and a
+  shared lock, which Transit would allow beside running replicas, are not implemented. Old key
+  versions stay usable until the operator raises the key's
   minimum decryption version, which is the last step, after `rpmgr kek status` shows no value on an
   older version [D181](14-open-decisions.md#engineering). `kek status` counts from `secrets_meta`,
   which for Transit records the key version as `<mount>/<key>@v<n>`, the `n` of the wrapped key's

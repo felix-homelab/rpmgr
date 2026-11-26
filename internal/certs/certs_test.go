@@ -4,6 +4,7 @@ package certs_test
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -247,7 +248,7 @@ func TestUploadAndItem(t *testing.T) {
 			!slices.Equal(c.Sans, []string{"app.example.com"}) || strings.Contains(string(c.KeyEnc), string(der)) {
 			t.Fatalf("stored %+v", c)
 		}
-		item, err := certs.Item(c, s)
+		item, err := certs.Item(context.Background(), c, s)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -274,15 +275,15 @@ func TestUploadAndItem(t *testing.T) {
 		}
 		swapped := *c2
 		swapped.KeyEnc = c.KeyEnc
-		if _, err := certs.Item(&swapped, s); err == nil {
+		if _, err := certs.Item(context.Background(), &swapped, s); err == nil {
 			t.Fatal("a key sealed for another row opened")
 		}
 		changed := *c
 		changed.Chain = leaf.cert.Raw
-		if _, err := certs.Item(&changed, s); err == nil {
+		if _, err := certs.Item(context.Background(), &changed, s); err == nil {
 			t.Fatal("a changed chain passed the content hash")
 		}
-		if _, err := certs.Item(c, sealer(t)); err == nil {
+		if _, err := certs.Item(context.Background(), c, sealer(t)); err == nil {
 			t.Fatal("another KEK opened the key")
 		}
 	})
@@ -371,7 +372,7 @@ func TestRecordACME(t *testing.T) {
 		if row.ID != id || !changed || bytes.Equal(row.ContentSha256, hash) || row.LastError != "" {
 			t.Fatalf("renewed: %+v %v", row, changed)
 		}
-		item, err := certs.Item(row, s)
+		item, err := certs.Item(context.Background(), row, s)
 		if err != nil || len(item) == 0 {
 			t.Fatalf("the renewed item: %v", err)
 		}

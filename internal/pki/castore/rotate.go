@@ -61,7 +61,7 @@ func Rotate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) ([
 			return nil, err
 		}
 		done = append(done, "intermediate rotated")
-	} else if inter, err = openKey(s, old); err != nil {
+	} else if inter, err = openKey(ctx, s, old); err != nil {
 		return nil, err
 	}
 	is, err := pki.NewIssuer(root, inter, func() time.Time { return now })
@@ -126,7 +126,7 @@ func RotateIntermediate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now t
 // one is retired only while it is still active, so of two rotations at once one fails with
 // ErrRotated instead of leaving two active intermediates.
 func replaceIntermediate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, root, old *ent.CAKey, now time.Time) (pki.KeyPair, error) {
-	rootKP, err := openKey(s, root)
+	rootKP, err := openKey(ctx, s, root)
 	if err != nil {
 		return pki.KeyPair{}, err
 	}

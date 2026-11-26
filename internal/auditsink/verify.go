@@ -46,7 +46,7 @@ func (r *Runner) VerifyS3(ctx context.Context, s *ent.AuditSink, trust audit.Tru
 	if s.SecretEnc == nil || len(*s.SecretEnc) == 0 {
 		return nil, errors.New("the object-storage sink has no secret key")
 	}
-	key, err := r.o.Sealer.Open(secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: s.ID}, *s.SecretEnc)
+	key, err := r.o.Sealer.Open(ctx, secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: s.ID}, *s.SecretEnc)
 	if err != nil {
 		return nil, errors.New("the object-storage sink's secret key cannot be opened")
 	}

@@ -146,7 +146,7 @@ func (ca *CA) Reload(ctx context.Context, db *store.DB, s *secret.Sealer, now fu
 	if old := ca.state(); old != nil && old.keys == keys.String() {
 		return false, nil
 	}
-	st, err := loadState(rows, s, now)
+	st, err := loadState(ctx, rows, s, now)
 	if err != nil {
 		return false, err
 	}
@@ -155,7 +155,7 @@ func (ca *CA) Reload(ctx context.Context, db *store.DB, s *secret.Sealer, now fu
 	return true, nil
 }
 
-func loadState(rows []*ent.CAKey, s *secret.Sealer, now func() time.Time) (*caState, error) {
+func loadState(ctx context.Context, rows []*ent.CAKey, s *secret.Sealer, now func() time.Time) (*caState, error) {
 	active := map[cakey.Kind]*ent.CAKey{}
 	var older, nextSigner, retiredSigners []*x509.Certificate
 	for _, r := range rows {
@@ -193,7 +193,7 @@ func loadState(rows []*ent.CAKey, s *secret.Sealer, now func() time.Time) (*caSt
 	for kind, dst := range map[cakey.Kind]*pki.KeyPair{
 		cakey.KindIntermediate: &inter, cakey.KindConfigSigning: &st.configSigner, cakey.KindAuditCheckpoint: &st.auditSigner,
 	} {
-		if *dst, err = openKey(s, active[kind]); err != nil {
+		if *dst, err = openKey(ctx, s, active[kind]); err != nil {
 			return nil, err
 		}
 	}
@@ -211,7 +211,7 @@ func loadState(rows []*ent.CAKey, s *secret.Sealer, now func() time.Time) (*caSt
 }
 
 // openKey opens a sealed key and checks it against its certificate.
-func openKey(s *secret.Sealer, r *ent.CAKey) (pki.KeyPair, error) {
+func openKey(ctx context.Context, s *secret.Sealer, r *ent.CAKey) (pki.KeyPair, error) {
 	cert, err := x509.ParseCertificate(r.Certificate)
 	if err != nil {
 		return pki.KeyPair{}, fmt.Errorf("pki: certificate of the %s key: %w", r.Kind, err)
@@ -219,7 +219,7 @@ func openKey(s *secret.Sealer, r *ent.CAKey) (pki.KeyPair, error) {
 	if r.KeyEnc == nil {
 		return pki.KeyPair{}, fmt.Errorf("pki: the %s key is offline", r.Kind)
 	}
-	v, err := s.Open(keyContext(r.ID), *r.KeyEnc)
+	v, err := s.Open(ctx, keyContext(r.ID), *r.KeyEnc)
 	if err != nil {
 		return pki.KeyPair{}, fmt.Errorf("pki: open the %s key: %w", r.Kind, err)
 	}

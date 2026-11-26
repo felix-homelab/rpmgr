@@ -107,6 +107,12 @@ Rotate it by hand only when you have a reason, such as a suspicion that its key 
   [Rotate the KEK](../../10-operations.md#rotate-the-kek)). The command is recorded in the
   instance's audit log as `local-cli`.
 
+  With the KEK in a Vault or OpenBao Transit key (`kek.source: kms`), the command reads the
+  credential files of the boot file and asks Transit to wrap the new key, so it runs as a user that
+  can read those files, and Transit must be reachable. If it is not, the command stops with the
+  reason and changes nothing
+  ([Boot files](../reference/boot-files.md#controller)).
+
 Running controllers load the new intermediate on their own, shortly after
 ([04](../../04-security.md#ca-rotation)). When every agent's certificate is issued by the new
 intermediate, the rotation is complete.
