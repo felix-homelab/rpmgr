@@ -628,10 +628,20 @@ func reapply(ctx context.Context, tx *ent.Tx, td string, e revlog.Entry) (bool, 
 		return true, nil // every session ends anyway; grants come with Phase 3
 	case revlog.RootOffline:
 		held, found, err := castore.ApplyRootOffline(ctx, tx, e.Subject)
-		if held && err == nil {
+		if err != nil || !found {
+			return found, err
+		}
+		// The audit entry of the ceremony may be missing from the restored database, or have been
+		// pruned: write it from the marker, so that `ca status` still knows the KEK to warn about.
+		if _, err := audit.Append(ctx, tx, audit.Entry{ActorType: audit.ActorSystem, ActorID: "local-cli", Action: castore.RootActionOffline,
+			TargetType: "ca", TargetID: e.Subject, Result: audit.Success, Diff: castore.RootOfflineDiff(e.Detail),
+			Reason: "applied again by a restore from the revocation log's marker"}); err != nil {
+			return false, err
+		}
+		if held {
 			err = errDroppedRootKey
 		}
-		return found, err
+		return true, err
 	}
 	return false, fmt.Errorf("unknown kind %q", e.Kind)
 }

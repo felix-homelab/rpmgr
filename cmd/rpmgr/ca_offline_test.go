@@ -142,17 +142,30 @@ func TestCAOfflineRootRoundTrip(t *testing.T) {
 	if hash == nil {
 		t.Fatalf("no key hash in %q", asked)
 	}
+	if out := run("ca", "status"); !strings.Contains(out, "needs the offline root's signature (key SHA-256 "+hash[1]+")") {
+		t.Errorf("status with a request that waits: %q", out)
+	}
 	if e := fail("ca", "rotate-intermediate", "--csr-out", csr); !strings.Contains(e, "exists") {
 		t.Errorf("an existing request file: %q", e)
 	}
 	sign := func(extra ...string) (int, string, string) {
 		return runRpmgr(append([]string{"ca", "sign-intermediate", "--root-file", rootFile, "--csr", csr, "--out", cert}, extra...)...)
 	}
+	// --yes signs without asking, so it must name the key; a request with another key is refused.
+	if code, _, stderr := sign("--passphrase-file", passFile, "--yes"); code != cli.ExitUsage || !strings.Contains(stderr, "--key-sha256") {
+		t.Errorf("--yes without --key-sha256: exit %d, %q", code, stderr)
+	}
+	if code, _, stderr := sign("--passphrase-file", passFile, "--yes", "--key-sha256", strings.Repeat("0", 64)); code != cli.ExitError || !strings.Contains(stderr, "nothing was signed") {
+		t.Errorf("--yes with another key's hash: exit %d, %q", code, stderr)
+	}
+	if _, err := os.Lstat(cert); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a refused request left a certificate: %v", err)
+	}
 	wrong := filepath.Join(dir, "wrong")
 	if err := os.WriteFile(wrong, []byte("Not-The-Passphrase-123\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if code, _, stderr := sign("--passphrase-file", wrong, "--yes"); code != cli.ExitError || !strings.Contains(stderr, "does not open") || strings.Contains(stderr, "Not-The") {
+	if code, _, stderr := sign("--passphrase-file", wrong, "--yes", "--key-sha256", hash[1]); code != cli.ExitError || !strings.Contains(stderr, "does not open") || strings.Contains(stderr, "Not-The") {
 		t.Errorf("a wrong passphrase: exit %d, %q", code, stderr)
 	}
 	origConfirm := confirmPrompt
@@ -175,7 +188,7 @@ func TestCAOfflineRootRoundTrip(t *testing.T) {
 	if code, stdout, stderr := sign(); code != cli.ExitOK || !strings.Contains(stdout, hash[1]) {
 		t.Fatalf("sign: exit %d, %q %q", code, stdout, stderr)
 	}
-	if code, _, stderr := sign("--yes"); code != cli.ExitError || !strings.Contains(stderr, "exists") {
+	if code, _, stderr := sign("--yes", "--key-sha256", hash[1]); code != cli.ExitError || !strings.Contains(stderr, "exists") {
 		t.Errorf("an existing certificate: exit %d, %q", code, stderr)
 	}
 
@@ -192,8 +205,8 @@ func TestCAOfflineRootRoundTrip(t *testing.T) {
 	if e := fail("ca", "import-intermediate", "--in", cert); !strings.Contains(e, "no intermediate waits") {
 		t.Errorf("a second import: %q", e)
 	}
-	if out := run("ca", "status"); !strings.Contains(out, "next") {
-		t.Errorf("status after the import shows no next intermediate: %q", out)
+	if out := run("ca", "status"); !strings.Contains(out, "next") || strings.Contains(out, "needs the offline root's signature") {
+		t.Errorf("status after the import shows no next intermediate, or still asks for a signature: %q", out)
 	}
 }
 

@@ -182,7 +182,10 @@ type IntermediateSummary struct {
 type SignOptions struct {
 	RootFile, CSR, Out string
 	Passphrase         string
-	Now                func() time.Time
+	// KeyHash, when set, is the SHA-256 of the key the request must carry (hexadecimal, as `ca status`
+	// and `rotate-intermediate --csr-out` show it); another request is refused before it is signed.
+	KeyHash string
+	Now     func() time.Time
 	// Confirm shows the summary and reports whether to sign; nil signs without asking.
 	Confirm func(IntermediateSummary) (bool, error)
 }
@@ -209,6 +212,15 @@ func SignIntermediate(o SignOptions) (IntermediateSummary, error) {
 	csr, err := readCeremonyFile(o.CSR)
 	if err != nil {
 		return sum, fmt.Errorf("controller: the request: %w", err)
+	}
+	if o.KeyHash != "" {
+		got, err := requestKeyHash(csr)
+		if err != nil {
+			return sum, fmt.Errorf("%w: %w", pki.ErrBadCSR, err)
+		}
+		if want := strings.ToLower(strings.TrimSpace(o.KeyHash)); got != want {
+			return sum, fmt.Errorf("controller: the request carries the key with the SHA-256 %s, not %s; nothing was signed", got, want)
+		}
 	}
 	cert, err := pki.SignIntermediate(root, csr, o.Now())
 	if err != nil {

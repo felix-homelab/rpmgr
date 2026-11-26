@@ -88,6 +88,26 @@ message GetPkiStatusResponse {
   // remain in free pages and backups, and this KEK opens it, until the KEK is rotated. Empty
   // otherwise.
   string root_key_residue_kek = 5;
+  // Whether the next intermediate needs the offline root's signature, and how urgently.
+  SigningAlert signing_alert = 6;
+  // The SHA-256 of the public key of the next intermediate that waits for a signature or holds one
+  // that is not valid now, hexadecimal; sign-intermediate shows the same hash. Empty without one.
+  string next_intermediate_key_hash = 7;
+  // Whether the root is offline and nothing says which KEK sealed its key (the audit entry of the
+  // ceremony is gone), so that it cannot be told whether the KEK was rotated since.
+  bool root_kek_unknown = 8;
+}
+
+// SigningAlert is the need for the signature of an offline root.
+enum SigningAlert {
+  // Nothing waits for a signature.
+  SIGNING_ALERT_UNSPECIFIED = 0;
+  // The next intermediate waits for a signature.
+  SIGNING_ALERT_NEEDS_SIGNING = 1;
+  // It waits and the active intermediate expires within the lead time of docs/04-security.md.
+  SIGNING_ALERT_CRITICAL = 2;
+  // The signed next intermediate is not valid now and is not activated; a new request is needed.
+  SIGNING_ALERT_NEXT_NOT_VALID = 3;
 }
 
 // RotateIntermediateRequest is empty.

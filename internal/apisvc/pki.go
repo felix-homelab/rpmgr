@@ -77,7 +77,10 @@ func (p *Pki) GetPkiStatus(ctx context.Context, _ *connect.Request[rpmgrv1.GetPk
 		out.Keys = append(out.Keys, k)
 	}
 	if out.RootOffline {
-		if out.RootKeyResidueKek, err = castore.RootKeyResidue(sys, p.DB); err != nil {
+		if out.RootKeyResidueKek, out.RootKekUnknown, err = castore.RootKeyResidue(sys, p.DB); err != nil {
+			return nil, storeError(err)
+		}
+		if err := p.signingAlert(sys, out); err != nil {
 			return nil, storeError(err)
 		}
 	}
@@ -89,6 +92,21 @@ func (p *Pki) GetPkiStatus(ctx context.Context, _ *connect.Request[rpmgrv1.GetPk
 			b.GetNotBefore().AsTime().Compare(a.GetNotBefore().AsTime()))
 	})
 	return connect.NewResponse(out), nil
+}
+
+var signingAlerts = map[castore.SigningAlert]rpmgrv1.SigningAlert{castore.AlertNeedsSigning: rpmgrv1.SigningAlert_SIGNING_ALERT_NEEDS_SIGNING,
+	castore.AlertCritical: rpmgrv1.SigningAlert_SIGNING_ALERT_CRITICAL, castore.AlertNextNotValid: rpmgrv1.SigningAlert_SIGNING_ALERT_NEXT_NOT_VALID}
+
+// signingAlert sets the alert of an offline root: the next intermediate waits for a signature, or
+// holds one that is not valid now (docs/04-security.md, "Offline root CA").
+func (p *Pki) signingAlert(ctx context.Context, out *rpmgrv1.GetPkiStatusResponse) error {
+	a, err := castore.IntermediateSigningAlert(ctx, p.DB, p.now())
+	if err != nil || a == castore.AlertNone {
+		return err
+	}
+	out.SigningAlert = signingAlerts[a]
+	out.NextIntermediateKeyHash, err = castore.NextIntermediateKeyHash(ctx, p.DB)
+	return err
 }
 
 // RotateIntermediate implements PkiService. Of two rotations at once, on this replica or with the

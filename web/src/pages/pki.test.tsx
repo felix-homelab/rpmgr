@@ -5,7 +5,7 @@ import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { Code } from "@connectrpc/connect";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { CAKeyKind, CAKeyState, PkiService, type CAKeySchema } from "@/gen/rpmgr/v1/pki_pb";
+import { CAKeyKind, CAKeyState, PkiService, SigningAlert, type CAKeySchema, type GetPkiStatusResponseSchema } from "@/gen/rpmgr/v1/pki_pb";
 import { InstanceSettingsSchema, PasswordHashProfile, SettingsService, type UpdateInstanceSettingsRequest } from "@/gen/rpmgr/v1/settings_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { apiError, auth, show } from "@/testing/api";
@@ -19,7 +19,7 @@ function key(kind: CAKeyKind, state: CAKeyState, subject: string, rotate?: strin
   return { kind, state, subject, notBefore: at("2026-10-01T00:00:00Z"), notAfter: at("2027-10-01T00:00:00Z"), rotateTime: rotate ? at(rotate) : undefined };
 }
 
-function page({ admin = true, failRotate = false } = {}) {
+function page({ admin = true, failRotate = false, status = {} }: { admin?: boolean; failRotate?: boolean; status?: MessageInitShape<typeof GetPkiStatusResponseSchema> } = {}) {
   const calls = { rotate: 0, status: 0, settings: [] as UpdateInstanceSettingsRequest[] };
   let keys: MessageInitShape<typeof CAKeySchema>[] = [
     key(CAKeyKind.CA_KEY_KIND_ROOT, CAKeyState.CA_KEY_STATE_ACTIVE, "CN=rpmgr root"),
@@ -33,7 +33,7 @@ function page({ admin = true, failRotate = false } = {}) {
   }), (router) => {
     router.service(UserService, { getMe: () => ({ user: { id: "usr_ada", theme: Theme.SYSTEM } }) });
     router.service(PkiService, {
-      getPkiStatus: () => (calls.status++, { trustDomain: "td-7f3a.rpmgr.internal", rootPin: "sha256:Zm9vYmFy", keys }),
+      getPkiStatus: () => (calls.status++, { trustDomain: "td-7f3a.rpmgr.internal", rootPin: "sha256:Zm9vYmFy", keys, ...status }),
       rotateIntermediate: () => {
         if (!steppedUp) {
           throw apiError(Code.Unauthenticated, "STEP_UP_REQUIRED");
@@ -74,6 +74,33 @@ describe("Pki", () => {
     ]);
     expect(rows[0]![4]).toBe("—");
     expect(rows[1]![4]).not.toBe("—");
+  });
+
+  it("shows no notice and offers the rotation while the root is online", async () => {
+    page();
+    const region = await keysRegion();
+    expect(await region.findByRole("button", { name: "Rotate the intermediate now…" })).toBeTruthy();
+    expect(region.queryByRole("alert")).toBeNull();
+  });
+
+  it("says that the root is offline, hides the rotation and names the KEK that may still open its key", async () => {
+    page({ status: { rootOffline: true, rootKeyResidueKek: "00000000000000aa" } });
+    const region = await keysRegion();
+    expect(await region.findByText(/^The root's key is offline\./)).toBeTruthy();
+    expect(region.getByText(/KEK 00000000000000aa opens it/)).toBeTruthy();
+    expect(region.queryByRole("button", { name: "Rotate the intermediate now…" })).toBeNull();
+  });
+
+  it.each([
+    [SigningAlert.NEEDS_SIGNING, /^The next intermediate needs the offline root's signature \(key SHA-256 ab12\)\. Sign/, false],
+    [SigningAlert.CRITICAL, /and the active one expires soon/, true],
+    [SigningAlert.NEXT_NOT_VALID, /^The signed intermediate \(key SHA-256 ab12\) is not valid now and is not used/, true],
+  ])("raises the alert %s on the page, with the key's hash", async (alert, text, urgent) => {
+    page({ status: { rootOffline: true, signingAlert: alert, nextIntermediateKeyHash: "ab12" } });
+    const region = await keysRegion();
+    const notice = await region.findByText(text);
+    // An urgent alert stands out like an error and is announced as one; the first is information.
+    expect(notice.closest(urgent ? "[role=alert]" : "[role=status]")).toBeTruthy();
   });
 
   it("rotates the intermediate after a confirmation and a step-up, and shows the new one", async () => {

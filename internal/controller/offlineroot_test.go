@@ -224,6 +224,10 @@ func TestCA_OfflineRootCeremony(t *testing.T) {
 		if off, _, _ := rootRowOf(t, h); !off {
 			t.Error("the restore brought the root's key back")
 		}
+		// The warning survives the restore: the entry of the ceremony is written again from the marker.
+		if st, err := controller.CAStatus(ctx, h.cfg); err != nil || st.GetRootKeyResidueKek() != k1.Version() || st.GetRootKekUnknown() {
+			t.Errorf("status after the restore: %v %v", st, err)
+		}
 		if got := strings.Join(auditOf(t, h, "instance.restore"), "\n"); !strings.Contains(got, "held the key of the root "+res.PublicKeyHash) {
 			t.Errorf("the restore's audit entry: %s", got)
 		}
@@ -424,5 +428,38 @@ func TestRestore_MarkerInTheArchivesOwnLog(t *testing.T) {
 	}
 	if off, _, _ := rootRowOf(t, h); !off || len(r.RootKeysDropped) != 1 || r.RootKeysDropped[0] != hash {
 		t.Errorf("the root is online after the restore: %+v", r)
+	}
+	if e := auditOf(t, h, castore.RootActionOffline); len(e) != 1 || !strings.Contains(e[0], "kek:0123456789abcdef") {
+		t.Errorf("the entry written from the marker: %q", e)
+	}
+}
+
+// sign-intermediate with --key-sha256 refuses another request before it signs.
+func TestSignIntermediateKeyHash(t *testing.T) {
+	ctx := context.Background()
+	h, _ := initHost(t)
+	dir := t.TempDir()
+	rootFile := filepath.Join(dir, "root.age")
+	if _, err := controller.OfflineRoot(ctx, controller.OfflineRootOptions{ConfigPath: h.cfg, Out: rootFile, Passphrase: suppliedPass, Getenv: noEnv}); err != nil {
+		t.Fatal(err)
+	}
+	csr := filepath.Join(dir, "next.csr")
+	hash, err := controller.RequestIntermediate(ctx, h.cfg, csr, noEnv, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sign := func(want, out string) error {
+		_, err := controller.SignIntermediate(controller.SignOptions{RootFile: rootFile, CSR: csr, Out: out, Passphrase: suppliedPass, KeyHash: want})
+		return err
+	}
+	cert := filepath.Join(dir, "next.crt")
+	if err := sign(strings.Repeat("0", 64), cert); err == nil || !strings.Contains(err.Error(), "nothing was signed") {
+		t.Errorf("another key's hash: %v", err)
+	}
+	if _, err := os.Lstat(cert); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a refused request left a certificate: %v", err)
+	}
+	if err := sign(strings.ToUpper(hash), cert); err != nil {
+		t.Errorf("the right hash, in capitals: %v", err)
 	}
 }

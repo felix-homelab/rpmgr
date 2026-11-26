@@ -142,6 +142,63 @@ func (CAKeyState) EnumDescriptor() ([]byte, []int) {
 	return file_rpmgr_v1_pki_proto_rawDescGZIP(), []int{1}
 }
 
+// SigningAlert is the need for the signature of an offline root.
+type SigningAlert int32
+
+const (
+	// Nothing waits for a signature.
+	SigningAlert_SIGNING_ALERT_UNSPECIFIED SigningAlert = 0
+	// The next intermediate waits for a signature.
+	SigningAlert_SIGNING_ALERT_NEEDS_SIGNING SigningAlert = 1
+	// It waits and the active intermediate expires within the lead time of docs/04-security.md.
+	SigningAlert_SIGNING_ALERT_CRITICAL SigningAlert = 2
+	// The signed next intermediate is not valid now and is not activated; a new request is needed.
+	SigningAlert_SIGNING_ALERT_NEXT_NOT_VALID SigningAlert = 3
+)
+
+// Enum value maps for SigningAlert.
+var (
+	SigningAlert_name = map[int32]string{
+		0: "SIGNING_ALERT_UNSPECIFIED",
+		1: "SIGNING_ALERT_NEEDS_SIGNING",
+		2: "SIGNING_ALERT_CRITICAL",
+		3: "SIGNING_ALERT_NEXT_NOT_VALID",
+	}
+	SigningAlert_value = map[string]int32{
+		"SIGNING_ALERT_UNSPECIFIED":    0,
+		"SIGNING_ALERT_NEEDS_SIGNING":  1,
+		"SIGNING_ALERT_CRITICAL":       2,
+		"SIGNING_ALERT_NEXT_NOT_VALID": 3,
+	}
+)
+
+func (x SigningAlert) Enum() *SigningAlert {
+	p := new(SigningAlert)
+	*p = x
+	return p
+}
+
+func (x SigningAlert) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SigningAlert) Descriptor() protoreflect.EnumDescriptor {
+	return file_rpmgr_v1_pki_proto_enumTypes[2].Descriptor()
+}
+
+func (SigningAlert) Type() protoreflect.EnumType {
+	return &file_rpmgr_v1_pki_proto_enumTypes[2]
+}
+
+func (x SigningAlert) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SigningAlert.Descriptor instead.
+func (SigningAlert) EnumDescriptor() ([]byte, []int) {
+	return file_rpmgr_v1_pki_proto_rawDescGZIP(), []int{2}
+}
+
 // CAKey is one key of the CA, as its certificate shows it.
 type CAKey struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -286,8 +343,16 @@ type GetPkiStatusResponse struct {
 	// remain in free pages and backups, and this KEK opens it, until the KEK is rotated. Empty
 	// otherwise.
 	RootKeyResidueKek string `protobuf:"bytes,5,opt,name=root_key_residue_kek,json=rootKeyResidueKek,proto3" json:"root_key_residue_kek,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Whether the next intermediate needs the offline root's signature, and how urgently.
+	SigningAlert SigningAlert `protobuf:"varint,6,opt,name=signing_alert,json=signingAlert,proto3,enum=rpmgr.v1.SigningAlert" json:"signing_alert,omitempty"`
+	// The SHA-256 of the public key of the next intermediate that waits for a signature or holds one
+	// that is not valid now, hexadecimal; sign-intermediate shows the same hash. Empty without one.
+	NextIntermediateKeyHash string `protobuf:"bytes,7,opt,name=next_intermediate_key_hash,json=nextIntermediateKeyHash,proto3" json:"next_intermediate_key_hash,omitempty"`
+	// Whether the root is offline and nothing says which KEK sealed its key (the audit entry of the
+	// ceremony is gone), so that it cannot be told whether the KEK was rotated since.
+	RootKekUnknown bool `protobuf:"varint,8,opt,name=root_kek_unknown,json=rootKekUnknown,proto3" json:"root_kek_unknown,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *GetPkiStatusResponse) Reset() {
@@ -353,6 +418,27 @@ func (x *GetPkiStatusResponse) GetRootKeyResidueKek() string {
 		return x.RootKeyResidueKek
 	}
 	return ""
+}
+
+func (x *GetPkiStatusResponse) GetSigningAlert() SigningAlert {
+	if x != nil {
+		return x.SigningAlert
+	}
+	return SigningAlert_SIGNING_ALERT_UNSPECIFIED
+}
+
+func (x *GetPkiStatusResponse) GetNextIntermediateKeyHash() string {
+	if x != nil {
+		return x.NextIntermediateKeyHash
+	}
+	return ""
+}
+
+func (x *GetPkiStatusResponse) GetRootKekUnknown() bool {
+	if x != nil {
+		return x.RootKekUnknown
+	}
+	return false
 }
 
 // RotateIntermediateRequest is empty.
@@ -452,13 +538,16 @@ const file_rpmgr_v1_pki_proto_rawDesc = "" +
 	"\tnot_after\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\bnotAfter\x12;\n" +
 	"\vrotate_time\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"rotateTime\"\x15\n" +
-	"\x13GetPkiStatusRequest\"\xcd\x01\n" +
+	"\x13GetPkiStatusRequest\"\xf1\x02\n" +
 	"\x14GetPkiStatusResponse\x12!\n" +
 	"\ftrust_domain\x18\x01 \x01(\tR\vtrustDomain\x12\x19\n" +
 	"\broot_pin\x18\x02 \x01(\tR\arootPin\x12#\n" +
 	"\x04keys\x18\x03 \x03(\v2\x0f.rpmgr.v1.CAKeyR\x04keys\x12!\n" +
 	"\froot_offline\x18\x04 \x01(\bR\vrootOffline\x12/\n" +
-	"\x14root_key_residue_kek\x18\x05 \x01(\tR\x11rootKeyResidueKek\"\x1b\n" +
+	"\x14root_key_residue_kek\x18\x05 \x01(\tR\x11rootKeyResidueKek\x12;\n" +
+	"\rsigning_alert\x18\x06 \x01(\x0e2\x16.rpmgr.v1.SigningAlertR\fsigningAlert\x12;\n" +
+	"\x1anext_intermediate_key_hash\x18\a \x01(\tR\x17nextIntermediateKeyHash\x12(\n" +
+	"\x10root_kek_unknown\x18\b \x01(\bR\x0erootKekUnknown\"\x1b\n" +
 	"\x19RotateIntermediateRequest\"Q\n" +
 	"\x1aRotateIntermediateResponse\x123\n" +
 	"\fintermediate\x18\x01 \x01(\v2\x0f.rpmgr.v1.CAKeyR\fintermediate*\x9e\x01\n" +
@@ -473,7 +562,12 @@ const file_rpmgr_v1_pki_proto_rawDesc = "" +
 	"\x18CA_KEY_STATE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11CA_KEY_STATE_NEXT\x10\x01\x12\x17\n" +
 	"\x13CA_KEY_STATE_ACTIVE\x10\x02\x12\x18\n" +
-	"\x14CA_KEY_STATE_RETIRED\x10\x032\xed\x01\n" +
+	"\x14CA_KEY_STATE_RETIRED\x10\x03*\x8c\x01\n" +
+	"\fSigningAlert\x12\x1d\n" +
+	"\x19SIGNING_ALERT_UNSPECIFIED\x10\x00\x12\x1f\n" +
+	"\x1bSIGNING_ALERT_NEEDS_SIGNING\x10\x01\x12\x1a\n" +
+	"\x16SIGNING_ALERT_CRITICAL\x10\x02\x12 \n" +
+	"\x1cSIGNING_ALERT_NEXT_NOT_VALID\x10\x032\xed\x01\n" +
 	"\n" +
 	"PkiService\x12f\n" +
 	"\fGetPkiStatus\x12\x1d.rpmgr.v1.GetPkiStatusRequest\x1a\x1e.rpmgr.v1.GetPkiStatusResponse\"\x17\x8a\xb5\x18\x10\n" +
@@ -493,35 +587,37 @@ func file_rpmgr_v1_pki_proto_rawDescGZIP() []byte {
 	return file_rpmgr_v1_pki_proto_rawDescData
 }
 
-var file_rpmgr_v1_pki_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_rpmgr_v1_pki_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
 var file_rpmgr_v1_pki_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_rpmgr_v1_pki_proto_goTypes = []any{
 	(CAKeyKind)(0),                     // 0: rpmgr.v1.CAKeyKind
 	(CAKeyState)(0),                    // 1: rpmgr.v1.CAKeyState
-	(*CAKey)(nil),                      // 2: rpmgr.v1.CAKey
-	(*GetPkiStatusRequest)(nil),        // 3: rpmgr.v1.GetPkiStatusRequest
-	(*GetPkiStatusResponse)(nil),       // 4: rpmgr.v1.GetPkiStatusResponse
-	(*RotateIntermediateRequest)(nil),  // 5: rpmgr.v1.RotateIntermediateRequest
-	(*RotateIntermediateResponse)(nil), // 6: rpmgr.v1.RotateIntermediateResponse
-	(*timestamppb.Timestamp)(nil),      // 7: google.protobuf.Timestamp
+	(SigningAlert)(0),                  // 2: rpmgr.v1.SigningAlert
+	(*CAKey)(nil),                      // 3: rpmgr.v1.CAKey
+	(*GetPkiStatusRequest)(nil),        // 4: rpmgr.v1.GetPkiStatusRequest
+	(*GetPkiStatusResponse)(nil),       // 5: rpmgr.v1.GetPkiStatusResponse
+	(*RotateIntermediateRequest)(nil),  // 6: rpmgr.v1.RotateIntermediateRequest
+	(*RotateIntermediateResponse)(nil), // 7: rpmgr.v1.RotateIntermediateResponse
+	(*timestamppb.Timestamp)(nil),      // 8: google.protobuf.Timestamp
 }
 var file_rpmgr_v1_pki_proto_depIdxs = []int32{
-	0, // 0: rpmgr.v1.CAKey.kind:type_name -> rpmgr.v1.CAKeyKind
-	1, // 1: rpmgr.v1.CAKey.state:type_name -> rpmgr.v1.CAKeyState
-	7, // 2: rpmgr.v1.CAKey.not_before:type_name -> google.protobuf.Timestamp
-	7, // 3: rpmgr.v1.CAKey.not_after:type_name -> google.protobuf.Timestamp
-	7, // 4: rpmgr.v1.CAKey.rotate_time:type_name -> google.protobuf.Timestamp
-	2, // 5: rpmgr.v1.GetPkiStatusResponse.keys:type_name -> rpmgr.v1.CAKey
-	2, // 6: rpmgr.v1.RotateIntermediateResponse.intermediate:type_name -> rpmgr.v1.CAKey
-	3, // 7: rpmgr.v1.PkiService.GetPkiStatus:input_type -> rpmgr.v1.GetPkiStatusRequest
-	5, // 8: rpmgr.v1.PkiService.RotateIntermediate:input_type -> rpmgr.v1.RotateIntermediateRequest
-	4, // 9: rpmgr.v1.PkiService.GetPkiStatus:output_type -> rpmgr.v1.GetPkiStatusResponse
-	6, // 10: rpmgr.v1.PkiService.RotateIntermediate:output_type -> rpmgr.v1.RotateIntermediateResponse
-	9, // [9:11] is the sub-list for method output_type
-	7, // [7:9] is the sub-list for method input_type
-	7, // [7:7] is the sub-list for extension type_name
-	7, // [7:7] is the sub-list for extension extendee
-	0, // [0:7] is the sub-list for field type_name
+	0,  // 0: rpmgr.v1.CAKey.kind:type_name -> rpmgr.v1.CAKeyKind
+	1,  // 1: rpmgr.v1.CAKey.state:type_name -> rpmgr.v1.CAKeyState
+	8,  // 2: rpmgr.v1.CAKey.not_before:type_name -> google.protobuf.Timestamp
+	8,  // 3: rpmgr.v1.CAKey.not_after:type_name -> google.protobuf.Timestamp
+	8,  // 4: rpmgr.v1.CAKey.rotate_time:type_name -> google.protobuf.Timestamp
+	3,  // 5: rpmgr.v1.GetPkiStatusResponse.keys:type_name -> rpmgr.v1.CAKey
+	2,  // 6: rpmgr.v1.GetPkiStatusResponse.signing_alert:type_name -> rpmgr.v1.SigningAlert
+	3,  // 7: rpmgr.v1.RotateIntermediateResponse.intermediate:type_name -> rpmgr.v1.CAKey
+	4,  // 8: rpmgr.v1.PkiService.GetPkiStatus:input_type -> rpmgr.v1.GetPkiStatusRequest
+	6,  // 9: rpmgr.v1.PkiService.RotateIntermediate:input_type -> rpmgr.v1.RotateIntermediateRequest
+	5,  // 10: rpmgr.v1.PkiService.GetPkiStatus:output_type -> rpmgr.v1.GetPkiStatusResponse
+	7,  // 11: rpmgr.v1.PkiService.RotateIntermediate:output_type -> rpmgr.v1.RotateIntermediateResponse
+	10, // [10:12] is the sub-list for method output_type
+	8,  // [8:10] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_pki_proto_init() }
@@ -535,7 +631,7 @@ func file_rpmgr_v1_pki_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_pki_proto_rawDesc), len(file_rpmgr_v1_pki_proto_rawDesc)),
-			NumEnums:      2,
+			NumEnums:      3,
 			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,

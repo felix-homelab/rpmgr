@@ -40,6 +40,9 @@ Changes to the design documents are not recorded here: see the git history and t
   signature, and without `--csr-out` it, and Settings → PKI, refuse to rotate while the root is
   offline. `rpmgr ca status` shows whether the root is offline and warns until the KEK is rotated,
   and a restore of an older backup takes the key out again. (#694)
+- Settings → PKI and `rpmgr ca status` alert when the next intermediate waits for the offline root's
+  signature, in time before the active one expires, and when the signed one is not valid now. With
+  the root offline, the page says so and leaves out the rotation button. (#694)
 
 ### Changed
 

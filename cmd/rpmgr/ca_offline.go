@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
 	"time"
 
@@ -30,12 +31,28 @@ var (
 	readPassword = func(fd int) ([]byte, error) { return term.ReadPassword(fd) }
 )
 
-// askSecret writes prompt on the terminal and reads the answer with echo off.
+// askSecret writes prompt on the terminal and reads the answer with echo off. A Ctrl-C while it
+// waits first puts the terminal back as it was, as ReadPassword would not.
 func askSecret(tty *os.File, prompt string) (string, error) {
 	if _, err := fmt.Fprint(tty, prompt); err != nil {
 		return "", err
 	}
 	fd := int(tty.Fd()) //nolint:gosec // G115: a file descriptor fits in an int
+	if old, err := term.GetState(fd); err == nil {
+		sig := make(chan os.Signal, 1)
+		done := make(chan struct{})
+		signal.Notify(sig, os.Interrupt)
+		defer func() { signal.Stop(sig); close(done) }()
+		go func() {
+			select {
+			case <-sig:
+				_ = term.Restore(fd, old)
+				_, _ = fmt.Fprintln(tty)
+				os.Exit(130) // 128 + SIGINT
+			case <-done:
+			}
+		}()
+	}
 	b, err := readPassword(fd)
 	defer clear(b)
 	_, _ = fmt.Fprintln(tty)
@@ -145,7 +162,7 @@ func offlineRootCommand() *cli.Command {
 
 // signIntermediateCommand is `rpmgr ca sign-intermediate`; it needs no boot file.
 func signIntermediateCommand() *cli.Command {
-	var rootFile, csr, out, passFile string
+	var rootFile, csr, out, passFile, keyHash string
 	var yes bool
 	return &cli.Command{
 		Name:    "sign-intermediate",
@@ -155,12 +172,16 @@ func signIntermediateCommand() *cli.Command {
 			fs.StringVar(&csr, "csr", "", "the request that `ca rotate-intermediate --csr-out` wrote")
 			fs.StringVar(&out, "out", "", "the certificate to write, which must not exist")
 			fs.StringVar(&passFile, "passphrase-file", "", "read the passphrase from this file (mode 0600) instead of asking for it")
+			fs.StringVar(&keyHash, "key-sha256", "", "the SHA-256 of the key the request must carry, as `ca status` and `ca rotate-intermediate --csr-out` show it; required with --yes")
 			fs.BoolVar(&yes, "yes", false, "sign without asking for a confirmation, on a host where nobody is")
 		},
 		NoArgEcho: true,
 		Run: func(_ context.Context, env *cli.Env, _ []string) error {
 			if rootFile == "" || csr == "" || out == "" {
 				return cli.Usagef("sign-intermediate needs --root-file, --csr and --out")
+			}
+			if yes && keyHash == "" {
+				return cli.Usagef("--yes signs without asking, so it needs --key-sha256, the hash of the key the request must carry")
 			}
 			var pass string
 			var err error
@@ -172,7 +193,7 @@ func signIntermediateCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			_, err = controller.SignIntermediate(controller.SignOptions{RootFile: rootFile, CSR: csr, Out: out, Passphrase: pass,
+			_, err = controller.SignIntermediate(controller.SignOptions{RootFile: rootFile, CSR: csr, Out: out, Passphrase: pass, KeyHash: keyHash,
 				Confirm: func(s controller.IntermediateSummary) (bool, error) {
 					fmt.Fprintf(env.Stdout, "Request to sign:\n  Subject:     %s (the request's own subject is ignored)\n  Key SHA-256: %s\n"+
 						"  Valid:       %s to %s\n  Constraints: %s\n", s.Subject, s.KeyHash, s.NotBefore.UTC().Format(time.RFC3339),
