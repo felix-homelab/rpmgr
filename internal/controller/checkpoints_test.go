@@ -63,11 +63,11 @@ func TestCheckpointJob(t *testing.T) {
 	if err != nil || len(all) != len(first)+1 {
 		t.Fatalf("after shutdown: %d checkpoints, %v", len(all), err)
 	}
-	signers, inters, root, err := castore.SignerCertificates(e.sys, db, pki.PurposeAuditCheckpoint)
+	signers, inters, roots, err := castore.SignerCertificates(e.sys, db, pki.PurposeAuditCheckpoint)
 	if err != nil {
 		t.Fatal(err)
 	}
-	trust := audit.Trust{Root: root, Intermediates: inters, Signers: signers}
+	trust := audit.Trust{Root: roots[0], Roots: roots, Intermediates: inters, Signers: signers}
 	if head, last, err := audit.VerifyChain(e.sys, db, "", trust); err != nil || last == nil || last.Seq != head.Seq {
 		t.Fatalf("the instance chain: %+v %+v %v", head, last, err)
 	}
@@ -98,11 +98,11 @@ func TestRetentionJob(t *testing.T) {
 	if err := controller.FinalCheckpoints(e.sys, o); err != nil {
 		t.Fatal(err)
 	}
-	signers, inters, root, err := castore.SignerCertificates(e.sys, db, pki.PurposeAuditCheckpoint)
+	signers, inters, roots, err := castore.SignerCertificates(e.sys, db, pki.PurposeAuditCheckpoint)
 	if err != nil {
 		t.Fatal(err)
 	}
-	trust := audit.Trust{Root: root, Intermediates: inters, Signers: signers}
+	trust := audit.Trust{Root: roots[0], Roots: roots, Intermediates: inters, Signers: signers}
 	before, _, err := audit.VerifyChain(e.sys, db, "", trust)
 	if err != nil {
 		t.Fatal(err)
@@ -130,4 +130,60 @@ func TestRetentionJob(t *testing.T) {
 	if n := e.db.Client().AuditEntry.Query().Where(auditentry.SeqLTE(before.Seq), auditentry.OrgIDIsNil()).CountX(e.sys); n != 0 {
 		t.Fatalf("%d entries up to the checkpoint left", n)
 	}
+}
+
+// TestCheckpointsAcrossRootRotation: a checkpoint signed before a root rotation verifies during the
+// overlap and after the old root was dropped, as do the ones signed later: the trust holds every root
+// the CA has had, not the active one alone.
+func TestCheckpointsAcrossRootRotation(t *testing.T) {
+	db := storetest.Migrated(t, store.SQLite)
+	e := startSessions(t, db, "0.1.0", 0)
+	leases := lease.New(db, "ctn_test", nil)
+	at := time.Now()
+	o := controller.CheckpointOptions{DB: db, CA: e.ca, Leases: leases, Now: func() time.Time { return at },
+		Log: &audit.CheckpointLog{Path: filepath.Join(t.TempDir(), "audit-checkpoints.log")}}
+	checkpoint := func() {
+		t.Helper()
+		if _, err := audit.Record(context.Background(), db, audit.Entry{ActorType: audit.ActorSystem, ActorID: "test", Action: "test.run",
+			Result: audit.Success}); err != nil {
+			t.Fatal(err)
+		}
+		if err := controller.FinalCheckpoints(e.sys, o); err != nil {
+			t.Fatal(err)
+		}
+	}
+	verify := func(wantRoots int) {
+		t.Helper()
+		signers, inters, roots, err := castore.SignerCertificates(e.sys, db, pki.PurposeAuditCheckpoint)
+		if err != nil || len(roots) != wantRoots {
+			t.Fatalf("%d roots, %v; want %d", len(roots), err, wantRoots)
+		}
+		trust := audit.Trust{Root: roots[0], Roots: roots, Intermediates: inters, Signers: signers}
+		if head, last, err := audit.VerifyChain(e.sys, db, "", trust); err != nil || last == nil || last.Seq != head.Seq {
+			t.Fatalf("the instance chain with %d roots: %+v %+v %v", wantRoots, head, last, err)
+		}
+		// A trust with the new root alone cannot verify what the old one's intermediate certified.
+		if wantRoots == 2 {
+			alone := audit.Trust{Root: roots[0], Intermediates: inters, Signers: signers}
+			if _, _, err := audit.VerifyChain(e.sys, db, "", alone); err == nil {
+				t.Fatal("the chain verified against the new root alone")
+			}
+		}
+	}
+	checkpoint() // before the rotation, under the old root
+	e.newRootOnline(t, at)
+	at = at.Add(time.Minute)
+	checkpoint() // in the overlap: the signing key is the old one
+	verify(2)
+
+	co := controller.CAOptions{DB: db, CA: e.ca, Sealer: e.sealer, Leases: leases, Now: func() time.Time { return at }}
+	at = at.Add(38 * rotationDay)
+	if err := runOnce(t, leases, controller.CARotation(co)); err != nil {
+		t.Fatal(err)
+	}
+	if len(e.ca.Roots()) != 1 {
+		t.Fatal("the job did not drop the old root")
+	}
+	checkpoint() // after the drop, under the new root; the chain holds all three and R1 is retired
+	verify(2)
 }
