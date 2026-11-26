@@ -117,6 +117,9 @@ func (p *Pki) RotateIntermediate(ctx context.Context, _ *connect.Request[rpmgrv1
 	var row *ent.CAKey
 	// Planned before the transaction: opening and sealing keys may wait for a key service.
 	plan, err := castore.PlanIntermediateRotation(sys, p.DB.ReadClient().CAKey, p.Sealer, p.now())
+	if errors.Is(err, castore.ErrRootOffline) {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
 	if err != nil {
 		return nil, storeError(err)
 	}
