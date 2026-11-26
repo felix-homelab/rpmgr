@@ -366,3 +366,21 @@ func TestRootRotationCommandsOffline(t *testing.T) {
 		}
 	}
 }
+
+// TestRotationStatusOfAnIntermediateRequest: an ordinary offline request for a next intermediate is not a
+// root rotation, and the status does not say it is.
+func TestRotationStatusOfAnIntermediateRequest(t *testing.T) {
+	ctx := context.Background()
+	h, _ := initHost(t)
+	dir := t.TempDir()
+	if _, err := controller.OfflineRoot(ctx, controller.OfflineRootOptions{ConfigPath: h.cfg, Out: filepath.Join(dir, "root.age"), Passphrase: suppliedPass, Getenv: noEnv}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.RequestIntermediate(ctx, h.cfg, filepath.Join(dir, "next.csr"), noEnv, time.Now); err != nil {
+		t.Fatal(err)
+	}
+	rs, err := controller.CARotationStatus(ctx, h.cfg, time.Now)
+	if err != nil || rs.Waiting || rs.NeedsCross || rs.NeedsInter || len(rs.KeyHashes) != 0 {
+		t.Fatalf("status with a next intermediate only: %+v, %v", rs, err)
+	}
+}

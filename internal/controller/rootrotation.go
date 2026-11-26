@@ -318,9 +318,15 @@ func rotationStatus(sys context.Context, db *store.DB, now time.Time) (RotationS
 		return st, err
 	}
 	var old *ent.CAKey
+	// A next intermediate alone is an ordinary rotation of the intermediate that waits for the offline
+	// root, not a root rotation: only a next root row makes one.
+	nextRoot := slices.ContainsFunc(rows, func(r *ent.CAKey) bool { return r.Kind == cakey.KindRoot && r.Status == cakey.StatusNext })
 	for _, r := range rows {
 		switch r.Status {
 		case cakey.StatusNext:
+			if !nextRoot {
+				continue
+			}
 			st.Waiting = true
 			st.KeyHashes = append(st.KeyHashes, pki.PublicKeyHash(r.PublicKey))
 			if len(r.CrossCertificate) == 0 {
