@@ -647,7 +647,8 @@ func TestNextIntermediateNotValidAlert(t *testing.T) {
 			}
 		}
 
-		// Recovery: a new request, signed and imported, replaces the stale one.
+		// Recovery: a new request, signed and imported, replaces the stale one. While it waits, the
+		// alert is the request's, with its urgency, and the hash shown is its key's.
 		late := cert.NotAfter.Add(day)
 		var csr []byte
 		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
@@ -657,8 +658,15 @@ func TestNextIntermediateNotValidAlert(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-		if a := alert(late); a != castore.AlertNextNotValid {
-			t.Fatalf("with the stale one and a request: %q", a)
+		waiting, err := castore.NextIntermediateKeyHash(sys, db)
+		if err != nil || waiting == pki.PublicKeyHash(cert.RawSubjectPublicKeyInfo) || waiting == "" {
+			t.Errorf("the hash shown with a stale signed one and a request: %q %v", waiting, err)
+		}
+		if a := alert(cert.NotBefore.Add(-time.Minute)); a != castore.AlertNeedsSigning {
+			t.Fatalf("a stale one that is not valid yet and a request that waits: %q", a)
+		}
+		if a := alert(late); a != castore.AlertCritical {
+			t.Fatalf("the stale one expired, the active expires: %q, want critical, not masked", a)
 		}
 		fresh, err := pki.SignIntermediate(e.root, csr, late)
 		if err != nil {

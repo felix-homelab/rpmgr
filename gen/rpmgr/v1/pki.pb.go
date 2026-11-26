@@ -348,8 +348,11 @@ type GetPkiStatusResponse struct {
 	// The SHA-256 of the public key of the next intermediate that waits for a signature or holds one
 	// that is not valid now, hexadecimal; sign-intermediate shows the same hash. Empty without one.
 	NextIntermediateKeyHash string `protobuf:"bytes,7,opt,name=next_intermediate_key_hash,json=nextIntermediateKeyHash,proto3" json:"next_intermediate_key_hash,omitempty"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	// Whether the root is offline and nothing says which KEK sealed its key (the audit entry of the
+	// ceremony is gone), so that it cannot be told whether the KEK was rotated since.
+	RootKekUnknown bool `protobuf:"varint,8,opt,name=root_kek_unknown,json=rootKekUnknown,proto3" json:"root_kek_unknown,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *GetPkiStatusResponse) Reset() {
@@ -429,6 +432,13 @@ func (x *GetPkiStatusResponse) GetNextIntermediateKeyHash() string {
 		return x.NextIntermediateKeyHash
 	}
 	return ""
+}
+
+func (x *GetPkiStatusResponse) GetRootKekUnknown() bool {
+	if x != nil {
+		return x.RootKekUnknown
+	}
+	return false
 }
 
 // RotateIntermediateRequest is empty.
@@ -528,7 +538,7 @@ const file_rpmgr_v1_pki_proto_rawDesc = "" +
 	"\tnot_after\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\bnotAfter\x12;\n" +
 	"\vrotate_time\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"rotateTime\"\x15\n" +
-	"\x13GetPkiStatusRequest\"\xc7\x02\n" +
+	"\x13GetPkiStatusRequest\"\xf1\x02\n" +
 	"\x14GetPkiStatusResponse\x12!\n" +
 	"\ftrust_domain\x18\x01 \x01(\tR\vtrustDomain\x12\x19\n" +
 	"\broot_pin\x18\x02 \x01(\tR\arootPin\x12#\n" +
@@ -536,7 +546,8 @@ const file_rpmgr_v1_pki_proto_rawDesc = "" +
 	"\froot_offline\x18\x04 \x01(\bR\vrootOffline\x12/\n" +
 	"\x14root_key_residue_kek\x18\x05 \x01(\tR\x11rootKeyResidueKek\x12;\n" +
 	"\rsigning_alert\x18\x06 \x01(\x0e2\x16.rpmgr.v1.SigningAlertR\fsigningAlert\x12;\n" +
-	"\x1anext_intermediate_key_hash\x18\a \x01(\tR\x17nextIntermediateKeyHash\"\x1b\n" +
+	"\x1anext_intermediate_key_hash\x18\a \x01(\tR\x17nextIntermediateKeyHash\x12(\n" +
+	"\x10root_kek_unknown\x18\b \x01(\bR\x0erootKekUnknown\"\x1b\n" +
 	"\x19RotateIntermediateRequest\"Q\n" +
 	"\x1aRotateIntermediateResponse\x123\n" +
 	"\fintermediate\x18\x01 \x01(\v2\x0f.rpmgr.v1.CAKeyR\fintermediate*\x9e\x01\n" +

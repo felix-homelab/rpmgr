@@ -174,11 +174,11 @@ It cannot sign an intermediate itself, and it has no command that brings the roo
    ```
 
    It writes the file, reads it again from disk, checks that its key is the database's, and only
-   then removes the key from the database. It never overwrites a file. It generates a passphrase
-   and shows it once, and stores it nowhere. Pass `--passphrase-file <file>` or `--prompt` to use your own; it
-   must be long and unpredictable enough, and is never an argument. If the command fails after the
-   key may already be marked as offline, it keeps the file and shows the generated passphrase with
-   the error: write it down, and read `rpmgr ca status` before you go on.
+   then removes the key from the database. It never overwrites a file. It generates a passphrase and
+   shows it once, and stores it nowhere. Pass `--passphrase-file <file>` or `--prompt` to use your
+   own; it must be long and unpredictable enough, and is never an argument. If the command fails
+   after the key may already be marked as offline, it keeps the file and shows the generated
+   passphrase with the error: write it down, and read `rpmgr ca status` before you go on.
 2. Write the passphrase down and keep it apart from the media. Move the file to offline media and
    delete every other copy, on the controller host too. Keep a second copy of the media.
 3. **Rotate the KEK** and destroy the old one. Removing the key from the database does not erase
@@ -205,17 +205,18 @@ sudo rpmgr ca import-intermediate --in next.crt         # controller host
 
 **Settings**, **PKI** and `rpmgr ca status` show a notice with the key's hash while the request
 waits for its signature. It turns critical shortly before the active intermediate expires
-([04](../../04-security.md#offline-root-ca)); an expired intermediate cannot issue certificates. If the signed intermediate is not valid when the
-schedule would use it, for instance because the offline host's clock was off, a critical notice
-says so: make a new request, sign it and import it, which retires the stale one.
+([04](../../04-security.md#offline-root-ca)); an expired intermediate cannot issue certificates. If
+the signed intermediate is not valid when the schedule would use it, for instance because the
+offline host's clock was off, a critical notice says so: make a new request, sign it and import it,
+which retires the stale one.
 
 The first command prints the SHA-256 of the new key. `sign-intermediate` needs no database, KEK or
 controller. It asks for the passphrase and shows the subject, the key's hash, the validity and the
 constraints: compare the hash with the first command's, and confirm (`--yes` replaces the question
-on a host where nobody is). `import-intermediate` needs no KEK. It refuses a certificate that is
-for another key, does not chain to the root, is not limited to the trust domain or has the wrong
-path length, and changes nothing then. The commands are recorded in the instance's audit log as
-`local-cli`.
+on a host where nobody is, and then needs `--key-sha256` with that hash). `import-intermediate`
+needs no KEK. It refuses a certificate that is for another key, does not chain to the root, is not
+limited to the trust domain or has the wrong path length, and changes nothing then. The commands are
+recorded in the instance's audit log as `local-cli`.
 
 ## The root
 

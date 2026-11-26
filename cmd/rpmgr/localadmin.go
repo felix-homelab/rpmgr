@@ -106,6 +106,10 @@ func caCommand() *cli.Command {
 				fmt.Fprintf(env.Stdout, "\nWARNING: the root's sealed key may still be recoverable from free pages, the write-ahead log and older backups,\n"+
 					"and KEK %s opens it. Rotate the KEK and destroy that one (docs/10-operations.md, \"Take the root offline\").\n", kek)
 			}
+			if st.GetRootKekUnknown() {
+				fmt.Fprint(env.Stdout, "\nWARNING: cannot tell whether the KEK was rotated since the root went offline: the audit entry of the ceremony is gone.\n"+
+					"If it was not, the root's sealed key may still be recoverable from free pages and older backups.\n")
+			}
 			warnings, err := controller.CAStatusWarnings(ctx, path)
 			if err != nil {
 				return err

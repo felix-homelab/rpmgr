@@ -93,6 +93,9 @@ message GetPkiStatusResponse {
   // The SHA-256 of the public key of the next intermediate that waits for a signature or holds one
   // that is not valid now, hexadecimal; sign-intermediate shows the same hash. Empty without one.
   string next_intermediate_key_hash = 7;
+  // Whether the root is offline and nothing says which KEK sealed its key (the audit entry of the
+  // ceremony is gone), so that it cannot be told whether the KEK was rotated since.
+  bool root_kek_unknown = 8;
 }
 
 // SigningAlert is the need for the signature of an offline root.

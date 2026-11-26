@@ -129,30 +129,32 @@ func RootOfflineDiff(kek string) string { return "kek:" + kek }
 // RootKeyResidue returns the KEK that sealed the root's key when it went offline while that KEK
 // still wraps a stored secret, and so, for the ceremony's KEK rotation, has not been replaced:
 // the sealed key may remain in free pages and backups, and this KEK opens it. It returns "" for an
-// online root, for a root whose KEK was replaced and when the audit log no longer has the entry.
-func RootKeyResidue(ctx context.Context, db *store.DB) (string, error) {
+// online root and for a root whose KEK was replaced. unknown is true for an offline root with no
+// `ca.root_offline` audit entry (pruned by retention): it cannot tell whether the KEK was rotated
+// since. A restore writes the entry again from the revocation log's marker.
+func RootKeyResidue(ctx context.Context, db *store.DB) (kek string, unknown bool, err error) {
 	c := db.ReadClient()
 	if online, err := c.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusActive),
 		cakey.KeyEncNotNil()).Exist(ctx); err != nil || online {
-		return "", err
+		return "", false, err
 	}
 	e, err := c.AuditEntry.Query().Where(auditentry.Action(RootActionOffline), auditentry.ResultEQ(auditentry.ResultSuccess)).
 		Order(auditentry.BySeq(sql.OrderDesc())).First(ctx)
 	if ent.IsNotFound(err) {
-		return "", nil
+		return "", true, nil
 	}
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	kek, ok := strings.CutPrefix(e.Diff, "kek:")
 	if !ok {
-		return "", nil
+		return "", true, nil
 	}
 	held, err := c.SecretMeta.Query().Where(secretmeta.KekVersion(kek)).Exist(ctx)
 	if err != nil || !held {
-		return "", err
+		return "", false, err
 	}
-	return kek, nil
+	return kek, false, nil
 }
 
 // RequestIntermediateSigning makes the next intermediate when the root is offline: a new key,
@@ -270,10 +272,16 @@ func ImportIntermediate(ctx context.Context, tx *ent.Tx, der []byte, now time.Ti
 		return err
 	}
 	for _, r := range stale {
-		if len(r.Certificate) > 0 && notValidAt(r, now) {
-			if err := tx.CAKey.UpdateOne(r).SetStatus(cakey.StatusRetired).Exec(ctx); err != nil {
-				return err
-			}
+		if len(r.Certificate) == 0 || !notValidAt(r, now) {
+			continue
+		}
+		// Like replaceIntermediate: only while it is still next.
+		n, err := tx.CAKey.Update().Where(cakey.ID(r.ID), cakey.StatusEQ(cakey.StatusNext)).SetStatus(cakey.StatusRetired).Save(ctx)
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return ErrRotated
 		}
 	}
 	return tx.CAKey.UpdateOne(p).SetCertificate(cert.Raw).SetNotBefore(cert.NotBefore).SetNotAfter(cert.NotAfter).Exec(ctx)
@@ -313,15 +321,17 @@ func IntermediateSigningAlert(ctx context.Context, db *store.DB, now time.Time) 
 			invalid = true
 		}
 	}
+	// A request that waits comes first, also beside a stale signed one: it is what the operator
+	// signs next, and the urgency is its.
 	switch {
+	case waits && !expires.IsZero() && !now.Before(expires.Add(-IntermediateSigningCritical)):
+		return AlertCritical, nil
+	case waits:
+		return AlertNeedsSigning, nil
 	case invalid:
 		return AlertNextNotValid, nil
-	case !waits:
-		return AlertNone, nil
-	case !expires.IsZero() && !now.Before(expires.Add(-IntermediateSigningCritical)):
-		return AlertCritical, nil
 	}
-	return AlertNeedsSigning, nil
+	return AlertNone, nil
 }
 
 // notValidAt reports whether the validity of the key's certificate does not include now.
@@ -329,18 +339,21 @@ func notValidAt(r *ent.CAKey, now time.Time) bool {
 	return now.Before(r.NotBefore) || !now.Before(r.NotAfter)
 }
 
-// NextIntermediateKeyHash is the SHA-256 of the public key of the next intermediate, the one that
-// waits for a signature or holds one that is not valid now; empty when there is none.
+// NextIntermediateKeyHash is the SHA-256 of the public key of the request that waits for a
+// signature, or else of the signed next intermediate that is not valid now; empty when there is
+// none.
 func NextIntermediateKeyHash(ctx context.Context, db *store.DB) (string, error) {
-	r, err := db.ReadClient().CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusNext)).
-		Order(cakey.ByNotAfter(sql.OrderDesc())).First(ctx)
-	if ent.IsNotFound(err) {
-		return "", nil
-	}
-	if err != nil {
+	rows, err := db.ReadClient().CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusNext)).All(ctx)
+	if err != nil || len(rows) == 0 {
 		return "", err
 	}
-	return pki.PublicKeyHash(r.PublicKey), nil
+	pick := rows[0]
+	for _, r := range rows {
+		if len(r.Certificate) == 0 {
+			pick = r
+		}
+	}
+	return pki.PublicKeyHash(pick.PublicKey), nil
 }
 
 type sealedKey struct {

@@ -46,6 +46,9 @@ func TestPkiStatusWithPendingIntermediate(t *testing.T) {
 	if !r.Msg.RootOffline {
 		t.Error("the status does not say that the root is offline")
 	}
+	if !r.Msg.RootKekUnknown {
+		t.Error("an offline root with no audit entry of the ceremony must say that the KEK is unknown")
+	}
 	if r.Msg.SigningAlert != rpmgrv1.SigningAlert_SIGNING_ALERT_NEEDS_SIGNING || len(r.Msg.NextIntermediateKeyHash) != 64 {
 		t.Errorf("alert %v, key hash %q: want needs-signing and the hash of the waiting key", r.Msg.SigningAlert, r.Msg.NextIntermediateKeyHash)
 	}

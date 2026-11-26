@@ -77,7 +77,7 @@ func (p *Pki) GetPkiStatus(ctx context.Context, _ *connect.Request[rpmgrv1.GetPk
 		out.Keys = append(out.Keys, k)
 	}
 	if out.RootOffline {
-		if out.RootKeyResidueKek, err = castore.RootKeyResidue(sys, p.DB); err != nil {
+		if out.RootKeyResidueKek, out.RootKekUnknown, err = castore.RootKeyResidue(sys, p.DB); err != nil {
 			return nil, storeError(err)
 		}
 		if err := p.signingAlert(sys, out); err != nil {

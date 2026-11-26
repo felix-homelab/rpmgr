@@ -668,6 +668,7 @@ rpmgr ca sign-intermediate [flags]
 | Flag | Default | Description |
 |---|---|---|
 | `--csr ca rotate-intermediate --csr-out` |  | the request that ca rotate-intermediate --csr-out wrote |
+| `--key-sha256 ca status` |  | the SHA-256 of the key the request must carry, as ca status and \`ca rotate-intermediate --csr-out\` show it; required with --yes |
 | `--out string` |  | the certificate to write, which must not exist |
 | `--passphrase-file string` |  | read the passphrase from this file (mode 0600) instead of asking for it |
 | `--root-file ca offline-root` |  | the root file that ca offline-root wrote |

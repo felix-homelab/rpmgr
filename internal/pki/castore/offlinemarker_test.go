@@ -23,16 +23,18 @@ func TestRootOfflineMarker(t *testing.T) {
 		sys := storetest.SystemCtx(t)
 		s := sealer(t, kek)
 		before := rootRow(t, db)
+		var unknown bool
 		residue := func() string {
 			t.Helper()
-			k, err := castore.RootKeyResidue(sys, db)
+			k, u, err := castore.RootKeyResidue(sys, db)
 			if err != nil {
 				t.Fatal(err)
 			}
+			unknown = u
 			return k
 		}
-		if residue() != "" {
-			t.Error("an online root has no residue")
+		if residue() != "" || unknown {
+			t.Error("an online root has no residue and nothing unknown")
 		}
 		var exp castore.RootExport
 		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
@@ -45,8 +47,8 @@ func TestRootOfflineMarker(t *testing.T) {
 		if exp.KEK != kek.Version() || exp.PublicKeyHash != pki.PublicKeyHash(before.PublicKey) {
 			t.Errorf("export reports KEK %s and hash %s", exp.KEK, exp.PublicKeyHash)
 		}
-		if residue() != "" {
-			t.Error("without an audit entry the residue is unknown, and nothing is claimed")
+		if residue() != "" || !unknown {
+			t.Errorf("without an audit entry the residue is unknown, and no KEK is named: %v", unknown)
 		}
 		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
 			_, err := audit.Append(sys, tx, audit.Entry{ActorType: audit.ActorSystem, ActorID: "local-cli", Action: castore.RootActionOffline,
@@ -64,7 +66,7 @@ func TestRootOfflineMarker(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-		if residue() != "" {
+		if residue() != "" || unknown {
 			t.Error("no secret is wrapped by the KEK any more, so the residue is gone")
 		}
 

@@ -1436,7 +1436,8 @@ Each runbook: **symptoms → steps → done when**.
      Settings → PKI show it too.
   2. Carry the request to the offline host and run `rpmgr ca sign-intermediate --root-file <file>
      --csr <request> --out <certificate>`. It shows the key's hash: it must equal the one in step 1.
-     Confirm, and enter the passphrase.
+     Confirm, and enter the passphrase. On a host where nobody confirms, `--yes` needs
+     `--key-sha256 <hash>` with the hash from step 1; another request is refused.
   3. Carry the certificate back and run `rpmgr ca import-intermediate --in <certificate>`. It
      refuses a certificate that does not chain to the root, is not name-constrained to the trust
      domain or has the wrong path length, and changes nothing then.
@@ -1468,15 +1469,15 @@ Each runbook: **symptoms → steps → done when**.
 - **Steps** ([04](04-security.md#root-rotation)): `rpmgr ca new-root` (with an offline root,
   `--csr-out`, then sign the cross-certificate offline with `rpmgr ca sign-intermediate --kind
   cross-root` (the flag comes with `ca new-root`, slice 8.14), the new intermediate's key with the
-  same command, and import both with `rpmgr ca import-intermediate`). Issuing moves to the new root at once and every chain carries both
-  intermediates, so agents that know only the old root keep verifying. Watch Settings → PKI and
-  `rpmgr ca status` until no agent is a straggler; leave the old root in the bundle for the overlap
-  (the longest leaf lifetime plus the Reauth grace period). `rpmgr ca drop-root` before then is
-  refused with the date it is allowed. If the alert "root rotation stalled" fires, an enabled
-  agent cannot or did not take the new root, most often because it has no `trust.roots`: update,
-  re-enroll or decommission it, or `rpmgr ca drop-root --strand-stragglers` to drop the old root
-  and leave it to re-enroll. After the drop, agents that never saw the new root have to
-  re-enroll.
+  same command, and import both with `rpmgr ca import-intermediate`). Issuing moves to the new root
+  at once and every chain carries both intermediates, so agents that know only the old root keep
+  verifying. Watch Settings → PKI and `rpmgr ca status` until no agent is a straggler; leave the old
+  root in the bundle for the overlap (the longest leaf lifetime plus the Reauth grace period).
+  `rpmgr ca drop-root` before then is refused with the date it is allowed. If the alert "root
+  rotation stalled" fires, an enabled agent cannot or did not take the new root, most often because
+  it has no `trust.roots`: update, re-enroll or decommission it, or `rpmgr ca drop-root
+  --strand-stragglers` to drop the old root and leave it to re-enroll. After the drop, agents that
+  never saw the new root have to re-enroll.
 - **Done when**: the bundle is the new root alone and every agent reports its digest.
 
 ### Root compromise
