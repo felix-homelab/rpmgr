@@ -315,3 +315,48 @@ func TestCAOfflineRootRotationPath(t *testing.T) {
 		t.Errorf("status after the imports: %q", st)
 	}
 }
+
+// TestCANewRootAbort: a rotation that waits for the old root is given up with --abort, which the status
+// points to; it excludes --csr-out and is refused when nothing waits.
+func TestCANewRootAbort(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "controller.yaml")
+	boot := "version: 1\npublic_url: https://panel.example.com\n" +
+		"database: {dsn: " + filepath.Join(dir, "controller.db") + "}\n" +
+		"kek: {source: file, path: " + filepath.Join(dir, "kek") + "}\n"
+	if err := os.WriteFile(cfg, []byte(boot), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	passFile := filepath.Join(dir, "pass")
+	if err := os.WriteFile(passFile, []byte("Tr4ffic-Light-Mango-91x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run := func(args ...string) (int, string, string) { return runRpmgr(append(args, "--config", cfg)...) }
+	if code, _, stderr := run("controller", "init"); code != cli.ExitOK {
+		t.Fatal(stderr)
+	}
+	if code, _, stderr := run("ca", "offline-root", "--out", filepath.Join(dir, "root.age"), "--passphrase-file", passFile); code != cli.ExitOK {
+		t.Fatal(stderr)
+	}
+	if code, _, stderr := run("ca", "new-root", "--abort"); code != cli.ExitError || !strings.Contains(stderr, "no new root waits") {
+		t.Errorf("--abort with no rotation: exit %d, %q", code, stderr)
+	}
+	if code, _, stderr := run("ca", "new-root", "--csr-out", filepath.Join(dir, "r2.csr")); code != cli.ExitOK {
+		t.Fatal(stderr)
+	}
+	if code, stdout, _ := run("ca", "status"); code != cli.ExitOK || !strings.Contains(stdout, "new-root --abort") {
+		t.Errorf("status of a rotation that waits: %q", stdout)
+	}
+	if code, _, stderr := run("ca", "new-root", "--abort", "--csr-out", filepath.Join(dir, "x.csr")); code != cli.ExitUsage {
+		t.Errorf("--abort with --csr-out: exit %d, %q", code, stderr)
+	}
+	if code, stdout, stderr := run("ca", "new-root", "--abort"); code != cli.ExitOK || !strings.Contains(stdout, "removed") {
+		t.Fatalf("--abort: exit %d, %q %q", code, stdout, stderr)
+	}
+	if code, stdout, _ := run("ca", "status"); code != cli.ExitOK || strings.Contains(stdout, "Root rotation") {
+		t.Errorf("status after the abort: %q", stdout)
+	}
+	if code, _, stderr := run("ca", "new-root", "--csr-out", filepath.Join(dir, "r2b.csr")); code != cli.ExitOK {
+		t.Errorf("a new rotation after the abort: %q", stderr)
+	}
+}

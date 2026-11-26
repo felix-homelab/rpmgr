@@ -31,6 +31,11 @@ var (
 	ErrRotationInProgress = errors.New("pki: a root rotation is in progress; finish it first (rpmgr ca status shows where it stands)")
 	// ErrNoRotation is returned by the drop of a root when no root is in the overlap of a rotation.
 	ErrNoRotation = errors.New("pki: no root is in the overlap of a rotation")
+	// ErrNothingToAbort is returned by the abort of a root rotation that has no new root waiting.
+	ErrNothingToAbort = errors.New("pki: no new root waits for the old root's signatures")
+	// ErrSwitched is returned by the abort of a root rotation that moved issuing already: it is finished
+	// by dropping the old root.
+	ErrSwitched = errors.New("pki: issuing already moved to the new root; drop the old root to finish the rotation")
 )
 
 // DropEarlyError is returned by the drop of the old root before the overlap has passed.
@@ -591,4 +596,31 @@ func StragglersSince(r1 *ent.CAKey, now time.Time, o DropOptions) time.Time {
 		}
 	}
 	return since
+}
+
+// PlanAbortNewRoot is `rpmgr ca new-root --abort`: it removes the new root and the new intermediate that
+// wait for the old root's signatures, so that a rotation that stalled can be given up and started
+// again. It refuses once issuing moved (ErrSwitched): that rotation ends with the drop of the old root.
+// It opens no key. Apply repeats the checks in its transaction and fails with ErrRotated if the keys
+// changed meanwhile. It needs the system scope.
+func PlanAbortNewRoot(ctx context.Context, c *ent.CAKeyClient, now time.Time) (*Plan, error) {
+	rows, err := readActive(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	r := sortRows(rows)
+	switch {
+	case r.overlap:
+		return nil, ErrSwitched
+	case r.next[cakey.KindRoot] == nil:
+		return nil, ErrNothingToAbort
+	case r.active[cakey.KindRoot] == nil:
+		return nil, errors.New("pki: the database holds no active root")
+	}
+	p := &Plan{seen: keysSeen(rows), now: now, lock: r.active[cakey.KindRoot].ID}
+	p.steps = []planStep{{done: "the new root that waited for the old root's signatures removed", remove: r.next[cakey.KindRoot].ID}}
+	if ni := r.next[cakey.KindIntermediate]; ni != nil {
+		p.steps = append(p.steps, planStep{done: "the new intermediate that waited for the old root's signatures removed", remove: ni.ID})
+	}
+	return p, nil
 }

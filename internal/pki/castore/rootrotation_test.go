@@ -715,3 +715,62 @@ func TestNewRootRefusesASignedNextIntermediate(t *testing.T) {
 		}
 	})
 }
+
+// TestAbortNewRoot: a rotation that waits for the old root's signatures is given up by removing the new root
+// and intermediate, and can start again; nothing waits, or issuing moved already, and it is refused.
+func TestAbortNewRoot(t *testing.T) {
+	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *castore.CA) {
+		sys := storetest.SystemCtx(t)
+		s := sealer(t, kek)
+		now := t0.Add(day)
+		abort := func() ([]string, error) {
+			plan, err := castore.PlanAbortNewRoot(sys, db.ReadClient().CAKey, now)
+			if err != nil {
+				return nil, err
+			}
+			var done []string
+			err = store.WriteTx(sys, db, func(tx *ent.Tx) error {
+				var err error
+				done, err = plan.Apply(sys, tx)
+				return err
+			})
+			return done, err
+		}
+		if _, err := abort(); !errors.Is(err, castore.ErrNothingToAbort) {
+			t.Fatalf("abort with no rotation = %v, want ErrNothingToAbort", err)
+		}
+		exportOffline(t, db, s)
+		if req, err := newRoot(t, db, s, now); err != nil || req == nil {
+			t.Fatalf("new-root with an offline root: %v, %v", req, err)
+		}
+		if len(rowsOf(t, db, cakey.KindRoot)) != 2 || len(rowsOf(t, db, cakey.KindIntermediate)) != 2 {
+			t.Fatal("the rotation made no new keys")
+		}
+		done, err := abort()
+		if err != nil || len(done) != 2 {
+			t.Fatalf("abort = %v, %v", done, err)
+		}
+		if len(rowsOf(t, db, cakey.KindRoot)) != 1 || len(rowsOf(t, db, cakey.KindIntermediate)) != 1 {
+			t.Fatal("the new keys are still there")
+		}
+		// It can start again, with new keys.
+		if req, err := newRoot(t, db, s, now); err != nil || req == nil {
+			t.Fatalf("new-root after an abort: %v, %v", req, err)
+		}
+	})
+}
+
+// TestAbortNewRootAfterTheSwitch: once issuing moved there is nothing to give up; the drop ends the rotation.
+func TestAbortNewRootAfterTheSwitch(t *testing.T) {
+	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *castore.CA) {
+		sys := storetest.SystemCtx(t)
+		s := sealer(t, kek)
+		now := t0.Add(day)
+		if _, err := newRoot(t, db, s, now); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := castore.PlanAbortNewRoot(sys, db.ReadClient().CAKey, now); !errors.Is(err, castore.ErrSwitched) {
+			t.Fatalf("abort in the overlap = %v, want ErrSwitched", err)
+		}
+	})
+}

@@ -76,6 +76,7 @@ type planStep struct {
 	done            string
 	retire, promote string // IDs of keys: retire an active one, activate a next one
 	retireNext      string // ID of a next key to retire
+	remove          string // ID of a next key to delete (the abort of a root rotation)
 	overlap         string // ID of the active root that enters the overlap of a root rotation
 	create          *newKey
 }
@@ -329,6 +330,15 @@ func (p *Plan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
 		}
 		if st.retireNext != "" {
 			n, err := tx.CAKey.Update().Where(cakey.ID(st.retireNext), cakey.StatusEQ(cakey.StatusNext)).SetStatus(cakey.StatusRetired).Save(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if n != 1 {
+				return nil, ErrRotated
+			}
+		}
+		if st.remove != "" {
+			n, err := tx.CAKey.Delete().Where(cakey.ID(st.remove), cakey.StatusEQ(cakey.StatusNext)).Exec(ctx)
 			if err != nil {
 				return nil, err
 			}

@@ -715,6 +715,7 @@ rpmgr ca new-root [flags]
 
 | Flag | Default | Description |
 |---|---|---|
+| `--abort` |  | give up a rotation that waits for the offline root's signatures and has not moved issuing: remove the new root and intermediate |
 | `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
 | `--csr-out string` |  | with an offline old root: write the request for the new root to this new file, and the one for the new intermediate to the file with the suffix .intermediate (never overwritten) |
 

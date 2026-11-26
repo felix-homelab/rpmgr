@@ -256,7 +256,10 @@ sudo rpmgr ca import-intermediate --in x.crt                    # controller hos
 `new-root` prints the key hashes to compare with what `sign-intermediate` shows. Nothing changes
 until both certificates are in; the controller then moves issuing to the new root within the hour,
 and `rpmgr ca status` says what still waits. The old root's key never goes into the database.
-While a rotation runs, `rpmgr ca rotate-intermediate` is refused.
+While a rotation runs, `rpmgr ca rotate-intermediate` is refused, so do not let one that waits
+stall: `rpmgr ca status` and the controller's log warn when the active intermediate expires
+within 30 days. `rpmgr ca new-root --abort` gives up a rotation that has not moved issuing: it
+removes the new root and its intermediate, and the old root issues as before.
 
 **The new root is online.** After a rotation of an offline root the new root's key is in the
 database, sealed under the KEK, and `rpmgr ca status` warns "issuing root online". Once issuing has

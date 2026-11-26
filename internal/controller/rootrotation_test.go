@@ -565,3 +565,27 @@ func TestDropRootAuditsWhatItOverrode(t *testing.T) {
 		}
 	})
 }
+
+// TestRotationStatusWarnsOfAnExpiringIntermediate: a root rotation that stalls blocks the rotation of the
+// intermediate, so the status says when the active intermediate runs out while one waits, and not otherwise.
+func TestRotationStatusWarnsOfAnExpiringIntermediate(t *testing.T) {
+	ctx := context.Background()
+	h, _ := initHost(t)
+	dir := t.TempDir()
+	if _, err := controller.OfflineRoot(ctx, controller.OfflineRootOptions{ConfigPath: h.cfg, Out: filepath.Join(dir, "root.age"), Passphrase: suppliedPass, Getenv: noEnv}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	if _, err := controller.NewRoot(ctx, h.cfg, filepath.Join(dir, "r2.csr"), noEnv, func() time.Time { return now }); err != nil {
+		t.Fatal(err)
+	}
+	rs, err := controller.CARotationStatus(ctx, h.cfg, func() time.Time { return now })
+	if err != nil || !rs.Waiting || rs.IntermediateExpiring {
+		t.Fatalf("status of a fresh rotation: %+v, %v", rs, err)
+	}
+	// The intermediate lasts a year: 340 days on it expires within 30 days.
+	rs, err = controller.CARotationStatus(ctx, h.cfg, func() time.Time { return now.Add(340 * rotationDay) })
+	if err != nil || !rs.Waiting || !rs.IntermediateExpiring || rs.IntermediateExpires.IsZero() {
+		t.Fatalf("status of a rotation that stalled: %+v, %v", rs, err)
+	}
+}

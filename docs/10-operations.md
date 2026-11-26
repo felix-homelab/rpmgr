@@ -1481,7 +1481,10 @@ Each runbook: **symptoms → steps → done when**.
      <file>.intermediate`, each with the key hash `new-root` printed, bring both certificates
      back and run `rpmgr ca import-intermediate --in <certificate>` for each. The rotation job moves
      issuing within the hour; `rpmgr ca status` says what still waits. The old root's key is never
-     in the database for this.
+     in the database for this. The intermediate cannot be rotated while a rotation waits, so one
+     that stalls must not run into the expiry of the active intermediate: `ca status` and the job
+     warn once it expires within 30 days, and `rpmgr ca new-root --abort` gives up a rotation that
+     has not moved issuing, by removing the new root and its intermediate.
   3. Every chain from then carries both intermediates, so agents that know only the old root keep
      verifying, and the trust bundle holds both roots, so connected agents learn the new one. The
      gateways and the controller trust the new root at once, **with no restart**. Do not rotate

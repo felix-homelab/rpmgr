@@ -144,6 +144,12 @@ func (o *CAOptions) warnSigning(ctx context.Context) {
 	case a == castore.AlertNeedsSigning:
 		o.Logger.Warn("the intermediate needs the offline root's signature")
 	}
+	// The intermediate is not rotated while a root rotation runs: one that stalls must not run into the
+	// expiry of the active intermediate unseen.
+	if st, err := rotationStatus(ctx, o.DB, o.Now()); err == nil && st.IntermediateExpiring {
+		o.Logger.Error("the active intermediate expires within 30 days and cannot be rotated during a root rotation: finish it "+
+			"(rpmgr ca status) or give it up with rpmgr ca new-root --abort", "expires", st.IntermediateExpires)
+	}
 }
 
 // ReloadCA reloads the CA every CAReloadEvery until ctx ends, so that a rotation another replica

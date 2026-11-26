@@ -19,9 +19,22 @@ import (
 // "Root rotation").
 func newRootCommand() *cli.Command {
 	var csrOut string
+	var abort bool
 	return localCommand("new-root", "rotate the root by cross-signing: make the new root and its intermediate", func(fs *flag.FlagSet) {
 		fs.StringVar(&csrOut, "csr-out", "", "with an offline old root: write the request for the new root to this new file, and the one for the new intermediate to the file with the suffix "+controller.IntermediateSuffix+" (never overwritten)")
+		fs.BoolVar(&abort, "abort", false, "give up a rotation that waits for the offline root's signatures and has not moved issuing: remove the new root and intermediate")
 	}, func(ctx context.Context, env *cli.Env, path string) error {
+		if abort {
+			if csrOut != "" {
+				return cli.Usagef("--abort and --csr-out exclude each other")
+			}
+			if _, err := controller.AbortNewRoot(ctx, path, time.Now); err != nil {
+				return err
+			}
+			_, err := fmt.Fprintln(env.Stdout, "The new root and its intermediate are removed; the old root issues as before. The request files can be deleted: "+
+				"a signature for them is not accepted any more. rpmgr ca new-root starts again.")
+			return err
+		}
 		res, err := controller.NewRoot(ctx, path, csrOut, env.Getenv, time.Now)
 		if err != nil {
 			return err
@@ -117,12 +130,30 @@ func rotationText(st controller.RotationStatus) string {
 
 // rotationBody is the part of rotationText about the rotation itself.
 func rotationBody(st controller.RotationStatus) string {
+	text := rotationProgress(st)
+	if st.IntermediateExpiring {
+		text += "\n  WARNING: the active intermediate expires on " + st.IntermediateExpires.UTC().Format(time.RFC3339) +
+			" and cannot be rotated during a root rotation: finish this one" + abortHint(st) + "."
+	}
+	return text
+}
+
+// abortHint names the way out of a rotation that has not moved issuing.
+func abortHint(st controller.RotationStatus) string {
+	if st.Waiting {
+		return ", or give it up with rpmgr ca new-root --abort"
+	}
+	return ""
+}
+
+// rotationProgress is where the rotation stands.
+func rotationProgress(st controller.RotationStatus) string {
 	if !st.Waiting && !st.Overlap {
 		return ""
 	}
 	var b strings.Builder
 	if !st.Overlap {
-		b.WriteString("Root rotation: the new root waits for the old root's signatures.")
+		b.WriteString("Root rotation: the new root waits for the old root's signatures (rpmgr ca new-root --abort gives it up).")
 		if st.NeedsCross {
 			b.WriteString(" The cross-certificate of the new root is missing (rpmgr ca sign-intermediate --kind cross-root, then rpmgr ca import-intermediate).")
 		}

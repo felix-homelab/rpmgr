@@ -379,6 +379,10 @@ type RotationStatus struct {
 	// IssuingRootOnline is set when the root that issues has its key in the database although the deployment
 	// had an offline root: a rotation made the new root online, and `ca offline-root` takes it out again.
 	IssuingRootOnline bool
+	// IntermediateExpiring is set when the active intermediate expires within castore.IntermediateSigningCritical
+	// while a rotation runs: the intermediate cannot be rotated until it ends. IntermediateExpires is its end.
+	IntermediateExpiring bool
+	IntermediateExpires  time.Time
 }
 
 // RotationRoot is a root of the bundle.
@@ -452,6 +456,13 @@ func rotationStatus(sys context.Context, db *store.DB, now time.Time) (RotationS
 		}
 		return 1
 	})
+	if st.Waiting || st.Overlap {
+		for _, r := range rows {
+			if r.Kind == cakey.KindIntermediate && r.Status == cakey.StatusActive && !now.Before(r.NotAfter.Add(-castore.IntermediateSigningCritical)) {
+				st.IntermediateExpiring, st.IntermediateExpires = true, r.NotAfter
+			}
+		}
+	}
 	if old == nil || old.RotatedAt == nil {
 		return st, nil
 	}
@@ -493,4 +504,30 @@ func (st *RotationStatus) issuingRootOnline(sys context.Context, c *ent.Client) 
 	}
 	st.IssuingRootOnline = online && hadOffline
 	return nil
+}
+
+// AbortNewRoot is `rpmgr ca new-root --abort`: it removes the new root and the new intermediate of a rotation
+// that waits for the old root's signatures and has not moved issuing, in a planned apply with an audit entry.
+// The requests written earlier are void; the files may be deleted. It needs no KEK.
+func AbortNewRoot(ctx context.Context, path string, now func() time.Time) ([]string, error) {
+	_, db, sys, err := openLocal(ctx, path, "rpmgr ca new-root --abort")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = db.Close() }()
+	plan, err := castore.PlanAbortNewRoot(sys, db.ReadClient().CAKey, now())
+	if err != nil {
+		return nil, err
+	}
+	var done []string
+	err = store.WriteTx(sys, db, func(tx *ent.Tx) error {
+		var err error
+		if done, err = plan.Apply(sys, tx); err != nil {
+			return err
+		}
+		_, err = audit.Append(sys, tx, audit.Entry{ActorType: audit.ActorSystem, ActorID: "local-cli", Action: "ca.abort_new_root",
+			TargetType: "ca", Result: audit.Success, Reason: "the new root and intermediate that waited for the offline root's signatures removed"})
+		return err
+	})
+	return done, err
 }
