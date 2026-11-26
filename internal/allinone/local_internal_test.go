@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/config"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 )
 
 // TestOwnPorts: the process's listener ports and its bound route ports are its own on loopback,
@@ -121,5 +123,21 @@ func TestOwnPorts(t *testing.T) {
 	bad.Listen.Admin = "localhost"
 	if _, err := newOwnPorts(bad); err == nil {
 		t.Error("a listen address without a port")
+	}
+}
+
+// TestEnrollmentRootRow: the built-in agent enrols with the overlap root while a root rotation runs, as
+// every other agent does, and with the active root otherwise; with no root it gets none.
+func TestEnrollmentRootRow(t *testing.T) {
+	active := &ent.CAKey{ID: "ca_2", Status: cakey.StatusActive}
+	overlap := &ent.CAKey{ID: "ca_1", Status: cakey.StatusOverlap}
+	if got := enrollmentRootRow([]*ent.CAKey{overlap, active}); got != overlap {
+		t.Errorf("during the overlap: %v, want the overlap root", got)
+	}
+	if got := enrollmentRootRow([]*ent.CAKey{active}); got != active {
+		t.Errorf("without a rotation: %v, want the active root", got)
+	}
+	if got := enrollmentRootRow(nil); got != nil {
+		t.Errorf("without a root: %v", got)
 	}
 }
