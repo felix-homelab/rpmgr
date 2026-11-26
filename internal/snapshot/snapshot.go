@@ -10,6 +10,7 @@ package snapshot
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 
@@ -48,6 +49,9 @@ type Compiler struct {
 	// into the snapshot of every agent with the capability "trust.roots", so a change of the bundle
 	// changes every snapshot's hash.
 	Roots func() ([][]byte, error)
+	// Log, if set, gets the error of a failed Roots: the snapshot is then compiled without the
+	// roots, as Welcome is sent without them, so that the agent only learns no new root.
+	Log *slog.Logger
 }
 
 // Compile reads one consistent snapshot of the database and returns the agent's snapshot at its
@@ -82,11 +86,13 @@ func (c *Compiler) compile(ctx context.Context, tx *ent.Tx, rev store.Revision, 
 		snap.ReleaseOffer = offer
 	}
 	if c.Roots != nil && a.Has(agentproto.CapTrustRoots) {
-		roots, err := c.Roots()
-		if err != nil {
-			return nil, err
+		if roots, err := c.Roots(); err != nil {
+			if c.Log != nil {
+				c.Log.Error("cannot send the trust roots; compiling without them", "agent", a.Identity.String(), "error", err)
+			}
+		} else {
+			snap.TrustRoots = roots
 		}
-		snap.TrustRoots = roots
 	}
 	for _, src := range c.Sources {
 		rs, err := src(ctx, tx, a)

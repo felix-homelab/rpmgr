@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"google.golang.org/protobuf/proto"
@@ -21,9 +22,10 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 )
 
-// TestTrustRoots_ReportedAndCarried: an agent (that announces the capability, which none does yet) reports the digest of the roots it holds, the
-// controller records it with the session and puts the trust roots in the agent's snapshot, and the
-// agent, which does not take roots from them yet, keeps the roots file it enrolled with.
+// TestTrustRoots_ReportedAndCarried: an agent announces the capability and reports the digest of
+// the roots it holds, the controller records it with the session and puts the trust roots in the
+// agent's snapshot, and the agent, which was offered no new root, keeps the roots file it
+// enrolled with.
 func TestTrustRoots_ReportedAndCarried(t *testing.T) {
 	c := itest.StartController(t, itest.Options{Sources: []snapshot.Source{orgResources}})
 	dir := t.TempDir()
@@ -37,8 +39,7 @@ func TestTrustRoots_ReportedAndCarried(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctl, err := agent.NewControl(agent.ControlOptions{IdentityDir: id.Dir, StateDir: state, Version: "0.7.0",
-		Capabilities: []string{agentproto.CapTrustRoots}, // no agent announces it yet; the test does
-		Applier:      &recorder{}, Backoff: fast(), Logger: c.Logs.Logger()})
+		Applier: &recorder{}, Backoff: fast(), Logger: c.Logs.Logger()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,6 +51,9 @@ func TestTrustRoots_ReportedAndCarried(t *testing.T) {
 
 	want := hex.EncodeToString(pki.RootsDigest([]*x509.Certificate{c.CA.Root()}))
 	row := c.DB.Client().AgentSession.GetX(c.Sys, id.AgentID)
+	if !slices.Contains(row.Capabilities, agentproto.CapTrustRoots) {
+		t.Errorf("the agent announced %v, want %s", row.Capabilities, agentproto.CapTrustRoots)
+	}
 	if row.RootsDigest != want {
 		t.Errorf("recorded digest %q, want %q", row.RootsDigest, want)
 	}

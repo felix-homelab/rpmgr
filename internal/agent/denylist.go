@@ -43,7 +43,9 @@ type DenyList struct {
 // DenyListOptions configure a DenyList.
 type DenyListOptions struct {
 	StateDir string
-	Root     *x509.Certificate // the pinned root
+	Root     *x509.Certificate // the pinned root; the only root while Roots is nil
+	// Roots returns the roots a signer may chain to: every root the agent holds.
+	Roots func() []*x509.Certificate
 	// Signers returns the config-signing certificates and their intermediates, as the runtime
 	// keeps them.
 	Signers func() []*x509.Certificate
@@ -65,7 +67,7 @@ func NewDenyList(o DenyListOptions) *DenyList {
 
 // verify checks a signed deny-list as a snapshot is checked and returns its entries.
 func (d *DenyList) verify(signed *agentv1.Signed) ([]*agentv1.DenyEntry, error) {
-	payload, err := snapsig.Verify(signed, d.o.Signers(), d.o.Root, d.o.Now())
+	payload, err := snapsig.VerifyRoots(signed, d.o.Signers(), d.roots(), d.o.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -229,4 +231,12 @@ func (d *DenyList) Load() error {
 	d.kept = prune(kept, d.o.Now())
 	d.mu.Unlock()
 	return bad
+}
+
+// roots are the roots a signer may chain to.
+func (d *DenyList) roots() []*x509.Certificate {
+	if d.o.Roots != nil {
+		return d.o.Roots()
+	}
+	return []*x509.Certificate{d.o.Root}
 }
