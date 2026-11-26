@@ -46,7 +46,11 @@ func TestRotation_NextSigningKey(t *testing.T) {
 	rotate := func() {
 		t.Helper()
 		if err := store.WriteTx(c.Sys, c.DB, func(tx *ent.Tx) error {
-			_, err := castore.Rotate(c.Sys, tx, c.Sealer(), time.Now())
+			p, err := castore.PlanRotation(c.Sys, tx.CAKey, c.Sealer(), time.Now())
+			if err != nil {
+				return err
+			}
+			_, err = p.Apply(c.Sys, tx)
 			return err
 		}); err != nil {
 			t.Fatal(err)

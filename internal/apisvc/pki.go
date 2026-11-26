@@ -131,11 +131,10 @@ func (p *Pki) RotateIntermediate(ctx context.Context, _ *connect.Request[rpmgrv1
 		row, err = tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusActive)).Only(sys)
 		return err
 	})
+	// The plan refused an offline root before the transaction; a root that went offline since changes
+	// the keys the plan saw, which is ErrRotated.
 	if errors.Is(err, castore.ErrRotated) {
 		return nil, connect.NewError(connect.CodeAborted, err)
-	}
-	if errors.Is(err, castore.ErrRootOffline) {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	}
 	if err != nil {
 		return nil, storeError(err)

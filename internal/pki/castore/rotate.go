@@ -29,38 +29,9 @@ const (
 	SignerPromoteBefore = 60 * 24 * time.Hour
 )
 
-// Rotate brings the CA's keys up to the schedule at now, in tx, and returns what it changed:
-//   - the intermediate is replaced at half its lifetime; the old one is retired and keeps
-//     verifying the leaves it issued until it expires;
-//   - the config-signing and the audit-checkpoint key each get a next key SignerNextBefore their
-//     certificate expires, which replaces them SignerPromoteBefore it does.
-//
-// Every new key is sealed under s. Rotate needs the system scope; the caller runs it as a
-// singleton job and reloads the CA afterwards. It opens and seals keys inside tx; a server that
-// shares its database with others plans with PlanRotation before the transaction instead.
-func Rotate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) ([]string, error) {
-	p, err := PlanRotation(ctx, tx.CAKey, s, now)
-	if err != nil {
-		return nil, err
-	}
-	return p.Apply(ctx, tx)
-}
-
-// ErrRotated is returned when the active keys changed while a rotation was planned and written:
-// another rotation came first.
-var ErrRotated = errors.New("pki: the intermediate was rotated meanwhile")
-
-// RotateIntermediate replaces the active intermediate now, before its half-life, in tx: the old
-// one is retired and keeps verifying the leaves it issued until it expires (docs/04-security.md,
-// "CA rotation"). It needs the system scope; the caller reloads the CA afterwards.
-func RotateIntermediate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) error {
-	p, err := PlanIntermediateRotation(ctx, tx.CAKey, s, now)
-	if err != nil {
-		return err
-	}
-	_, err = p.Apply(ctx, tx)
-	return err
-}
+// ErrRotated is returned when the CA's active keys changed while a plan was made and written:
+// another rotation, request or ceremony came first.
+var ErrRotated = errors.New("pki: the CA's keys changed meanwhile: another rotation, request or ceremony came first")
 
 // A Plan is a rotation worked out before its transaction: the keys it needs are opened, the new
 // ones made and sealed, all of which may wait for a key service, which a write transaction must not.
@@ -96,11 +67,16 @@ type signingRequest struct {
 	notBefore, notAfter time.Time
 }
 
-// keysSeen names the active and next keys of rows, to tell a changed set.
+// keysSeen names the active and next keys of rows and whether a key is offline, to tell a changed
+// set: a plan made before the root went offline must not be applied after it.
 func keysSeen(rows []*ent.CAKey) string {
 	var b strings.Builder
 	for _, r := range rows {
-		b.WriteString(r.ID + ":" + string(r.Status) + ";")
+		b.WriteString(r.ID + ":" + string(r.Status))
+		if keyOffline(r) {
+			b.WriteString(":offline")
+		}
+		b.WriteString(";")
 	}
 	return b.String()
 }
@@ -128,12 +104,22 @@ func sealKey(ctx context.Context, s *secret.Sealer, id string, key *ecdsa.Privat
 	return s.Seal(ctx, keyContext(id), secret.FromBytes(der))
 }
 
-// PlanRotation works out Rotate from the keys c reads, which may be outside a transaction.
+// PlanRotation brings the CA's keys up to the schedule at now, from the keys c reads, which may be
+// outside a transaction; Apply writes it and returns what it changed:
+//   - the intermediate is replaced at half its lifetime; the old one is retired and keeps
+//     verifying the leaves it issued until it expires;
+//   - the config-signing and the audit-checkpoint key each get a next key SignerNextBefore their
+//     certificate expires, which replaces them SignerPromoteBefore it does.
+//
+// Every new key is sealed under s, here and so before the transaction. The caller runs it as a
+// singleton job and reloads the CA afterwards. It needs the system scope.
 func PlanRotation(ctx context.Context, c *ent.CAKeyClient, s *secret.Sealer, now time.Time) (*Plan, error) {
 	return plan(ctx, c, s, now, false)
 }
 
-// PlanIntermediateRotation works out RotateIntermediate.
+// PlanIntermediateRotation replaces the active intermediate now, before its half-life: the old one
+// is retired and keeps verifying the leaves it issued until it expires (docs/04-security.md, "CA
+// rotation"). It refuses an offline root (ErrRootOffline). The caller reloads the CA afterwards.
 func PlanIntermediateRotation(ctx context.Context, c *ent.CAKeyClient, s *secret.Sealer, now time.Time) (*Plan, error) {
 	return plan(ctx, c, s, now, true)
 }
