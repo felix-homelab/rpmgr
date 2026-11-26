@@ -215,9 +215,11 @@ func Run(ctx context.Context, o RunOptions) error {
 	holder := pki.NewHolder(node)
 	shipper := &RevocationShipper{Path: filepath.Join(stateDir, "revocations.log"), Sink: cfg.RevocationLog.Sink, Replica: nodeID, Logger: o.Logger}
 
+	// The roots of a snapshot are read in its transaction, with its revision (castore.BundleOf).
+	bundleRoots := func(ctx context.Context, tx *ent.Tx) ([][]byte, error) { return castore.TrustRootsOf(ctx, tx.CAKey) }
 	sessions := NewSessions(SessionsOptions{DB: db, CA: ca, Node: nodeID, Version: o.Version, Sys: sys, Now: o.Now, RevLog: rl, Sealer: sealer,
 		Logger:   o.Logger,
-		Compiler: &snapshot.Compiler{Sources: o.Sources, Endpoints: AgentEndpoints(cfg.PublicURL), Offer: snapshot.ReleaseOfferAt(cfg.PublicURL), Roots: ca.TrustRoots, Log: o.Logger}})
+		Compiler: &snapshot.Compiler{Sources: o.Sources, Endpoints: AgentEndpoints(cfg.PublicURL), Offer: snapshot.ReleaseOfferAt(cfg.PublicURL), Roots: bundleRoots, Log: o.Logger}})
 	reg := o.Registry
 	if reg == nil {
 		reg = telemetry.NewRegistry()
@@ -245,9 +247,9 @@ func Run(ctx context.Context, o RunOptions) error {
 		}
 	}
 
-	roots := x509.NewCertPool()
-	roots.AddCert(ca.Root())
-	agentTLS := pki.AgentEndpointConfig(holder, roots, pki.Expect{TrustDomain: td,
+	// The roots follow the CA, which reloads within a minute of a root rotation, so that agents under
+	// either root of the overlap connect, and under a dropped one no longer do.
+	agentTLS := pki.AgentEndpointConfigFollowing(holder, ca.RootsPool, pki.Expect{TrustDomain: td,
 		Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway}, Denied: sessions.Denied}, o.Now, ReauthChecks(db, sys))
 	agents := NewAgentServer(agentTLS, td)
 	agentv1.RegisterControlServer(agents, sessions)
@@ -328,7 +330,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	mux := http.NewServeMux()
-	mux.Handle("/.well-known/rpmgr/trust-bundle", enroll.TrustBundleHandler(ca.Root()))
+	mux.Handle("/.well-known/rpmgr/trust-bundle", enroll.TrustBundleHandlerFunc(ca.Roots))
 	revocations := &apisvc.Revocations{Sys: sys, RevLog: rl, Logger: o.Logger, Denied: sessions.ApplyDenyList}
 	mfa := &accounts.MFA{Accounts: acc, Sealer: sealer, RevLog: rl, Logger: o.Logger}
 	relay := &apisvc.Relay{DB: db, Sys: sys, Sealer: sealer}
@@ -488,7 +490,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_enrollment_proto.Services().ByName("EnrollmentService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewEnrollmentServiceHandler(&apisvc.Enrollment{DB: db, API: apiServer, Now: o.Now,
-				PublicURL: cfg.PublicURL, RootPin: pki.RootPin(ca.Root())}, opts...)
+				PublicURL: cfg.PublicURL, CurrentPin: func() string { return pki.RootPin(ca.EnrollmentRoot()) }}, opts...)
 		}); err != nil {
 		return err
 	}
