@@ -28,6 +28,16 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- A controller can run on PostgreSQL: `database.driver: postgres` in the controller's boot file,
+  with `dsn` and, for the password, `password_file` or `password_credential` (never in the DSN)
+  ([Boot files](docs/guide/reference/boot-files.md#postgresql)). Fill an empty database with
+  `rpmgr controller init`, or move a SQLite controller with `rpmgr migrate-db`
+  ([Topologies](docs/guide/install/topologies.md#a-controller-on-postgresql)). One controller runs
+  on a database: a second one is refused by the database's controller lock, and a controller that
+  loses the lock stops. The controller does not start when the server does not answer in time. The
+  Settings page shows the driver, the server and the password's source, never the password. For now
+  `rpmgr backup`, `rpmgr restore`, `rpmgr migrate` and `rpmgr kek rotate` refuse a PostgreSQL
+  controller, and an all-in-one stays on SQLite. (#689)
 - The controller can keep its key-encryption key in a key of Vault or OpenBao Transit:
   `kek.source: kms` with the new `kek.kms` section in the boot file
   ([Boot files](docs/guide/reference/boot-files.md#controller)). The controller reads the key at

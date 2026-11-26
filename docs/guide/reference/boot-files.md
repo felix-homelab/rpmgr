@@ -61,8 +61,8 @@ restart ([10](../../10-operations.md#boot-files)).
   interfaces, such as `:7381` or `0.0.0.0:7381`, a public address and any other host name are
   refused, because the listener is never public ([10](../../10-operations.md#ports)).
 - **Paths** are absolute.
-- **Phase 2 values** are refused for now: `database.driver: postgres`
-  ([13](../../13-roadmap.md#phase-2--production)).
+- **PostgreSQL** is accepted for a controller; an all-in-one still refuses `database.driver:
+  postgres` ([PostgreSQL](#postgresql)).
 
 ## Sections every role has
 
@@ -88,8 +88,10 @@ tracing section is described in [Monitoring](../operations/monitoring.md).
 | `listen.https` | address | `:443` | The listener for the web UI, the API, enrollment, the agents' control sessions, `/install.sh` and the `/dl/` mirror |
 | `listen.http` | address or `""` | `:80` | ACME HTTP-01 challenges and the redirect to HTTPS. `""` turns port 80 off |
 | `listen.admin` | address | `127.0.0.1:7381` | The admin listener (rules above) |
-| `database.driver` | string | `sqlite` | Only `sqlite` for now |
-| `database.dsn` | path | `/var/lib/rpmgr/controller.db` | The SQLite database file: an absolute path without `?`, `#` or `%`. The revocation log, the audit checkpoints and the `/dl/` mirror live in the same directory |
+| `database.driver` | string | `sqlite` | `sqlite` or `postgres` |
+| `database.dsn` | path or string | `/var/lib/rpmgr/controller.db` with `sqlite` | With `sqlite`, the database file: an absolute path without `?`, `#` or `%`; the revocation log, the audit checkpoints and the `/dl/` mirror live in the same directory. With `postgres`, required: a `postgres://` URL or a key-value string, without a password ([PostgreSQL](#postgresql)) |
+| `database.password_file` | path | none | With `postgres`: a file with the password, one line. Not with `password_credential`, not with `sqlite` |
+| `database.password_credential` | string | none | With `postgres`: the name of a systemd credential that holds the password. Not with `password_file`, not with `sqlite` |
 | `kek.source` | string | `systemd-credential` | Where the KEK comes from: `systemd-credential`, `file` or `kms`, a key in Vault or OpenBao Transit. A KEK is never read from an environment variable |
 | `kek.name` | string | `rpmgr-kek` with `systemd-credential` | The name of the systemd credential: 1 to 64 letters, digits, `_`, `.` or `-`. Only with `systemd-credential` |
 | `kek.path` | path | none | The KEK file. Only with `file`, and then required. The file must be a regular file that neither its group nor other users can read or write |
@@ -163,6 +165,35 @@ kek:
     ca_file: /etc/rpmgr/vault-ca.pem
     token_file: /etc/rpmgr/vault-token    # or approle: {role_id_file: …, secret_id_file: …}
 ```
+
+### PostgreSQL
+
+Example of the `database` section for a controller on PostgreSQL, in place of the one above:
+
+```yaml
+database:
+  driver: postgres
+  dsn: postgres://rpmgr@db.example.com/rpmgr?sslmode=verify-full
+  password_file: /etc/rpmgr/database-password
+```
+
+- **No password in the DSN.** A connection string that holds a password, a `PGPASSWORD` in the
+  environment, a `.pgpass` file or a service file that would supply one stops the controller, so no
+  password appears in a boot file, an environment or a unit file. Give it in `password_file`, a
+  regular file that neither its group nor other users can read or write, with one non-empty line, or
+  in `password_credential`, a systemd credential that the unit loads
+  ([Hardened systemd units](../../10-operations.md#hardened-systemd-units)). A server that
+  authenticates by a client certificate or a socket peer needs neither.
+- **TLS.** A server that is not on the controller's host needs `sslmode=verify-full`; rpmgr checks the
+  certificate itself and does not trust the other modes
+  ([06](../../06-data-model.md#connecting-to-postgresql-phase-2)).
+- **Start.** The controller takes the database's controller lock and keeps it. A second controller
+  on the same database is refused with `store: another controller is using this database`. The
+  controller does not start when the server cannot be reached in time, and stops when it loses the
+  lock.
+- **Where the files go.** The revocation log, the audit checkpoints, the node identity and the
+  `/dl/` mirror are in `/var/lib/rpmgr`, since there is no database file to name a directory.
+- **All-in-one** does not accept PostgreSQL yet.
 
 ## Gateway
 
@@ -253,7 +284,7 @@ the connector reach the controller inside the process.
 | `listen.tunnel_udp` | address or `""` | `""` | As for a gateway |
 | `listen.http` | address or `""` | `:80` | The gateway's port 80: ACME HTTP-01, port 80 of `http` routes, and the redirect to HTTPS for the controller's name. `""` turns port 80 off |
 | `listen.admin` | address | `127.0.0.1:7381` | One admin listener that reports the controller, the gateway and the connector |
-| `database.driver`, `database.dsn` | | as for a controller | As for a controller |
+| `database.driver`, `database.dsn` | | as for a controller | As for a controller, but `postgres` is refused for now |
 | `kek.source`, `kek.name`, `kek.path`, `kek.kms` | | as for a controller | As for a controller |
 | `tls.cert_file`, `tls.key_file` | | none | As for a controller |
 | `state_dir` | path | `/var/lib/rpmgr` | The gateway's identity and state go to `<state_dir>/gateway/identity` and `<state_dir>/gateway`, the connector's to `<state_dir>/connector/identity` and `<state_dir>/connector` |
@@ -349,4 +380,10 @@ Typical messages:
 | `firewall.backend "nftables": want ufw, or leave it out` | A firewall other than `ufw` |
 | `firewall.max_range "…": want <from>-<to> within 1 to 65535` | A maximum range that is no ascending pair of ports |
 | `firewall.max_range needs firewall.backend ufw` | A range without the backend |
-| `database.driver: postgres comes with Phase 2 (D57); use sqlite` | A Phase 2 value |
+| `database.dsn: a PostgreSQL database needs one` | `driver: postgres` without a `dsn` |
+| `database: password_file or password_credential, not both` | Both sources of the database password |
+| `database: a SQLite database has no password` | A password file or credential with `driver: sqlite` |
+| `database.driver: all-in-one runs on SQLite only for now; …` | `driver: postgres` in an all-in-one's file |
+| `store: PostgreSQL: the DSN, PGPASSWORD or a .pgpass file sets a password; …` | A password in the connection string or from the environment |
+| `store: PostgreSQL did not answer within …` | The server is down or unreachable; the controller does not start |
+| `store: another controller is using this database` | A second controller on a PostgreSQL database that one already holds |

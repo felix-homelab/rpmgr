@@ -5,9 +5,8 @@ PostgreSQL or back. This page shows both directions, what the command checks and
 it leaves behind. Read it before the move, and keep [Backup and restore](backup-and-restore.md) at
 hand: a backup is the way back if anything goes wrong.
 
-A controller can run on PostgreSQL only in the release that wires it in. Until then the command is
-for preparing the move and for copying a database to a test host; its target, a boot file with
-`driver: postgres`, is not yet accepted by the controller itself.
+A controller runs on PostgreSQL with a boot file that has `driver: postgres`
+([Topologies](../install/topologies.md#a-controller-on-postgresql)). All-in-one does not yet.
 
 ## What the command does
 
@@ -54,8 +53,7 @@ for preparing the move and for copying a database to a test host; its target, a 
    ```
 
    It prints each table with its row count, then one line that says the counts and hashes agree.
-5. Put the new boot file in place and start the controller (from the release that runs on
-   PostgreSQL).
+5. Put the new boot file in place and start the controller.
 6. Keep the SQLite database until the controller on PostgreSQL has run for a while. It is retired,
    so it cannot start by mistake.
 

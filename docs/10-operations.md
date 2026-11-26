@@ -560,7 +560,7 @@ listen:
   # internal: ":7384"                     # Phase 2, HA: the replicas' listener; "" = a single controller
   # internal_address: "10.0.0.5:7384"     # HA: how the other replicas dial it; required with internal
 database:
-  driver: sqlite              # sqlite | postgres (Phase 2, D174)
+  driver: sqlite              # sqlite | postgres (a controller, Phase 2, D174)
   dsn: /var/lib/rpmgr/controller.db
   # postgres: dsn: postgres://rpmgr@db.example.com/rpmgr?sslmode=verify-full&sslrootcert=/etc/rpmgr/pg-ca.pem
   # password_file: /etc/rpmgr/db-password       # or password_credential: <name>; never in the DSN
@@ -671,8 +671,8 @@ Rules for every boot file:
   `host:port`; `hostnames` are lower-case DNS names (internationalised ones in their `xn--` form)
   and need an address ([03](03-connections.md#reaching-a-private-controller)).
 - URLs are `https://<host>[:<port>]` without user, path, query or fragment; listen addresses are
-  `[host]:port`; paths are absolute. `database.driver: postgres` is refused before Phase 2 (slice
-  8.6); from then on these rules hold as well, and `kek.source: kms` has them from slice 8.9:
+  `[host]:port`; paths are absolute. `database.driver: postgres` and `kek.source: kms` have these
+  rules as well:
   - **PostgreSQL.** The `dsn` is a PostgreSQL URL or key-value string **without a password**: one
     that has one, or a `PGPASSWORD` in the environment or a `.pgpass` file that would supply one,
     stops the process. At most one of `password_file` and `password_credential` is set. The file
@@ -680,8 +680,17 @@ Rules for every boot file:
     [03](03-connections.md#timeouts-keepalive-and-backoff), with one non-empty line; the
     credential is the systemd credential of that name in `$CREDENTIALS_DIRECTORY`. A host that is
     neither loopback nor a Unix socket needs `sslmode=verify-full`. The reasons are in
-    [06](06-data-model.md#connecting-to-postgresql-phase-2). All-in-one accepts PostgreSQL as well,
-    and never `listen.internal`.
+    [06](06-data-model.md#connecting-to-postgresql-phase-2). A PostgreSQL database has no file to
+    name a state directory, so a controller on it keeps its files outside the database
+    ([Filesystem layout](#filesystem-layout)) in `/var/lib/rpmgr`, the service's
+    `StateDirectory`. The controller takes the controller lock exclusively, so a second controller
+    on the database is refused until replicas exist ([High availability](#high-availability));
+    it then waits the stop bound of [03](03-connections.md#timeouts-keepalive-and-backoff) before
+    its first write, gives up on a server that does not answer within the time listed there, and
+    stops when the lock is lost. All-in-one does not accept PostgreSQL yet, and never
+    `listen.internal`; `rpmgr backup`, `rpmgr restore`, `rpmgr migrate` and `rpmgr kek rotate`
+    refuse a PostgreSQL controller until their slices of P2-M08 and P2-M09 land (the controller
+    itself migrates when it starts).
   - **Transit.** `kek.kms` takes `address` (an `https://` URL), `mount` (default `transit`), `key`,
     an optional `ca_file` of PEM certificates, and exactly one of `token_file` and `approle`
     (`role_id_file`, `secret_id_file`, optional `mount`, default `approle`). Every file is regular
