@@ -84,10 +84,10 @@ describe("Pki", () => {
   });
 
   it("says that the root is offline, hides the rotation and names the KEK that may still open its key", async () => {
-    page({ status: { rootOffline: true, rootKeyResidueKek: "0a1b2c3d4e5f6071" } });
+    page({ status: { rootOffline: true, rootKeyResidueKek: "00000000000000aa" } });
     const region = await keysRegion();
     expect(await region.findByText(/^The root's key is offline\./)).toBeTruthy();
-    expect(region.getByText(/KEK 0a1b2c3d4e5f6071 opens it/)).toBeTruthy();
+    expect(region.getByText(/KEK 00000000000000aa opens it/)).toBeTruthy();
     expect(region.queryByRole("button", { name: "Rotate the intermediate now…" })).toBeNull();
   });
 
