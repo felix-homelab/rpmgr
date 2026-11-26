@@ -258,6 +258,11 @@ until both certificates are in; the controller then moves issuing to the new roo
 and `rpmgr ca status` says what still waits. The old root's key never goes into the database.
 While a rotation runs, `rpmgr ca rotate-intermediate` is refused.
 
+**The new root is online.** After a rotation of an offline root the new root's key is in the
+database, sealed under the KEK, and `rpmgr ca status` warns "issuing root online". Once issuing has
+moved, take it offline again with `rpmgr ca offline-root`, as in [the offline
+root](#take-the-root-offline), and rotate the KEK.
+
 **Watch the overlap.** `rpmgr ca status` shows both roots, the date from which the old root can be
 dropped (the longest agent certificate lifetime plus the grace period for expired certificates,
 37 days with the defaults, [Settings](settings.md)), and the **agents that do not hold the new

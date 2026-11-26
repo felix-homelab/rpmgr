@@ -485,9 +485,10 @@ func (p *DropPlan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
 			return nil, ErrRotated
 		}
 	}
-	// Nothing signs under the old root any more: its key, that of the intermediate it signed and those of
-	// the signing keys that chained to it are wiped, so that a copy of the database no longer holds them.
-	wipe := []string{r1.ID}
+	// Nothing signs under the old root any more: the key of the intermediate it signed and those of the
+	// signing keys that chained to it are wiped, so that a copy of the database no longer holds them. The
+	// old root's own row keeps what it has: with no key it was offline, which `ca status` tells from.
+	var wipe []string
 	for _, sw := range p.swaps {
 		wipe = append(wipe, sw.old)
 	}
@@ -503,6 +504,9 @@ func (p *DropPlan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
 		if c, err := x509.ParseCertificate(o.Certificate); err == nil && c.CheckSignatureFrom(r1cert) == nil {
 			wipe = append(wipe, o.ID)
 		}
+	}
+	if len(wipe) == 0 {
+		return []string{"old root dropped from the trust bundle"}, nil
 	}
 	if err := tx.CAKey.Update().Where(cakey.IDIn(wipe...), cakey.KeyEncNotNil()).ClearKeyEnc().Exec(ctx); err != nil {
 		return nil, err

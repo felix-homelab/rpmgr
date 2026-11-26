@@ -32,7 +32,8 @@ func newRootCommand() *cli.Command {
 				"  rpmgr ca sign-intermediate --kind cross-root --csr %[1]s --key-sha256 %[2]s --root-file <file> --out <x.crt>\n"+
 				"  rpmgr ca sign-intermediate --csr %[1]s%[4]s --key-sha256 %[3]s --root-file <file> --out <y.crt>\n"+
 				"then bring both certificates back and run rpmgr ca import-intermediate --in <file> for each. Issuing moves to the new root within\n"+
-				"the hour after both are imported (the rotation job); rpmgr ca status shows where the rotation stands.\n",
+				"the hour after both are imported (the rotation job); rpmgr ca status shows where the rotation stands.\n"+
+					"The new root's key is online (sealed) until you take it offline again: once issuing has moved, run rpmgr ca offline-root.\n",
 				csrOut, r.CrossKeyHash, r.InterKeyHash, controller.IntermediateSuffix)
 			return err
 		}
@@ -95,8 +96,26 @@ func dropRootCommand() *cli.Command {
 	})
 }
 
-// rotationText is what `ca status` says during a root rotation; empty when none runs.
+// onlineRootWarning is what `ca status` says while the root that issues is online although the deployment
+// had an offline root, as a rotation leaves it.
+const onlineRootWarning = "WARNING: issuing root online: the new root's key is in the database. Once issuing has moved, take it offline " +
+	"again with rpmgr ca offline-root (docs/10-operations.md, \"Rotate the root\")."
+
+// rotationText is what `ca status` says during a root rotation, and while the new root of one that had an
+// offline root is still online; empty when neither holds.
 func rotationText(st controller.RotationStatus) string {
+	text := rotationBody(st)
+	switch {
+	case !st.IssuingRootOnline:
+		return text
+	case text == "":
+		return onlineRootWarning
+	}
+	return text + "\n" + onlineRootWarning
+}
+
+// rotationBody is the part of rotationText about the rotation itself.
+func rotationBody(st controller.RotationStatus) string {
 	if !st.Waiting && !st.Overlap {
 		return ""
 	}

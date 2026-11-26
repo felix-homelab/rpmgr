@@ -1498,7 +1498,13 @@ Each runbook: **symptoms → steps → done when**.
      drop-root --strand-stragglers` to drop the old root and leave it to re-enroll (it asks
      first; `--yes` skips the question). After the
      drop, agents that never saw the new root have to re-enroll.
-- **Done when**: the bundle is the new root alone and every agent reports its digest.
+  6. If the old root was offline, the **new root is online** (sealed under the KEK) from the
+     rotation on: `rpmgr ca status` warns "issuing root online". Once issuing has moved, take it
+     offline as in "Take the root offline": run `rpmgr ca offline-root --out <file>`, then rotate
+     the KEK. The new root then needs the offline host for the next rotation, as the old one did.
+- **Done when**: the bundle is the new root alone, no enabled agent that was seen lacks it (the
+  status lists none; a disabled one that lacks it has to re-enroll), and, when the old root was
+  offline, `rpmgr ca status` shows the new root as offline and no longer warns "issuing root online".
 
 ### Root compromise
 

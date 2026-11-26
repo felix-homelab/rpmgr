@@ -181,10 +181,17 @@ func TestCARotationRootRotation(t *testing.T) {
 		}
 	}
 
+	if rs, err := controller.RotationStatusOf(e.sys, db, at); err != nil || rs.IssuingRootOnline || !rs.Waiting {
+		t.Fatalf("status before the switch: %+v, %v", rs, err)
+	}
 	before := revisions()
 	run()
 	if e.ca.Root().Equal(r1) {
 		t.Fatal("the job did not move issuing to the new root")
+	}
+	// The old root was offline and the new one is online, which the status says until it is taken offline.
+	if rs, err := controller.RotationStatusOf(e.sys, db, at); err != nil || !rs.IssuingRootOnline {
+		t.Fatalf("status after the switch: %+v, %v; want the issuing root online", rs, err)
 	}
 	if revisions() != before+1 {
 		t.Fatalf("%d revisions after the switch, want one more than %d: the bundle changed", revisions(), before)
@@ -399,6 +406,10 @@ func TestDropRootKeepsTheRecordedOverlap(t *testing.T) {
 	if _, err := controller.NewRoot(ctx, h.cfg, "", noEnv, func() time.Time { return now }); err != nil {
 		t.Fatal(err)
 	}
+	// With an online old root the new one being online is nothing to warn about.
+	if rs, err := controller.CARotationStatus(ctx, h.cfg, func() time.Time { return now }); err != nil || rs.IssuingRootOnline {
+		t.Fatalf("status of a rotation of an online root: %+v, %v", rs, err)
+	}
 	db, err := store.OpenSQLite(ctx, h.db, store.SQLiteOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -508,8 +519,8 @@ func TestDropRootAuditsWhatItOverrode(t *testing.T) {
 		if got := auditOf(t, h, "ca.drop_root"); len(got) != 1 || !strings.Contains(got[0], "before the earliest date") || !strings.Contains(got[0], "--force") {
 			t.Fatalf("audit of a forced drop: %v", got)
 		}
-		// Nothing signs under the old root any more: the keys of the retired root, intermediate and signing
-		// keys are gone from the database, and the active ones are not.
+		// Nothing signs under the old root any more: the keys of the retired intermediate and signing keys
+		// are gone from the database (the old root's row keeps what it has), and the active ones are not.
 		db, err := store.OpenSQLite(ctx, h.db, store.SQLiteOptions{})
 		if err != nil {
 			t.Fatal(err)
@@ -518,7 +529,7 @@ func TestDropRootAuditsWhatItOverrode(t *testing.T) {
 		retired, active := 0, 0
 		for _, r := range db.Client().CAKey.Query().AllX(storetest.SystemCtx(t)) {
 			switch {
-			case r.Status == cakey.StatusRetired && r.KeyEnc != nil && len(*r.KeyEnc) != 0:
+			case r.Status == cakey.StatusRetired && r.Kind != cakey.KindRoot && r.KeyEnc != nil && len(*r.KeyEnc) != 0:
 				t.Errorf("the key of the retired %s %s is still in the database", r.Kind, r.ID)
 			case r.Status == cakey.StatusRetired:
 				retired++

@@ -376,6 +376,9 @@ type RotationStatus struct {
 	Stragglers   []string // enabled agents seen since the overlap began that lack the new root
 	// Disabled are the disabled agents, seen since the longest a leaf and the grace reach back, that lack it.
 	Disabled []string
+	// IssuingRootOnline is set when the root that issues has its key in the database although the deployment
+	// had an offline root: a rotation made the new root online, and `ca offline-root` takes it out again.
+	IssuingRootOnline bool
 }
 
 // RotationRoot is a root of the bundle.
@@ -408,6 +411,9 @@ func rotationStatus(sys context.Context, db *store.DB, now time.Time) (RotationS
 		return st, err
 	}
 	var old *ent.CAKey
+	if err := st.issuingRootOnline(sys, c); err != nil {
+		return st, err
+	}
 	// A next intermediate alone is an ordinary rotation of the intermediate that waits for the offline
 	// root, not a root rotation: only a next root row makes one.
 	nextRoot := slices.ContainsFunc(rows, func(r *ent.CAKey) bool { return r.Kind == cakey.KindRoot && r.Status == cakey.StatusNext })
@@ -466,4 +472,25 @@ func rotationStatus(sys context.Context, db *store.DB, now time.Time) (RotationS
 	}
 	st.Disabled, err = disabledLacking(sys, db, now, overlap)
 	return st, err
+}
+
+// issuingRootOnline sets IssuingRootOnline: the active root has its key in the database while an old root of
+// a rotation, in the overlap or retired, had none, that is was offline.
+func (st *RotationStatus) issuingRootOnline(sys context.Context, c *ent.Client) error {
+	roots, err := c.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusIn(cakey.StatusActive, cakey.StatusOverlap, cakey.StatusRetired)).All(sys)
+	if err != nil {
+		return err
+	}
+	online, hadOffline := false, false
+	for _, r := range roots {
+		hasKey := r.KeyEnc != nil && len(*r.KeyEnc) != 0
+		switch {
+		case r.Status == cakey.StatusActive:
+			online = hasKey
+		case !hasKey:
+			hadOffline = true
+		}
+	}
+	st.IssuingRootOnline = online && hadOffline
+	return nil
 }
