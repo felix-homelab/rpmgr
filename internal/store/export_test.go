@@ -33,6 +33,13 @@ func SetLockCheckInterval(cleanup func(func()), d time.Duration) {
 	cleanup(func() { lockCheckInterval = old })
 }
 
+// SetConnectTimeout sets how long OpenPostgres waits for a server until the test ends.
+func SetConnectTimeout(cleanup func(func()), d time.Duration) {
+	old := connectTimeout
+	connectTimeout = d
+	cleanup(func() { connectTimeout = old })
+}
+
 // CopyOrder is the order in which CopyDatabase copies the tables of db.
 func CopyOrder(db *DB) ([]*schema.Table, error) {
 	return copyOrder(context.Background(), db.Reader, db.Dialect)

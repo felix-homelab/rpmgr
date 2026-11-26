@@ -49,6 +49,11 @@ const (
 // lockCheckInterval is how often the connection that holds the controller lock is checked.
 var lockCheckInterval = 5 * time.Second
 
+// connectTimeout bounds opening a PostgreSQL database: the first connection, the version check and
+// the controller lock (docs/03-connections.md, "Timeouts, keepalive and backoff"). A server that
+// does not answer stops the controller at start with an error instead of a hang.
+var connectTimeout = 10 * time.Second
+
 // maxPasswordFile bounds the database password file.
 const maxPasswordFile = 4096
 
@@ -85,23 +90,34 @@ func OpenPostgres(ctx context.Context, dsn string, o PostgresOptions) (*DB, erro
 	if err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithTimeout(ctx, connectTimeout)
+	defer cancel()
 	pool := stdlib.OpenDB(*cfg)
 	db := &DB{Dialect: Postgres, Writer: pool, Reader: pool, unlock: func() error { return nil }, refuseRetired: o.RefuseRetired}
 	if err := checkPostgres(ctx, pool); err != nil {
 		_ = db.Close()
-		return nil, err
+		return nil, unreachable(ctx, err)
 	}
 	if o.Lock {
 		unlock, lost, err := holdControllerLock(ctx, cfg, o.Shared)
 		if err != nil {
 			_ = db.Close()
-			return nil, err
+			return nil, unreachable(ctx, err)
 		}
 		db.unlock, db.lockLost = unlock, lost
 	}
 	db.client = NewClient(Postgres, pool)
 	db.readClient = db.client
 	return db, nil
+}
+
+// unreachable names the timeout when ctx ended while opening, so that a server that does not
+// answer is not reported as "context deadline exceeded" alone.
+func unreachable(ctx context.Context, err error) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) && !errors.Is(err, ErrLocked) {
+		return fmt.Errorf("store: PostgreSQL did not answer within %s: %w", connectTimeout, err)
+	}
+	return err
 }
 
 // dsnKeys are the parameters a DSN may set. Others, such as service and sslpassword, are refused:
