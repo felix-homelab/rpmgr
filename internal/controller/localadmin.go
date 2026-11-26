@@ -354,6 +354,9 @@ func RotateKEK(ctx context.Context, path string, previous PreviousKEK, getenv fu
 	if err != nil {
 		return 0, "", err
 	}
+	if err := requireSQLite(cfg, "rpmgr kek rotate"); err != nil {
+		return 0, "", err
+	}
 	if previous == (PreviousKEK{}) && cfg.KEK.Source != config.KEKKMS {
 		return 0, "", ErrPreviousNeeded
 	}
@@ -383,9 +386,6 @@ func RotateKEK(ctx context.Context, path string, previous PreviousKEK, getenv fu
 	}
 	sealer, err := secret.NewSealerWith(kek.Wrapper, prev...)
 	if err != nil {
-		return 0, "", err
-	}
-	if err := requireSQLite(cfg, "rpmgr kek rotate"); err != nil {
 		return 0, "", err
 	}
 	// Only SQLite is supported here, so the one lock a command can take is the exclusive one;

@@ -188,6 +188,11 @@ func TestPostgres_SQLiteOnlyCommands(t *testing.T) {
 	if _, err := controller.Restore(ctx, controller.RestoreOptions{ConfigPath: r.h.cfg, Archive: out}); !errors.Is(err, controller.ErrSQLiteOnly) {
 		t.Errorf("restore: %v", err)
 	}
+	// kek rotate needs the controller stopped, which a SQLite file lock ensures and a PostgreSQL
+	// database would not: it is refused before it opens anything, controller running or not.
+	if _, _, err := controller.RotateKEK(ctx, r.h.cfg, controller.PreviousKEK{File: r.h.kek}, func(string) string { return "" }); !errors.Is(err, controller.ErrSQLiteOnly) {
+		t.Errorf("kek rotate beside a running controller: %v", err)
+	}
 	if _, err := controller.Migrate(ctx, r.h.cfg, time.Now); !errors.Is(err, controller.ErrSQLiteOnly) {
 		t.Errorf("migrate: %v", err)
 	}
