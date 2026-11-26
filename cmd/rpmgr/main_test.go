@@ -364,7 +364,7 @@ func TestLocalAdmin(t *testing.T) {
 	}
 	// The root rotation: new-root moves issuing at once, status shows it, an early drop names the date.
 	if code, stdout, stderr := runRpmgr("ca", "new-root", "--config", cfg); code != cli.ExitOK || !strings.Contains(stdout, "The new root issues from now on") ||
-		!strings.Contains(stdout, "New root pin: sha256:") {
+		!strings.Contains(stdout, "New root pin (use it only after the old root is dropped): sha256:") {
 		t.Errorf("ca new-root: exit %d, %q (stderr %q)", code, stdout, stderr)
 	}
 	if code, stdout, _ := runRpmgr("ca", "status", "--config", cfg); code != cli.ExitOK || !strings.Contains(stdout, "Root rotation: issuing moved to the new root") ||

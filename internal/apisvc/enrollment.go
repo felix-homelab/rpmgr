@@ -32,8 +32,10 @@ type Enrollment struct {
 	Now func() time.Time
 	// PublicURL and RootPin go into install commands.
 	PublicURL, RootPin string
-	// CurrentPin, if set, gives the pin of the root that issues now and replaces RootPin: a root
-	// rotation changes it while the controller runs.
+	// CurrentPin, if set, gives the pin an agent enrols with now and replaces RootPin: the enrollment root
+	// (castore.CA.EnrollmentRoot), which is the oldest root of the bundle, so during the overlap of a
+	// root rotation it is the old root's and not the one that issues. A rotation changes it while the
+	// controller runs.
 	CurrentPin func() string
 }
 

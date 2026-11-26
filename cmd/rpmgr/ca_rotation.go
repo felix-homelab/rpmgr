@@ -33,11 +33,12 @@ func newRootCommand() *cli.Command {
 				"  rpmgr ca sign-intermediate --csr %[1]s%[4]s --key-sha256 %[3]s --root-file <file> --out <y.crt>\n"+
 				"then bring both certificates back and run rpmgr ca import-intermediate --in <file> for each. Issuing moves to the new root within\n"+
 				"the hour after both are imported (the rotation job); rpmgr ca status shows where the rotation stands.\n"+
-					"The new root's key is online (sealed) until you take it offline again: once issuing has moved, run rpmgr ca offline-root.\n",
+				"The new root's key is online (sealed) until you take it offline again: once issuing has moved, run rpmgr ca offline-root.\n",
 				csrOut, r.CrossKeyHash, r.InterKeyHash, controller.IntermediateSuffix)
 			return err
 		}
-		_, err = fmt.Fprintf(env.Stdout, "The new root issues from now on; the old root stays in the trust bundle until the overlap has passed. New root pin: %s\n"+
+		_, err = fmt.Fprintf(env.Stdout, "The new root issues from now on; the old root stays in the trust bundle until the overlap has passed.\n"+
+			"New root pin (use it only after the old root is dropped): %s\n"+
 			"Until the old root is dropped, install commands and rpmgr ca status keep showing the old pin: an agent enrolled meanwhile holds both roots.\n"+
 			"Running controllers load it within a minute and send every agent the bundle in a snapshot; rpmgr ca status lists the agents that\n"+
 			"have not learned the new root, and the date the old one can be dropped (rpmgr ca drop-root, or the rotation job).\n", res.Pin)

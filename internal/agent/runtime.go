@@ -253,8 +253,14 @@ func (r *Runtime) receive(ctx context.Context, signed *agentv1.Signed) {
 			"running_seq", cur.rev.GetSeq())
 		return
 	}
-	// The roots come from a snapshot only once it is known to be newer than the one that runs, which
-	// orders the bundles by revision (docs/04-security.md, "Root rotation"). The first snapshot, with
+	if errs := r.validate(snap); len(errs) > 0 {
+		r.o.Logger.Error("rejecting an invalid snapshot; keeping the last-known-good one", "seq", rev.GetSeq(),
+			"errors", len(errs), "first", errs[0].GetMessage())
+		r.reject(rev, hash, errs)
+		return
+	}
+	// The roots come from a snapshot only once it is known to be newer than the one that runs and
+	// valid, which orders the bundles by revision (docs/04-security.md, "Root rotation"). The first snapshot, with
 	// nothing to be newer than, only adds roots.
 	if r.o.OnTrustRoots != nil {
 		var verifiedBy func([]*x509.Certificate) bool
@@ -264,12 +270,6 @@ func (r *Runtime) receive(ctx context.Context, signed *agentv1.Signed) {
 		if r.o.OnTrustRoots(snap.GetTrustRoots(), verifiedBy) && r.o.OnRootsChanged != nil {
 			defer r.o.OnRootsChanged()
 		}
-	}
-	if errs := r.validate(snap); len(errs) > 0 {
-		r.o.Logger.Error("rejecting an invalid snapshot; keeping the last-known-good one", "seq", rev.GetSeq(),
-			"errors", len(errs), "first", errs[0].GetMessage())
-		r.reject(rev, hash, errs)
-		return
 	}
 	notReady := r.apply(ctx, signed, snap)
 	// What the agent did, for a live log (D154): the revision, the routes it serves, how many are

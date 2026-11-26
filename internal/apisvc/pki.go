@@ -42,8 +42,9 @@ var (
 		cakey.KindAuditCheckpoint: rpmgrv1.CAKeyKind_CA_KEY_KIND_AUDIT_CHECKPOINT}
 	caKeyStates = map[cakey.Status]rpmgrv1.CAKeyState{cakey.StatusNext: rpmgrv1.CAKeyState_CA_KEY_STATE_NEXT,
 		cakey.StatusActive: rpmgrv1.CAKeyState_CA_KEY_STATE_ACTIVE, cakey.StatusRetired: rpmgrv1.CAKeyState_CA_KEY_STATE_RETIRED,
-		// The old root in the overlap of a rotation no longer issues; `rpmgr ca status` says it is still trusted.
-		cakey.StatusOverlap: rpmgrv1.CAKeyState_CA_KEY_STATE_RETIRED}
+		// The old root in the overlap of a rotation no longer issues but is still trusted: no enum value says
+		// that, and RETIRED would say agents may drop it, so it is reported as ACTIVE until it is dropped.
+		cakey.StatusOverlap: rpmgrv1.CAKeyState_CA_KEY_STATE_ACTIVE}
 )
 
 // GetPkiStatus implements PkiService.
