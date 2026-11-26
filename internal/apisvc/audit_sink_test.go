@@ -143,10 +143,10 @@ func TestAuditSinks(t *testing.T) {
 		t.Fatal("the secret is stored in the clear")
 	}
 	// The sealed secret is bound to its row: it opens there and nowhere else.
-	if _, err := e.sealer.Open(secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: row.ID}, *row.SecretEnc); err != nil {
+	if _, err := e.sealer.Open(context.Background(), secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: row.ID}, *row.SecretEnc); err != nil {
 		t.Fatalf("the sealed secret does not open: %v", err)
 	}
-	if _, err := e.sealer.Open(secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: "ask_other"}, *row.SecretEnc); err == nil {
+	if _, err := e.sealer.Open(context.Background(), secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: "ask_other"}, *row.SecretEnc); err == nil {
 		t.Fatal("the sealed secret opens for another row")
 	}
 

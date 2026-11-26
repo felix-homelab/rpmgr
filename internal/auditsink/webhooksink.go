@@ -43,7 +43,7 @@ const WebhookBatchTimeout = 60 * time.Second
 // delivered, the rest goes in the next pass.
 var errWebhookBatchTime = errors.New("delivering a batch to the receiver took longer than the time allowed for a batch")
 
-func openWebhook(o Options, s *ent.AuditSink) (Sink, error) {
+func openWebhook(ctx context.Context, o Options, s *ent.AuditSink) (Sink, error) {
 	url := s.Settings["url"]
 	if url == "" {
 		return nil, errors.New("the webhook sink has no url")
@@ -51,7 +51,7 @@ func openWebhook(o Options, s *ent.AuditSink) (Sink, error) {
 	if s.SecretEnc == nil || len(*s.SecretEnc) == 0 {
 		return nil, errors.New("the webhook sink has no secret")
 	}
-	key, err := o.Sealer.Open(secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: s.ID}, *s.SecretEnc)
+	key, err := o.Sealer.Open(ctx, secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: s.ID}, *s.SecretEnc)
 	if err != nil {
 		return nil, errors.New("the webhook sink's secret cannot be opened")
 	}

@@ -83,11 +83,11 @@ func TestWebhook_ChatURLSealedAndRedacted(t *testing.T) {
 				t.Fatalf("%s: the URL is stored in the clear", c.column)
 			}
 		}
-		v, err := e.sealer.Open(secret.Context{Table: "webhooks", Column: "url_enc", RowID: w.GetId()}, *row.URLEnc)
+		v, err := e.sealer.Open(context.Background(), secret.Context{Table: "webhooks", Column: "url_enc", RowID: w.GetId()}, *row.URLEnc)
 		if err != nil || v.Reveal() != c.url { //nolint:forbidigo // the test reads back the URL it stored
 			t.Fatalf("%s: the stored URL does not open to the one set: %v", c.column, err)
 		}
-		if _, err := e.sealer.Open(secret.Context{Table: "webhooks", Column: "secret_enc", RowID: w.GetId()}, *row.URLEnc); err == nil {
+		if _, err := e.sealer.Open(context.Background(), secret.Context{Table: "webhooks", Column: "secret_enc", RowID: w.GetId()}, *row.URLEnc); err == nil {
 			t.Fatalf("%s: the URL opens under another column's context", c.column)
 		}
 	}
@@ -229,7 +229,7 @@ func TestWebhooks_ChatUpdate(t *testing.T) {
 		up.GetFormat() != slack || up.GetUrl() != "https://hooks.slack.com" || up.GetSecretSet() {
 		t.Fatalf("discord to slack: %v %v", up, err)
 	}
-	v, _ := e.sealer.Open(secret.Context{Table: "webhooks", Column: "url_enc", RowID: id}, sealedOf(id))
+	v, _ := e.sealer.Open(context.Background(), secret.Context{Table: "webhooks", Column: "url_enc", RowID: id}, sealedOf(id))
 	if v.Reveal() != slackURL { //nolint:forbidigo // the test reads back the URL it stored
 		t.Fatal("the slack URL is not the stored one")
 	}

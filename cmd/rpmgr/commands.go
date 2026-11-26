@@ -55,6 +55,7 @@ func commands() *cli.Command {
 			backupCommand(),
 			restoreCommand(),
 			migrateCommand(),
+			migrateDBCommand(),
 			caCommand(),
 			kekCommand(),
 			group("user", "administer users on the controller host", userResetPassword()),
@@ -86,7 +87,7 @@ const (
 var sectionOf = func() map[string]string {
 	m := map[string]string{}
 	for _, n := range []string{"setup", "enroll", "leave", "handoff", "status", "diag", "policy", "updater", "firewall", "backup",
-		"restore", "migrate", "ca", "kek", "user", "release", "systemd-unit"} {
+		"restore", "migrate", "migrate-db", "ca", "kek", "user", "release", "systemd-unit"} {
 		m[n] = sectionHost
 	}
 	for _, n := range []string{"controller", "gateway", "connector", "all-in-one"} {
@@ -163,7 +164,7 @@ func runController(ctx context.Context, env *cli.Env, path string) error {
 		return err
 	}
 	defer stop()
-	return controller.Run(ctx, controller.RunOptions{Config: cfg, Version: version.Get().Version, Sources: routes.Sources(),
+	return controller.Run(ctx, controller.RunOptions{Config: cfg, ConfigFile: path, Version: version.Get().Version, Sources: routes.Sources(),
 		Getenv: env.Getenv, Logger: logger, Now: agentcmd.Clock, SelfUpdate: true})
 }
 
@@ -182,7 +183,7 @@ func runAllInOne(ctx context.Context, env *cli.Env, path string) error {
 		return err
 	}
 	defer stop()
-	return allinone.Run(ctx, allinone.RunOptions{Config: cfg, Version: version.Get().Version, Getenv: env.Getenv, Logger: logger,
+	return allinone.Run(ctx, allinone.RunOptions{Config: cfg, ConfigFile: path, Version: version.Get().Version, Getenv: env.Getenv, Logger: logger,
 		Handoff: handoff.LinkFrom(ctx)})
 }
 
@@ -308,6 +309,10 @@ func restoreCommand() *cli.Command {
 				"The replaced files are kept with the suffix %s. Start one controller, check /readyz, then the others;\n"+
 				"re-enroll agents enrolled after the backup.\n",
 				r.TrustDomain, r.Backup.UTC().Format(time.RFC3339), r.NewEpoch, r.OldEpoch, r.Reapplied, r.Unknown, dnsNote(r, dnsDisabled), r.Previous)
+			if err == nil && len(r.RootKeysDropped) > 0 {
+				_, err = fmt.Fprintf(env.Stdout, "\nThe backup still held the key of the root %s. It is restored without it, as the revocation log's\n"+
+					"root_offline marker says; the root signs only from its offline file.\n", strings.Join(r.RootKeysDropped, ", "))
+			}
 			if err == nil && len(r.Kept) > 0 {
 				_, err = fmt.Fprintf(env.Stdout, "\nNot applied again, check these on the Users page:\n  - %s\n", strings.Join(r.Kept, "\n  - "))
 			}

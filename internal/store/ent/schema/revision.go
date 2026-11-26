@@ -47,6 +47,11 @@ func (Instance) Fields() []ent.Field {
 		// restore_review_since is set by a restore that failed closed; only `rpmgr restore
 		// confirm` on the controller host clears it (docs/10-operations.md, "Backup and restore").
 		field.Time("restore_review_since").Optional().Nillable(),
+		// retired_at and retired_to are set on the source by `rpmgr migrate-db` once the copy has
+		// committed; a controller refuses to start on a database that has them (docs/06-data-model.md,
+		// "Copying a database"). retired_to names the boot file of the target.
+		field.Time("retired_at").Optional().Nillable(),
+		field.String("retired_to").Optional().Nillable(),
 	}
 }
 

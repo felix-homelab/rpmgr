@@ -25,7 +25,11 @@ type Instance struct {
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// RestoreReviewSince holds the value of the "restore_review_since" field.
 	RestoreReviewSince *time.Time `json:"restore_review_since,omitempty"`
-	selectValues       sql.SelectValues
+	// RetiredAt holds the value of the "retired_at" field.
+	RetiredAt *time.Time `json:"retired_at,omitempty"`
+	// RetiredTo holds the value of the "retired_to" field.
+	RetiredTo    *string `json:"retired_to,omitempty"`
+	selectValues sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -35,9 +39,9 @@ func (*Instance) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case instance.FieldID:
 			values[i] = new(sql.NullInt64)
-		case instance.FieldTrustDomain, instance.FieldDbEpoch:
+		case instance.FieldTrustDomain, instance.FieldDbEpoch, instance.FieldRetiredTo:
 			values[i] = new(sql.NullString)
-		case instance.FieldCreatedAt, instance.FieldRestoreReviewSince:
+		case instance.FieldCreatedAt, instance.FieldRestoreReviewSince, instance.FieldRetiredAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -84,6 +88,20 @@ func (_m *Instance) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.RestoreReviewSince = new(time.Time)
 				*_m.RestoreReviewSince = value.Time
+			}
+		case instance.FieldRetiredAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field retired_at", values[i])
+			} else if value.Valid {
+				_m.RetiredAt = new(time.Time)
+				*_m.RetiredAt = value.Time
+			}
+		case instance.FieldRetiredTo:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field retired_to", values[i])
+			} else if value.Valid {
+				_m.RetiredTo = new(string)
+				*_m.RetiredTo = value.String
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -133,6 +151,16 @@ func (_m *Instance) String() string {
 	if v := _m.RestoreReviewSince; v != nil {
 		builder.WriteString("restore_review_since=")
 		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.RetiredAt; v != nil {
+		builder.WriteString("retired_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.RetiredTo; v != nil {
+		builder.WriteString("retired_to=")
+		builder.WriteString(*v)
 	}
 	builder.WriteByte(')')
 	return builder.String()

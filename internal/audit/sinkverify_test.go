@@ -123,7 +123,7 @@ func newSinkWorld(t *testing.T, e env, ca *castore.CA, trust audit.Trust) *sinkW
 	sealer, _ := secret.NewSealer(kek)
 	w := &sinkWorld{e: e, ca: ca, trust: trust, srv: objstoretest.New(t), x: rawExec(t, e)}
 	id := ids.New("ask")
-	sealed, err := sealer.Seal(secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: id}, secret.New(awsKey))
+	sealed, err := sealer.Seal(context.Background(), secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: id}, secret.New(awsKey))
 	if err != nil {
 		t.Fatal(err)
 	}

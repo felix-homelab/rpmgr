@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -50,6 +51,9 @@ type ClientOptions struct {
 	Logger       *slog.Logger
 	// Hello fills the revision and deny-list fields of a Hello (later slices); may be nil.
 	Hello func(*agentv1.Hello)
+	// Roots returns the roots a control session verifies the controller with; nil uses
+	// Identity.Roots.
+	Roots func() *x509.CertPool
 	// OnWelcome gets every Welcome; may be nil.
 	OnWelcome func(*agentv1.Welcome)
 	// OnMessage gets every message after Welcome; may be nil.

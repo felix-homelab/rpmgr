@@ -98,7 +98,7 @@ func newDNS01Env(t *testing.T) *dns01Env {
 	e.sealer, _ = secret.NewSealer(kek)
 	for _, org := range []string{e.orgA, e.orgB} {
 		pid := ids.New("dnp")
-		sealed, err := e.sealer.Seal(providers.SecretContext(pid), secret.New(cfToken))
+		sealed, err := e.sealer.Seal(context.Background(), providers.SecretContext(pid), secret.New(cfToken))
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -124,13 +124,26 @@ func Init(ctx context.Context, o InitOptions) (res InitResult, err error) {
 	if done {
 		return InitResult{}, ErrInitialised
 	}
-	kek, where, err := obtainKEK(ctx, o, cfg)
-	if err != nil {
-		return InitResult{}, err
-	}
-	sealer, err := secret.NewSealer(kek)
-	if err != nil {
-		return InitResult{}, err
+	// A Transit key is the operator's: init reads and checks it, and never creates or changes one.
+	var kek secret.KEK
+	var where string
+	var sealer *secret.Sealer
+	if cfg.KEK.Source == config.KEKKMS {
+		w, err := openKEK(ctx, cfg, nil, nil, nil)
+		if err != nil {
+			return InitResult{}, err
+		}
+		where = "Transit key " + string(w.ID())
+		if sealer, err = secret.NewSealerWith(w.Wrapper); err != nil {
+			return InitResult{}, err
+		}
+	} else {
+		if kek, where, err = obtainKEK(ctx, o, cfg); err != nil {
+			return InitResult{}, err
+		}
+		if sealer, err = secret.NewSealer(kek); err != nil {
+			return InitResult{}, err
+		}
 	}
 	td, err := pki.NewTrustDomain()
 	if err != nil {
@@ -325,7 +338,16 @@ func writeNew(path string, data []byte, perm os.FileMode) error {
 		_ = f.Close()
 		return err
 	}
-	return f.Close()
+	if err := f.Close(); err != nil {
+		return err
+	}
+	// The new directory entry too, so that a crash does not lose the file just written. Where a
+	// directory cannot be opened or synced (Windows) there is nothing more to do.
+	if d, err := os.Open(filepath.Dir(path)); err == nil { //nolint:gosec // G304: the operator's path
+		_ = d.Sync()
+		_ = d.Close()
+	}
+	return nil
 }
 
 // systemdCredsEncrypt encrypts b into the credential file path with systemd-creds (systemd ≥ 250),

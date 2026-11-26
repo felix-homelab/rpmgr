@@ -106,11 +106,7 @@ type Controller struct {
 		Driver string `yaml:"driver"`
 		DSN    string `yaml:"dsn"`
 	} `yaml:"database"`
-	KEK struct {
-		Source string `yaml:"source"`
-		Name   string `yaml:"name"` // systemd-credential
-		Path   string `yaml:"path"` // file
-	} `yaml:"kek"`
+	KEK KEK `yaml:"kek"`
 	// TLS is the certificate of the public URL from files; without it, ACME obtains one.
 	TLS struct {
 		CertFile string `yaml:"cert_file"`
@@ -138,11 +134,89 @@ func (r RevocationLog) check() error {
 // [F certmagic v0.25.6 acmeissuer.go:664].
 const LetsEncrypt = "https://acme-v02.api.letsencrypt.org/directory"
 
-// The KEK sources of Phase 1 (docs/04-security.md, "Secrets at rest and in logs").
+// The KEK sources (docs/04-security.md, "Secrets at rest and in logs").
 const (
 	KEKSystemdCredential = "systemd-credential" //nolint:gosec // G101: the name of a source, not a credential
 	KEKFile              = "file"
+	KEKKMS               = "kms" // a Transit key in Vault or OpenBao
 )
+
+// KEK is the kek section of a controller's boot file.
+type KEK struct {
+	Source string `yaml:"source"`
+	Name   string `yaml:"name"` // systemd-credential
+	Path   string `yaml:"path"` // file
+	KMS    *KMS   `yaml:"kms"`  // kms
+}
+
+// KMS is the kek.kms section: the Transit key and how the controller logs in. Every credential is
+// a file; none is in the boot file ("KEK in Vault or OpenBao Transit" in docs/04-security.md).
+type KMS struct {
+	Address   string      `yaml:"address"`
+	Mount     string      `yaml:"mount"` // default transit
+	Key       string      `yaml:"key"`
+	CAFile    string      `yaml:"ca_file"`
+	TokenFile string      `yaml:"token_file"`
+	AppRole   *KMSAppRole `yaml:"approle"`
+}
+
+// KMSAppRole is kek.kms.approle.
+type KMSAppRole struct {
+	Mount        string `yaml:"mount"` // default approle
+	RoleIDFile   string `yaml:"role_id_file"`
+	SecretIDFile string `yaml:"secret_id_file"`
+}
+
+// check validates the section against the source. The files' modes are checked when they are read.
+func (k KEK) check() error {
+	if k.Source != KEKKMS && k.KMS != nil {
+		return fmt.Errorf("kek.kms is for kek.source kms, not %q", k.Source)
+	}
+	switch k.Source {
+	case KEKSystemdCredential:
+		if !credentialNameRe.MatchString(k.Name) || k.Path != "" {
+			return errors.New("kek: systemd-credential needs a credential name (letters, digits, '_', '.', '-') and no path")
+		}
+	case KEKFile:
+		if !filepath.IsAbs(k.Path) || k.Name != "" {
+			return errors.New("kek: file needs an absolute path and no name")
+		}
+	case KEKKMS:
+		return k.checkKMS()
+	default:
+		return fmt.Errorf("kek.source %q: want systemd-credential, file or kms; a KEK is never read from the environment", k.Source)
+	}
+	return nil
+}
+
+func (k KEK) checkKMS() error {
+	if k.Name != "" || k.Path != "" {
+		return errors.New("kek: kms takes no name and no path")
+	}
+	m := k.KMS
+	if m == nil {
+		return errors.New("kek.kms: kek.source kms needs a kms section")
+	}
+	errs := []error{checkURL("kek.kms.address", m.Address)}
+	if m.Key == "" {
+		errs = append(errs, errors.New("kek.kms.key: the Transit key is required"))
+	}
+	if m.CAFile != "" {
+		errs = append(errs, checkAbs("kek.kms.ca_file", m.CAFile))
+	}
+	switch {
+	case m.TokenFile != "" && m.AppRole != nil:
+		errs = append(errs, errors.New("kek.kms: token_file and approle are exclusive"))
+	case m.TokenFile != "":
+		errs = append(errs, checkAbs("kek.kms.token_file", m.TokenFile))
+	case m.AppRole != nil:
+		errs = append(errs, checkAbs("kek.kms.approle.role_id_file", m.AppRole.RoleIDFile),
+			checkAbs("kek.kms.approle.secret_id_file", m.AppRole.SecretIDFile))
+	default:
+		errs = append(errs, errors.New("kek.kms: one of token_file and approle is required"))
+	}
+	return errors.Join(errs...)
+}
 
 // credentialSystemd is the first systemd version with encrypted credentials
 // (LoadCredentialEncrypted=); below it, init writes the KEK to a file (docs/10-operations.md,
@@ -195,19 +269,8 @@ func (c *Controller) validate() error {
 	default:
 		errs = append(errs, checkAbs("tls.cert_file", c.TLS.CertFile), checkAbs("tls.key_file", c.TLS.KeyFile))
 	}
-	switch c.KEK.Source {
-	case KEKSystemdCredential:
-		if !credentialNameRe.MatchString(c.KEK.Name) || c.KEK.Path != "" {
-			errs = append(errs, fmt.Errorf("kek: systemd-credential needs a credential name (letters, digits, '_', '.', '-') and no path"))
-		}
-	case KEKFile:
-		if !filepath.IsAbs(c.KEK.Path) || c.KEK.Name != "" {
-			errs = append(errs, fmt.Errorf("kek: file needs an absolute path and no name"))
-		}
-	case "kms":
-		errs = append(errs, errors.New("kek.source: kms comes with Phase 2"))
-	default:
-		errs = append(errs, fmt.Errorf("kek.source %q: want systemd-credential or file; a KEK is never read from the environment", c.KEK.Source))
+	if err := c.KEK.check(); err != nil {
+		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
 }
@@ -370,11 +433,7 @@ type AllInOne struct {
 		Driver string `yaml:"driver"`
 		DSN    string `yaml:"dsn"`
 	} `yaml:"database"`
-	KEK struct {
-		Source string `yaml:"source"`
-		Name   string `yaml:"name"`
-		Path   string `yaml:"path"`
-	} `yaml:"kek"`
+	KEK KEK `yaml:"kek"`
 	TLS struct {
 		CertFile string `yaml:"cert_file"`
 		KeyFile  string `yaml:"key_file"`
@@ -414,7 +473,7 @@ func (a *AllInOne) Controller() Controller {
 	none := ""
 	c.Listen.HTTPS, c.Listen.HTTP, c.Listen.Admin = a.Listen.TCP, &none, a.Listen.Admin
 	c.Database.Driver, c.Database.DSN = a.Database.Driver, a.Database.DSN
-	c.KEK.Source, c.KEK.Name, c.KEK.Path = a.KEK.Source, a.KEK.Name, a.KEK.Path
+	c.KEK = a.KEK
 	c.TLS.CertFile, c.TLS.KeyFile = a.TLS.CertFile, a.TLS.KeyFile
 	c.RevocationLog = a.RevocationLog
 	return c

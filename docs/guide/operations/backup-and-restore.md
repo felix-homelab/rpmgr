@@ -90,7 +90,9 @@ to ([below](#on-a-new-host)).
 
 Every revocation is first written to the controller's local `revocations.log`, which each backup
 includes. A restore applies again every revocation made after the backup, so that a revoked
-certificate or token does not come back. It reads them from the local log of the host it runs on,
+certificate or token does not come back. It also takes an offline root's key out again, when the
+backup is older than the day the root went offline and still held it
+([PKI](pki.md#take-the-root-offline)). It reads them from the local log of the host it runs on,
 which is lost with the host.
 
 The boot setting `revocation_log.sink` keeps a copy off the host: a directory, usually on a share

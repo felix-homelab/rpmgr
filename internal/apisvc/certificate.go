@@ -52,9 +52,17 @@ func (c *Certificates) UploadCertificate(ctx context.Context, req *connect.Reque
 	m := req.Msg
 	resp, err := api.Dedupe(ctx, c.API, m.GetRequestId(), m, func(ctx context.Context) (*rpmgrv1.UploadCertificateResponse, error) {
 		var row *ent.Certificate
+		// Checked and sealed before the transaction: a key service may be slow.
+		up, err := certs.SealUpload(ctx, c.Sealer, []byte(m.GetChainPem()), []byte(m.GetPrivateKeyPem()), c.now())
+		if errors.Is(err, certs.ErrInvalid) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		if err != nil {
+			return nil, storeError(err)
+		}
 		rev, err := store.ConfigTx(ctx, c.DB, func(tx *ent.Tx) ([]string, error) {
 			var err error
-			row, err = certs.Upload(ctx, tx, c.Sealer, m.GetOrgId(), []byte(m.GetChainPem()), []byte(m.GetPrivateKeyPem()), c.now())
+			row, err = up.Save(ctx, tx, m.GetOrgId())
 			if err != nil {
 				return nil, err
 			}

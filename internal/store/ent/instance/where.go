@@ -74,6 +74,16 @@ func RestoreReviewSince(v time.Time) predicate.Instance {
 	return predicate.Instance(sql.FieldEQ(FieldRestoreReviewSince, v))
 }
 
+// RetiredAt applies equality check predicate on the "retired_at" field. It's identical to RetiredAtEQ.
+func RetiredAt(v time.Time) predicate.Instance {
+	return predicate.Instance(sql.FieldEQ(FieldRetiredAt, v))
+}
+
+// RetiredTo applies equality check predicate on the "retired_to" field. It's identical to RetiredToEQ.
+func RetiredTo(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldEQ(FieldRetiredTo, v))
+}
+
 // TrustDomainEQ applies the EQ predicate on the "trust_domain" field.
 func TrustDomainEQ(v string) predicate.Instance {
 	return predicate.Instance(sql.FieldEQ(FieldTrustDomain, v))
@@ -292,6 +302,131 @@ func RestoreReviewSinceIsNil() predicate.Instance {
 // RestoreReviewSinceNotNil applies the NotNil predicate on the "restore_review_since" field.
 func RestoreReviewSinceNotNil() predicate.Instance {
 	return predicate.Instance(sql.FieldNotNull(FieldRestoreReviewSince))
+}
+
+// RetiredAtEQ applies the EQ predicate on the "retired_at" field.
+func RetiredAtEQ(v time.Time) predicate.Instance {
+	return predicate.Instance(sql.FieldEQ(FieldRetiredAt, v))
+}
+
+// RetiredAtNEQ applies the NEQ predicate on the "retired_at" field.
+func RetiredAtNEQ(v time.Time) predicate.Instance {
+	return predicate.Instance(sql.FieldNEQ(FieldRetiredAt, v))
+}
+
+// RetiredAtIn applies the In predicate on the "retired_at" field.
+func RetiredAtIn(vs ...time.Time) predicate.Instance {
+	return predicate.Instance(sql.FieldIn(FieldRetiredAt, vs...))
+}
+
+// RetiredAtNotIn applies the NotIn predicate on the "retired_at" field.
+func RetiredAtNotIn(vs ...time.Time) predicate.Instance {
+	return predicate.Instance(sql.FieldNotIn(FieldRetiredAt, vs...))
+}
+
+// RetiredAtGT applies the GT predicate on the "retired_at" field.
+func RetiredAtGT(v time.Time) predicate.Instance {
+	return predicate.Instance(sql.FieldGT(FieldRetiredAt, v))
+}
+
+// RetiredAtGTE applies the GTE predicate on the "retired_at" field.
+func RetiredAtGTE(v time.Time) predicate.Instance {
+	return predicate.Instance(sql.FieldGTE(FieldRetiredAt, v))
+}
+
+// RetiredAtLT applies the LT predicate on the "retired_at" field.
+func RetiredAtLT(v time.Time) predicate.Instance {
+	return predicate.Instance(sql.FieldLT(FieldRetiredAt, v))
+}
+
+// RetiredAtLTE applies the LTE predicate on the "retired_at" field.
+func RetiredAtLTE(v time.Time) predicate.Instance {
+	return predicate.Instance(sql.FieldLTE(FieldRetiredAt, v))
+}
+
+// RetiredAtIsNil applies the IsNil predicate on the "retired_at" field.
+func RetiredAtIsNil() predicate.Instance {
+	return predicate.Instance(sql.FieldIsNull(FieldRetiredAt))
+}
+
+// RetiredAtNotNil applies the NotNil predicate on the "retired_at" field.
+func RetiredAtNotNil() predicate.Instance {
+	return predicate.Instance(sql.FieldNotNull(FieldRetiredAt))
+}
+
+// RetiredToEQ applies the EQ predicate on the "retired_to" field.
+func RetiredToEQ(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldEQ(FieldRetiredTo, v))
+}
+
+// RetiredToNEQ applies the NEQ predicate on the "retired_to" field.
+func RetiredToNEQ(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldNEQ(FieldRetiredTo, v))
+}
+
+// RetiredToIn applies the In predicate on the "retired_to" field.
+func RetiredToIn(vs ...string) predicate.Instance {
+	return predicate.Instance(sql.FieldIn(FieldRetiredTo, vs...))
+}
+
+// RetiredToNotIn applies the NotIn predicate on the "retired_to" field.
+func RetiredToNotIn(vs ...string) predicate.Instance {
+	return predicate.Instance(sql.FieldNotIn(FieldRetiredTo, vs...))
+}
+
+// RetiredToGT applies the GT predicate on the "retired_to" field.
+func RetiredToGT(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldGT(FieldRetiredTo, v))
+}
+
+// RetiredToGTE applies the GTE predicate on the "retired_to" field.
+func RetiredToGTE(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldGTE(FieldRetiredTo, v))
+}
+
+// RetiredToLT applies the LT predicate on the "retired_to" field.
+func RetiredToLT(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldLT(FieldRetiredTo, v))
+}
+
+// RetiredToLTE applies the LTE predicate on the "retired_to" field.
+func RetiredToLTE(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldLTE(FieldRetiredTo, v))
+}
+
+// RetiredToContains applies the Contains predicate on the "retired_to" field.
+func RetiredToContains(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldContains(FieldRetiredTo, v))
+}
+
+// RetiredToHasPrefix applies the HasPrefix predicate on the "retired_to" field.
+func RetiredToHasPrefix(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldHasPrefix(FieldRetiredTo, v))
+}
+
+// RetiredToHasSuffix applies the HasSuffix predicate on the "retired_to" field.
+func RetiredToHasSuffix(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldHasSuffix(FieldRetiredTo, v))
+}
+
+// RetiredToIsNil applies the IsNil predicate on the "retired_to" field.
+func RetiredToIsNil() predicate.Instance {
+	return predicate.Instance(sql.FieldIsNull(FieldRetiredTo))
+}
+
+// RetiredToNotNil applies the NotNil predicate on the "retired_to" field.
+func RetiredToNotNil() predicate.Instance {
+	return predicate.Instance(sql.FieldNotNull(FieldRetiredTo))
+}
+
+// RetiredToEqualFold applies the EqualFold predicate on the "retired_to" field.
+func RetiredToEqualFold(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldEqualFold(FieldRetiredTo, v))
+}
+
+// RetiredToContainsFold applies the ContainsFold predicate on the "retired_to" field.
+func RetiredToContainsFold(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldContainsFold(FieldRetiredTo, v))
 }
 
 // And groups predicates with the AND operator between them.

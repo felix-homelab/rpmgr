@@ -105,7 +105,7 @@ an opaque blob: no foreign system's configuration is embedded, and every field i
 
 | Table | Key fields | Notes |
 |---|---|---|
-| `ca_keys` | id, kind (`root`, `intermediate`, `config_signing`, `audit_checkpoint`, `route_assertion` in Phase 2), algorithm, public_key, certificate, cross_certificate (DER; a root only), csr (PEM; a `next` key whose certificate an offline root has yet to sign), key_enc, not_before, not_after, status (`next`, `active`, `retired`, `compromised`) | Instance-level keys of [04](04-security.md#ca-hierarchy). `key_enc` is envelope-encrypted under the KEK, and null for an offline root (`rpmgr ca offline-root`, [04](04-security.md#offline-root-ca)) and for a `compromised` key, whose material is wiped. A `next` key whose `certificate` is null waits for its signature. A `next` root carries the `cross_certificate` that its predecessor signed ([04](04-security.md#root-rotation)). Each kind has one `active` key, and a root can have a second, `next`, during a rotation; the controller refuses to start otherwise. Only the system scope reads or writes the table |
+| `ca_keys` | id, kind (`root`, `intermediate`, `config_signing`, `audit_checkpoint`, `route_assertion` in Phase 2), algorithm, public_key, certificate, cross_certificate (DER; a root only), csr (PEM; a `next` key whose certificate an offline root has yet to sign), key_enc, not_before, not_after, status (`next`, `active`, `retired`, `compromised`) | Instance-level keys of [04](04-security.md#ca-hierarchy). `key_enc` is envelope-encrypted under the KEK, and null for an offline root (`rpmgr ca offline-root`, [04](04-security.md#offline-root-ca)) and for a `compromised` key, whose material is wiped. A `next` key whose `certificate` is null waits for its signature. Its `not_before` and `not_after` then hold the validity the root will most likely give, and the import replaces them with the certificate's. A `next` root carries the `cross_certificate` that its predecessor signed ([04](04-security.md#root-rotation)). Each kind has one `active` key, and a root can have a second, `next`, during a rotation; the controller refuses to start otherwise. Only the system scope reads or writes the table |
 | `acme_storage` | key, value_enc, size, modified_at | certmagic's storage (account keys, orders, certificates in progress); `value_enc` is under the KEK with the key as its row, `size` the plain value's; locks are `leases` named `acme:<lock>` (holder, expiry, fencing token), kept alive while held, so replicas never order the same certificate twice ([S6](spikes/S6.md)). Only the system scope reads or writes it |
 | `ca_bundles` | id, org_id, name (unique per org), pem | Custom CAs for verifying HTTPS upstreams ([04](04-security.md#controller-certificates)), referenced by `route_targets.tls_ca_bundle_id` of the same org (composite foreign key) |
 
@@ -241,7 +241,7 @@ of each route, with the floor applied, into the snapshot of every gateway that s
 | Table | Key fields | Notes |
 |---|---|---|
 | `instance_settings`, `org_settings` | instance: id (single row); org: id, org_id (unique); both: value (the serialised `rpmgr.v1.InstanceSettings` or `OrgSettings` message), version, updated_by, updated_at | Runtime settings edited in the UI; boot settings stay in the config file ([10](10-operations.md#configuration)). `default_transport` is the instance default of the data-session transport, `auto` until changed ([03](03-connections.md#transport-selection)). `base_domain` is the instance base domain of delegated labels: set by the Instance Admin, a verified or trusted domain of the system org ([15](15-dns.md#base-domain), [D165](14-open-decisions.md#engineering)). `cloudflare_ip_ranges` is written by a daily job in a configuration transaction, so gateway snapshots stay deterministic ([15](15-dns.md#proxied-http-routes)). One typed message per scope: a field that is not set has its default, updates name their fields in a field mask, and every change is a configuration transaction |
-| `instance` | id (single row), trust_domain, db_epoch, created_at, retired_at, retired_to | The installation's trust domain, which never changes, and its database epoch, a random UUIDv7 that is new at init and at every restore ([03](03-connections.md#revisions-and-ordering)). `retired_at` and `retired_to` are set by `rpmgr migrate-db` on the source once the copy has committed, and a controller **refuses to start on a database that has them** ([Copying a database](#copying-a-database)) |
+| `instance` | id (single row), trust_domain, db_epoch, created_at, retired_at, retired_to | The installation's trust domain, which never changes, and its database epoch, a random UUIDv7 that is new at init and at every restore ([03](03-connections.md#revisions-and-ordering)). `retired_at` and `retired_to` (the path of the target's boot file) are set by `rpmgr migrate-db` on the source once the copy has committed, and a controller **refuses to start on a database that has them** ([Copying a database](#copying-a-database)) |
 | `config_seq` | id (single row), seq | Incremented with a row lock inside every configuration transaction, so commit order equals revision order ([03](03-connections.md#revisions-and-ordering)) |
 | `config_revisions` | seq, db_epoch, org_id (null: an instance-wide change), created_at, actor, changed_resources; index (org_id, seq) | One row per configuration transaction. `db_epoch` is a random UUIDv7, new at init and on every restore. `org_id` is the org whose resources it changed, also when a controller job made the change; the org's event stream reads its revisions by it ([07](07-api.md#events-and-streaming)) |
 | `compiled_snapshots` | agent_id, db_epoch, seq, hash, size_bytes, payload, signature, key_id, created_at | The last 5 sent to each agent, as signed; for diffing and support |
@@ -585,10 +585,21 @@ and so do `rpmgr backup` and `rpmgr restore` for PostgreSQL
   source's hash is taken while it is read, so the source is read once. A difference rolls the
   target back and names the table. The report lists the tables, counts and hashes, and the hash of
   the hashes; it holds no value.
-- **The source is read-only for the copy, and retired after it.** The copier opens the source
-  read-only. `migrate-db` has the same `db_epoch` and revisions on both sides, so a controller
-  started on each would hand agents two histories; after the target's transaction has committed,
-  `migrate-db` therefore sets `instance.retired_at` and `retired_to` on the source, and **a
-  controller refuses to start on a retired database**. `--no-retire` leaves the source usable, for
-  a test copy, and says so. Backup and restore never retire anything
-  ([10](10-operations.md#moving-between-sqlite-and-postgresql)).
+- **The source is held for the copy, and retired after it.** `migrate-db` reads the source in one
+  transaction that also keeps every other writer out until the end (`BEGIN IMMEDIATE` on SQLite), so
+  a command that takes no controller lock cannot write to a database about to be retired, and
+  retires it in that same transaction. The path of a SQLite database is resolved through symbolic
+  links before its lock file is named, and a source with a second hard link is refused. `migrate-db`
+  has the same `db_epoch` and revisions on both sides, so a controller started on each would hand
+  agents two histories; after the target's transaction has committed, `migrate-db` therefore sets
+  `instance.retired_at` and `retired_to` on the source, and **a controller refuses to start on a
+  retired database**. Every command that opens the database without the controller lock refuses a
+  retired one too, naming `retired_to`, and checks again inside each write transaction (a share lock
+  on the instance row on PostgreSQL), so a write that waited for the retirement never lands in the
+  retired database. A database, lock, journal or shared-memory file that is a link, a special file
+  or has a second name is refused, no lock file is opened through a link, and `migrate-db` runs as
+  the owner of the directories it works in and never changes an owner. `--no-retire` leaves the
+  source usable, for a test copy, and says so. A restore creates a new database, which is not
+  retired; it keeps the database it replaces, retired or not, under the suffix of the replaced
+  files, and `restore --replaces` warns when it names a retired one (slice 8.5). Backup and restore
+  never retire anything ([10](10-operations.md#moving-between-sqlite-and-postgresql)).

@@ -30,6 +30,18 @@ type Settings struct {
 	Now    func() time.Time
 	// RevocationLog reports where the revocation log stands; nil reports a log without a sink.
 	RevocationLog func() revlog.Status
+	// Boot reports the boot file of this controller; nil makes GetBootSettings return nothing.
+	Boot *BootSource
+}
+
+// GetBootSettings implements SettingsService. The authz option on the method admits the Instance
+// Admin only.
+func (s *Settings) GetBootSettings(context.Context, *connect.Request[rpmgrv1.GetBootSettingsRequest]) (
+	*connect.Response[rpmgrv1.GetBootSettingsResponse], error) {
+	if s.Boot == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("this controller holds no boot file"))
+	}
+	return connect.NewResponse(&rpmgrv1.GetBootSettingsResponse{Settings: s.Boot.Settings()}), nil
 }
 
 // GetInstanceSettings implements SettingsService.

@@ -252,7 +252,7 @@ func (a *AuditSinks) CreateAuditSink(ctx context.Context, req *connect.Request[r
 			return nil, err
 		}
 		var err error
-		if sealed, err = a.Sealer.Seal(sinkSecretContext(id), secret.New(in.GetSecret())); err != nil {
+		if sealed, err = a.Sealer.Seal(ctx, sinkSecretContext(id), secret.New(in.GetSecret())); err != nil {
 			return nil, err
 		}
 		kind, settings["url"] = eauditsink.KindWebhook, in.GetUrl()
@@ -273,7 +273,7 @@ func (a *AuditSinks) CreateAuditSink(ctx context.Context, req *connect.Request[r
 			return nil, err
 		}
 		var err error
-		if sealed, err = a.Sealer.Seal(sinkSecretContext(id), secret.New(in.GetSecret())); err != nil {
+		if sealed, err = a.Sealer.Seal(ctx, sinkSecretContext(id), secret.New(in.GetSecret())); err != nil {
 			return nil, err
 		}
 		kind, settings = eauditsink.KindS3, set.Map()
@@ -285,6 +285,9 @@ func (a *AuditSinks) CreateAuditSink(ctx context.Context, req *connect.Request[r
 	err := store.WriteTx(sys, a.DB, func(tx *ent.Tx) (err error) {
 		q := tx.AuditSink.Create().SetID(id).SetKind(kind).SetName(in.GetName()).SetSettings(settings).SetEntries(in.GetEntries()).SetEnabled(true)
 		if sealed != nil {
+			if err := store.RecordSealed(sys, tx, sinkSecretContext(id), sealed); err != nil {
+				return err
+			}
 			q.SetSecretEnc(sealed)
 		}
 		row, err = q.Save(sys)
@@ -418,7 +421,7 @@ func (a *AuditSinks) UpdateAuditSink(ctx context.Context, req *connect.Request[r
 		if newSecret || !maps.Equal(settings, pre.Settings) {
 			key := secret.New(in.GetSecret())
 			if !newSecret {
-				v, err := a.Sealer.Open(sinkSecretContext(pre.ID), *pre.SecretEnc)
+				v, err := a.Sealer.Open(ctx, sinkSecretContext(pre.ID), *pre.SecretEnc)
 				if err != nil {
 					return nil, badSink("the stored secret key cannot be opened; set it again")
 				}
@@ -428,6 +431,18 @@ func (a *AuditSinks) UpdateAuditSink(ctx context.Context, req *connect.Request[r
 				return nil, err
 			}
 			checked = sinkVersion(pre)
+		}
+	}
+	// Sealed before the transaction, which a key service may hold up; the secret does not depend
+	// on the row's version.
+	var sealed []byte
+	if slices.Contains(paths, "secret") {
+		if err := checkSecret(in.GetSecret()); err != nil {
+			return nil, err
+		}
+		var err error
+		if sealed, err = a.Sealer.Seal(ctx, sinkSecretContext(in.GetId()), secret.New(in.GetSecret())); err != nil {
+			return nil, storeError(err)
 		}
 	}
 	var row *ent.AuditSink
@@ -445,12 +460,8 @@ func (a *AuditSinks) UpdateAuditSink(ctx context.Context, req *connect.Request[r
 		}
 		u := tx.AuditSink.UpdateOneID(cur.ID).SetName(next.GetName()).SetSettings(settings).
 			SetEntries(next.GetEntries()).SetEnabled(next.GetEnabled())
-		if slices.Contains(paths, "secret") {
-			if err := checkSecret(in.GetSecret()); err != nil {
-				return err
-			}
-			sealed, err := a.Sealer.Seal(sinkSecretContext(cur.ID), secret.New(in.GetSecret()))
-			if err != nil {
+		if sealed != nil {
+			if err := store.RecordSealed(sys, tx, sinkSecretContext(cur.ID), sealed); err != nil {
 				return err
 			}
 			u.SetSecretEnc(sealed)
@@ -478,6 +489,9 @@ func (a *AuditSinks) DeleteAuditSink(ctx context.Context, req *connect.Request[r
 			return err
 		}
 		if err := api.CheckEtag(req.Msg.GetEtag(), sinkVersion(cur), api.Redact(sinkOf(cur, nil))); err != nil {
+			return err
+		}
+		if err := store.ForgetSealed(sys, tx, sinkSecretContext(cur.ID)); err != nil {
 			return err
 		}
 		return tx.AuditSink.DeleteOneID(cur.ID).Exec(sys)

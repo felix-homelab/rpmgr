@@ -912,10 +912,6 @@ func init() {
 	cakeyDescPublicKey := cakeyFields[3].Descriptor()
 	// cakey.PublicKeyValidator is a validator for the "public_key" field. It is called by the builders before save.
 	cakey.PublicKeyValidator = cakeyDescPublicKey.Validators[0].(func([]byte) error)
-	// cakeyDescCertificate is the schema descriptor for certificate field.
-	cakeyDescCertificate := cakeyFields[4].Descriptor()
-	// cakey.CertificateValidator is a validator for the "certificate" field. It is called by the builders before save.
-	cakey.CertificateValidator = cakeyDescCertificate.Validators[0].(func([]byte) error)
 	// cakeyDescID is the schema descriptor for id field.
 	cakeyDescID := cakeyFields[0].Descriptor()
 	// cakey.DefaultID holds the default value on creation for the id field.

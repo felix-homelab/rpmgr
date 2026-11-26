@@ -15,7 +15,7 @@ TestShellRequiresOwnershipGrantAndOptIn	p3	-	-	remote shell
 TestUnverifiedDomainRejected	done	8.5a	#119
 TestBadSnapshotKeepsLastKnownGood	done	3.11	#66	framework clause (internal/agent) and traffic clause (internal/itest, 4.13) done
 TestSecretsNeverLogged	done	9.6	#138	internal/itest; the integration and API service tests log through telemetrytest.Sink; the live-log clause (lines never in the controller's log) in TestLiveLogs_CrossOrgRefused (5.4)
-TestEnroll_BundleWithExtraRootRejected	done	3.8	#63	snapshot and Welcome clause in 8.13 (#696)
+TestEnroll_BundleWithExtraRootRejected	done	3.8	#63	snapshot and Welcome clause done in 8.13 (TestAgent_SnapshotRootNeedsCrossSign)
 TestH2_ConnectorInitiatedStreams	done	4.4	#74	DIAG clause (4.4) and CONTROL_PASSTHROUGH clause (5.13) done; RELAY_OUT clause in P2 (private services)
 TestTLS_WrongGatewayIDRejected	done	4.10	#80
 TestDenyList_AppliedDespiteRejectedSnapshot	done	3.13	#68	internal/itest
@@ -128,12 +128,14 @@ TestWAF_HitsIsolatedPerOrg	p3	-	-	WAF (Phase 3, D173)
 TestCache_IgnoreCookiesRuleNeverStoresSetCookie	p3	-	-	gateway cache (Phase 3, D172)
 TestCache_IgnoreCookiesRuleDoesNotForwardCookie	p3	-	-	gateway cache (Phase 3, D172)
 TestPostgres_RequiresVerifiedTLS	done	8.2	#685	internal/store: the TLS configuration of every remote host (P2-M08, D177)
-TestMigrateDB_SecretsStaySealed	pending	8.4	#687	migrate-db (P2-M08, D175)
-TestKMS_CredentialsNeverLogged	pending	8.8	#691	Transit KEK (P2-M08, D178)
-TestCA_OfflineRootNeverStored	pending	8.10	#693	offline root (P2-M08, D179)
-TestCA_ImportedIntermediateMustChainAndConstrain	pending	8.10	#693	offline root (P2-M08, D179)
+TestMigrateDB_SecretsStaySealed	done	8.4	#687	migrate-db (P2-M08, D175)
+TestKMS_CredentialsNeverLogged	done	8.8	#691	Transit client; log and error clauses
+TestKMS_CredentialsNeverLoggedInAuditAndStatus	done	8.9	#692	fake Transit; kek status output, errors, metrics and audit log
+TestCA_OfflineRootNeverStored	done	8.10	#693	offline root (P2-M08, D179)
+TestCA_OfflineRootCeremony	done	8.11	#694	offline root (P2-M08, D179)
+TestCA_ImportedIntermediateMustChainAndConstrain	done	8.10	#693	offline root (P2-M08, D179)
 TestCA_RotationChainsVerifyWithOldRootOnly	pending	8.14	#697	root rotation (P2-M08, D180)
-TestAgent_SnapshotRootNeedsCrossSign	pending	8.13	#696	root rotation (P2-M08, D180)
+TestAgent_SnapshotRootNeedsCrossSign	done	8.13	#696	root rotation (P2-M08, D180)
 TestCA_CompromisedRootRefusedEverywhere	pending	8.15	#698	root compromise (P2-M08, D179)
 TestRevlogS3_NoOverwriteNoGap	pending	9.1	#701	S3 revocation-log sink (P2-M09, VB-24)
 TestHA_LostLeaseCommitsNothing	pending	9.2	#702	replicas (P2-M09, D177)

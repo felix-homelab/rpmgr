@@ -16,7 +16,7 @@ const (
 	v1HeaderLen  = 1 + kekIDLen + nonceLen + v1WrappedLen + nonceLen
 )
 
-func (s *Sealer) unwrapV1(ctx Context, sealed []byte) (parsed, error) {
+func (s *Sealer) unwrapV1(sc Context, sealed []byte) (parsed, error) {
 	if len(sealed) < v1HeaderLen+tagLen || len(sealed) > v1HeaderLen+maxSealSize+tagLen {
 		return parsed{}, ErrOpen
 	}
@@ -25,10 +25,10 @@ func (s *Sealer) unwrapV1(ctx Context, sealed []byte) (parsed, error) {
 	w, ok := s.byID[wrapperID{KindLocal, string(id[:])}]
 	local, isLocal := w.(*LocalWrapper)
 	if !ok || !isLocal {
-		return parsed{}, ErrOpen
+		return parsed{}, ErrUnknownKey
 	}
 	wrapped := sealed[1+kekIDLen : 1+kekIDLen+nonceLen+v1WrappedLen]
-	dataKey, err := openGCM([]byte(local.kek.key.Reveal()), wrapped, wrapADV1(ctx, id))
+	dataKey, err := openGCM([]byte(local.kek.key.Reveal()), wrapped, wrapADV1(sc, id))
 	if err != nil {
 		return parsed{}, ErrOpen
 	}

@@ -60,6 +60,26 @@ the controller then sends no mail, so invitations and reset links are passed on 
 `not set`. Type a password and **Save** to set it, or press **Remove the password** with the field
 empty to remove it.
 
+## Boot settings
+
+Below the instance settings, the Instance Admin sees the **Boot settings**: what the controller
+that answered read from its boot file when it started ([Boot files](../reference/boot-files.md)).
+The section is read-only. The file is edited on the host and read again at the next restart.
+
+| Shown | What it says |
+|---|---|
+| **Answered by**, **Boot file**, **Loaded** | The replica that answered, the path of its boot file and when the file was loaded |
+| **Public URL**, **Listening** | The public URL and the HTTPS, HTTP and admin addresses; `off` for an address that is not used |
+| **Database** | **SQLite** or **PostgreSQL**; for PostgreSQL also the server and port, the database name, the user and the **TLS mode** |
+| **Password** | PostgreSQL only: whether the password comes from a file or a systemd credential, never the password or the file |
+| **Key-encryption key** | The kind of source: a systemd credential with its name, a file or a key management service; never the key or the path of its file |
+| **Certificate of the public URL** | From files or from ACME |
+| **Revocation-log sink** | The directory of the sink, or `none` |
+| **Log**, **Tracing** | The log level and format as set, and whether tracing is on |
+
+No secret is shown, and no path of a secret file. A replica's page shows that replica's file only;
+with several replicas, each can differ until its file is changed.
+
 ## Webhooks
 
 Shown to the Instance Admin only.

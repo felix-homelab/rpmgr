@@ -6,7 +6,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/re
 import { afterEach, describe, expect, it } from "vitest";
 import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
 import {
-  InstanceSettingsSchema, OrgSettingsSchema, SettingsService, SmtpSecurity, TransportPolicy, UpdateChannel,
+  DatabaseDriver, InstanceSettingsSchema, KekSource, OrgSettingsSchema, PasswordSource, SettingsService, SmtpSecurity, TransportPolicy, UpdateChannel,
   type InstanceSettings, type OrgSettings, type UpdateInstanceSettingsRequest, type UpdateOrgSettingsRequest,
 } from "@/gen/rpmgr/v1/settings_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
@@ -29,7 +29,13 @@ const instance = create(InstanceSettingsSchema, {
   smtp: { server: "mail.example.com:587", from: "rpmgr@example.com", username: "relay", security: SmtpSecurity.STARTTLS },
 });
 
-function page({ role = "owner", admin = false, passwordSet = false, path = "/settings", revocationLog = { sink: true } as object } = {}) {
+const bootSqlite = {
+  nodeId: "node-1", configFile: "/etc/rpmgr/controller.yaml", loadedAt: { seconds: 1791590400n, nanos: 0 }, publicUrl: "https://rpmgr.example.com",
+  listenHttps: ":443", listenHttp: "", listenAdmin: "127.0.0.1:7381", database: { driver: DatabaseDriver.SQLITE },
+  kek: { source: KekSource.SYSTEMD_CREDENTIAL, credentialName: "rpmgr-kek" }, revocationLogSink: "",
+};
+
+function page({ role = "owner", admin = false, passwordSet = false, path = "/settings", revocationLog = { sink: true } as object, boot = bootSqlite as object | null } = {}) {
   const calls = { org: [] as UpdateOrgSettingsRequest[], instance: [] as UpdateInstanceSettingsRequest[], password: [] as string[] };
   const state = { org: create(OrgSettingsSchema, { requireMfa: false, operatorsMayEnroll: false }) as OrgSettings, orgEtag: "o1",
     instance: clone(InstanceSettingsSchema, instance) as InstanceSettings, instanceEtag: "i1", passwordSet, conflict: false };
@@ -50,6 +56,12 @@ function page({ role = "owner", admin = false, passwordSet = false, path = "/set
         state.org = req.settings!;
         state.orgEtag = "o2";
         return { settings: state.org, etag: state.orgEtag };
+      },
+      getBootSettings: () => {
+        if (!boot) {
+          throw apiError(Code.PermissionDenied);
+        }
+        return { settings: boot };
       },
       getInstanceSettings: () => ({ settings: state.instance, etag: state.instanceEtag, smtpPasswordSet: state.passwordSet, revocationLog }),
       updateInstanceSettings: (req) => {
@@ -301,6 +313,40 @@ describe("Settings", () => {
     page({ revocationLog: { sink: false } });
     await screen.findByRole("form", { name: "Organisation settings" });
     expect(screen.queryByText(/revocation log/)).toBeNull(); // not the Instance Admin
+  });
+
+  it("shows the Instance Admin the boot settings of a SQLite controller, read-only", async () => {
+    page({ admin: true });
+    const dl = (await screen.findByText("node-1")).closest("dl")!;
+    const list = within(dl);
+    expect(list.getByText("/etc/rpmgr/controller.yaml")).toBeTruthy();
+    expect(list.getByText("HTTPS :443, HTTP off, Admin 127.0.0.1:7381")).toBeTruthy();
+    expect(list.getByText("SQLite")).toBeTruthy();
+    expect(list.getByText("systemd credential rpmgr-kek")).toBeTruthy();
+    expect(list.getByText("none")).toBeTruthy(); // no sink
+    expect(list.queryByText("Server")).toBeNull(); // SQLite has no server
+    expect(dl.querySelectorAll("input, select, textarea, button, a")).toHaveLength(0); // read-only
+    expect(screen.queryAllByText(/^settings\./)).toEqual([]); // U11: never a raw key
+  });
+
+  it("shows a PostgreSQL controller's server, TLS mode and the kind of password source, and its sink", async () => {
+    page({ admin: true, boot: { ...bootSqlite, kek: { source: KekSource.FILE }, revocationLogSink: "/mnt/share/revlog",
+      database: { driver: DatabaseDriver.POSTGRES, host: "db.example.com", port: "5433", database: "rpmgr", user: "rpmgr", sslmode: "verify-full",
+        passwordSource: PasswordSource.FILE } } });
+    const list = within((await screen.findByText("db.example.com:5433")).closest("dl")!);
+    for (const text of ["PostgreSQL", "verify-full", "from a file", "/mnt/share/revlog"]) {
+      expect(list.getByText(text)).toBeTruthy();
+    }
+    expect(list.getAllByText("file")).toHaveLength(1); // the KEK source
+  });
+
+  it("shows no boot settings to an org member, and says so when the API refuses", async () => {
+    page({ role: "viewer" });
+    await screen.findByRole("form", { name: "Organisation settings" });
+    expect(screen.queryByText("Boot settings")).toBeNull();
+    cleanup();
+    page({ admin: true, boot: null });
+    expect((await screen.findByRole("alert")).textContent).toMatch(/^The boot settings could not be read\./);
   });
 
   it("marks the sender address as required only while a mail relay is set", async () => {

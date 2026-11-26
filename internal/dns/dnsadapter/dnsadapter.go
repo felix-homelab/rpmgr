@@ -110,7 +110,7 @@ func (a *Adapter) target(ctx context.Context, zone string) (*ent.DNSZone, dns.Pr
 	if err != nil {
 		return nil, nil, err
 	}
-	tok, err := a.Sealer.Open(providers.SecretContext(p.ID), p.CredentialEnc)
+	tok, err := a.Sealer.Open(ctx, providers.SecretContext(p.ID), p.CredentialEnc)
 	if err != nil {
 		return nil, nil, fmt.Errorf("dnsadapter: the provider's token cannot be opened: %w", err)
 	}

@@ -264,7 +264,7 @@ func newEnv(t *testing.T) *env {
 						return revlog.Status{}
 					}
 					return e.revlogStatus()
-				}}, o...)
+				}, Boot: &bootTestSource}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}

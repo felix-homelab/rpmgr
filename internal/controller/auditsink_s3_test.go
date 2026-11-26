@@ -4,6 +4,7 @@ package controller_test
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -48,7 +49,7 @@ func (l *logBuffer) String() string {
 func (e *sinkEnv) s3Sink(name string, srv *objstoretest.Server, entries bool) *ent.AuditSink {
 	e.t.Helper()
 	id := ids.New("ask")
-	sealed, err := e.sealer.Seal(secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: id}, secret.New(awsSecretKey))
+	sealed, err := e.sealer.Seal(context.Background(), secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: id}, secret.New(awsSecretKey))
 	if err != nil {
 		e.t.Fatal(err)
 	}

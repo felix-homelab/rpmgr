@@ -60,6 +60,34 @@ func (_c *InstanceCreate) SetNillableRestoreReviewSince(v *time.Time) *InstanceC
 	return _c
 }
 
+// SetRetiredAt sets the "retired_at" field.
+func (_c *InstanceCreate) SetRetiredAt(v time.Time) *InstanceCreate {
+	_c.mutation.SetRetiredAt(v)
+	return _c
+}
+
+// SetNillableRetiredAt sets the "retired_at" field if the given value is not nil.
+func (_c *InstanceCreate) SetNillableRetiredAt(v *time.Time) *InstanceCreate {
+	if v != nil {
+		_c.SetRetiredAt(*v)
+	}
+	return _c
+}
+
+// SetRetiredTo sets the "retired_to" field.
+func (_c *InstanceCreate) SetRetiredTo(v string) *InstanceCreate {
+	_c.mutation.SetRetiredTo(v)
+	return _c
+}
+
+// SetNillableRetiredTo sets the "retired_to" field if the given value is not nil.
+func (_c *InstanceCreate) SetNillableRetiredTo(v *string) *InstanceCreate {
+	if v != nil {
+		_c.SetRetiredTo(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *InstanceCreate) SetID(v int) *InstanceCreate {
 	_c.mutation.SetID(v)
@@ -186,6 +214,14 @@ func (_c *InstanceCreate) createSpec() (*Instance, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RestoreReviewSince(); ok {
 		_spec.SetField(instance.FieldRestoreReviewSince, field.TypeTime, value)
 		_node.RestoreReviewSince = &value
+	}
+	if value, ok := _c.mutation.RetiredAt(); ok {
+		_spec.SetField(instance.FieldRetiredAt, field.TypeTime, value)
+		_node.RetiredAt = &value
+	}
+	if value, ok := _c.mutation.RetiredTo(); ok {
+		_spec.SetField(instance.FieldRetiredTo, field.TypeString, value)
+		_node.RetiredTo = &value
 	}
 	return _node, _spec
 }

@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -44,7 +45,7 @@ var where = Context{Table: "ca_keys", Column: "key_enc", RowID: "cak_01JA2Z8Q6W7
 func TestSealOpen(t *testing.T) {
 	s := newSealer(t, newKEK(t))
 	for _, plain := range []string{"", "x", strings.Repeat("k", 4096)} {
-		sealed, err := s.Seal(where, New(plain))
+		sealed, err := s.Seal(context.Background(), where, New(plain))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -52,7 +53,7 @@ func TestSealOpen(t *testing.T) {
 		if len(plain) >= 8 && bytes.Contains(sealed, []byte(plain)) {
 			t.Fatal("sealed bytes contain the plaintext")
 		}
-		got, err := s.Open(where, sealed)
+		got, err := s.Open(context.Background(), where, sealed)
 		if err != nil || got.Reveal() != plain {
 			t.Errorf("Open = %q, %v; want %q", got.Reveal(), err, plain)
 		}
@@ -61,8 +62,8 @@ func TestSealOpen(t *testing.T) {
 
 func TestSealIsRandomised(t *testing.T) {
 	s := newSealer(t, newKEK(t))
-	a, _ := s.Seal(where, New("same"))
-	b, _ := s.Seal(where, New("same"))
+	a, _ := s.Seal(context.Background(), where, New("same"))
+	b, _ := s.Seal(context.Background(), where, New("same"))
 	if bytes.Equal(a, b) {
 		t.Error("two seals of the same secret are identical")
 	}
@@ -71,7 +72,7 @@ func TestSealIsRandomised(t *testing.T) {
 func TestOpenRefuses(t *testing.T) {
 	kek := newKEK(t)
 	s := newSealer(t, kek)
-	sealed, err := s.Seal(where, New("secret"))
+	sealed, err := s.Seal(context.Background(), where, New("secret"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,36 +84,36 @@ func TestOpenRefuses(t *testing.T) {
 		{Table: "ca_keyskey_enc", Column: "", RowID: where.RowID},
 	}
 	for _, ctx := range other {
-		if _, err := s.Open(ctx, sealed); !errors.Is(err, ErrOpen) {
+		if _, err := s.Open(context.Background(), ctx, sealed); !errors.Is(err, ErrOpen) {
 			t.Errorf("Open with context %+v: %v, want ErrOpen", ctx, err)
 		}
 	}
 	for i := range sealed {
 		tampered := append([]byte(nil), sealed...)
 		tampered[i] ^= 0x01
-		if _, err := s.Open(where, tampered); !errors.Is(err, ErrOpen) {
+		if _, err := s.Open(context.Background(), where, tampered); !errors.Is(err, ErrOpen) {
 			t.Fatalf("byte %d flipped: %v, want ErrOpen", i, err)
 		}
 	}
 	for _, n := range []int{0, 1, 4, minV2Header, minV2Header + 8 + 60, len(sealed) - 1} {
-		if _, err := s.Open(where, sealed[:n]); !errors.Is(err, ErrOpen) {
+		if _, err := s.Open(context.Background(), where, sealed[:n]); !errors.Is(err, ErrOpen) {
 			t.Errorf("truncated to %d bytes: %v, want ErrOpen", n, err)
 		}
 	}
-	if _, err := newSealer(t, newKEK(t)).Open(where, sealed); !errors.Is(err, ErrOpen) {
+	if _, err := newSealer(t, newKEK(t)).Open(context.Background(), where, sealed); !errors.Is(err, ErrOpen) {
 		t.Errorf("Open with another KEK: %v, want ErrOpen", err)
 	}
 }
 
 func TestRotation(t *testing.T) {
 	old, cur := newKEK(t), newKEK(t)
-	sealed, _ := newSealer(t, old).Seal(where, New("rotate me"))
+	sealed, _ := newSealer(t, old).Seal(context.Background(), where, New("rotate me"))
 
 	s := newSealer(t, cur, old)
-	if got, err := s.Open(where, sealed); err != nil || got.Reveal() != "rotate me" {
+	if got, err := s.Open(context.Background(), where, sealed); err != nil || got.Reveal() != "rotate me" {
 		t.Fatalf("Open with the previous KEK = %q, %v", got.Reveal(), err)
 	}
-	rewrapped, err := s.Rewrap(where, sealed)
+	rewrapped, err := s.Rewrap(context.Background(), where, sealed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,13 +125,13 @@ func TestRotation(t *testing.T) {
 	if !bytes.Equal(rewrapped[len(rewrapped)-n:], sealed[len(sealed)-n:]) {
 		t.Error("rewrap changed the encrypted secret")
 	}
-	if got, err := newSealer(t, cur).Open(where, rewrapped); err != nil || got.Reveal() != "rotate me" {
+	if got, err := newSealer(t, cur).Open(context.Background(), where, rewrapped); err != nil || got.Reveal() != "rotate me" {
 		t.Errorf("Open with only the new KEK = %q, %v", got.Reveal(), err)
 	}
-	if again, _ := s.Rewrap(where, rewrapped); !bytes.Equal(again, rewrapped) {
+	if again, _ := s.Rewrap(context.Background(), where, rewrapped); !bytes.Equal(again, rewrapped) {
 		t.Error("rewrapping a secret already under the current KEK changed it")
 	}
-	if _, err := s.Rewrap(Context{Table: "x"}, sealed); !errors.Is(err, ErrOpen) {
+	if _, err := s.Rewrap(context.Background(), Context{Table: "x"}, sealed); !errors.Is(err, ErrOpen) {
 		t.Errorf("Rewrap with the wrong context: %v, want ErrOpen", err)
 	}
 }
@@ -152,7 +153,7 @@ func TestKEKVersionAndErrors(t *testing.T) {
 	if _, err := NewSealer(k, KEK{}); err == nil {
 		t.Error("NewSealer accepted an empty previous KEK")
 	}
-	if _, err := newSealer(t, k).Seal(where, New(strings.Repeat("x", maxSealSize+1))); err == nil {
+	if _, err := newSealer(t, k).Seal(context.Background(), where, New(strings.Repeat("x", maxSealSize+1))); err == nil {
 		t.Error("Seal accepted a secret above the size limit")
 	}
 	if strings.Contains(ErrOpen.Error(), "ca_keys") {
@@ -294,7 +295,7 @@ func sealV1(t *testing.T, k KEK, c Context, plain string) []byte {
 // TestV2Layout: a sealed value is laid out as docs/04-security.md, "Envelope format v2", says.
 func TestV2Layout(t *testing.T) {
 	k := newKEK(t)
-	sealed, err := newSealer(t, k).Seal(where, New("abc"))
+	sealed, err := newSealer(t, k).Seal(context.Background(), where, New("abc"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,17 +315,17 @@ func TestV1V2(t *testing.T) {
 	k := newKEK(t)
 	s := newSealer(t, k)
 	v1 := sealV1(t, k, where, "old")
-	if got, err := s.Open(where, v1); err != nil || got.Reveal() != "old" {
+	if got, err := s.Open(context.Background(), where, v1); err != nil || got.Reveal() != "old" {
 		t.Fatalf("Open v1 = %q, %v", got.Reveal(), err)
 	}
 	if v, err := KEKVersion(v1); err != nil || v != k.Version() {
 		t.Errorf("KEKVersion v1 = %s, %v", v, err)
 	}
-	re, err := s.Rewrap(where, v1)
+	re, err := s.Rewrap(context.Background(), where, v1)
 	if err != nil || re[0] != formatV2 {
 		t.Fatalf("Rewrap v1: format %v, %v", re[:1], err)
 	}
-	if got, err := s.Open(where, re); err != nil || got.Reveal() != "old" {
+	if got, err := s.Open(context.Background(), where, re); err != nil || got.Reveal() != "old" {
 		t.Errorf("Open rewrapped = %q, %v", got.Reveal(), err)
 	}
 	if v, _ := KEKVersion(re); v != k.Version() {
@@ -332,21 +333,21 @@ func TestV1V2(t *testing.T) {
 	}
 	// Another KEK takes a v1 value over too.
 	cur := newKEK(t)
-	if re, err = newSealer(t, cur, k).Rewrap(where, v1); err != nil || re[0] != formatV2 {
+	if re, err = newSealer(t, cur, k).Rewrap(context.Background(), where, v1); err != nil || re[0] != formatV2 {
 		t.Fatalf("Rewrap v1 to another KEK: %v", err)
 	}
-	if got, err := newSealer(t, cur).Open(where, re); err != nil || got.Reveal() != "old" {
+	if got, err := newSealer(t, cur).Open(context.Background(), where, re); err != nil || got.Reveal() != "old" {
 		t.Errorf("Open under only the new KEK = %q, %v", got.Reveal(), err)
 	}
 	// A version byte changed is a value of the other layout and does not open.
-	v2, _ := s.Seal(where, New("new"))
+	v2, _ := s.Seal(context.Background(), where, New("new"))
 	for _, b := range [][]byte{append([]byte{formatV1}, v2[1:]...), append([]byte{formatV2}, v1[1:]...), append([]byte{3}, v2[1:]...)} {
-		if _, err := s.Open(where, b); !errors.Is(err, ErrOpen) {
+		if _, err := s.Open(context.Background(), where, b); !errors.Is(err, ErrOpen) {
 			t.Errorf("Open with a wrong version byte: %v", err)
 		}
 	}
 	// A v1 value moved to another row does not open or rewrap.
-	if _, err := s.Rewrap(Context{Table: "x"}, v1); !errors.Is(err, ErrOpen) {
+	if _, err := s.Rewrap(context.Background(), Context{Table: "x"}, v1); !errors.Is(err, ErrOpen) {
 		t.Errorf("Rewrap v1 for another row: %v", err)
 	}
 }
@@ -356,7 +357,7 @@ func TestV1V2(t *testing.T) {
 func TestV2Bounds(t *testing.T) {
 	k := newKEK(t)
 	s := newSealer(t, k)
-	sealed, err := s.Seal(where, New("abc"))
+	sealed, err := s.Seal(context.Background(), where, New("abc"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -381,10 +382,10 @@ func TestV2Bounds(t *testing.T) {
 		"no secret":                sealed[:14+60+nonceLen],
 	}
 	for name, b := range cases {
-		if _, err := s.Open(where, b); !errors.Is(err, ErrOpen) {
+		if _, err := s.Open(context.Background(), where, b); !errors.Is(err, ErrOpen) {
 			t.Errorf("%s: Open = %v, want ErrOpen", name, err)
 		}
-		if _, err := s.Rewrap(where, b); !errors.Is(err, ErrOpen) {
+		if _, err := s.Rewrap(context.Background(), where, b); !errors.Is(err, ErrOpen) {
 			t.Errorf("%s: Rewrap = %v, want ErrOpen", name, err)
 		}
 	}
@@ -395,11 +396,11 @@ func TestV2Bounds(t *testing.T) {
 	}
 	// The largest secret seals and opens; one byte more is refused by Seal, and an oversized
 	// value is refused before anything is decrypted.
-	big, err := s.Seal(where, New(strings.Repeat("x", maxSealSize)))
+	big, err := s.Seal(context.Background(), where, New(strings.Repeat("x", maxSealSize)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, err := s.Open(where, big); err != nil || len(got.Reveal()) != maxSealSize {
+	if got, err := s.Open(context.Background(), where, big); err != nil || len(got.Reveal()) != maxSealSize {
 		t.Errorf("Open of the largest secret: %v", err)
 	}
 }
@@ -441,43 +442,43 @@ func TestWrapperInterface(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealed, err := s.Seal(where, New("tr"))
+	sealed, err := s.Seal(context.Background(), where, New("tr"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if sealed[1] != KindTransit || binary.BigEndian.Uint16(sealed[2:]) != uint16(len("transit/rpmgr")) {
 		t.Errorf("header % x", sealed[:20])
 	}
-	if v, _ := KEKVersion(sealed); v != "transit/rpmgr" {
-		t.Errorf("KEKVersion = %q", v)
+	if v, _ := KEKVersion(sealed); v != "transit/rpmgr@v1" {
+		t.Errorf("KEKVersion = %q, want the key version of the Transit ciphertext", v)
 	}
-	if got, err := s.Open(where, sealed); err != nil || got.Reveal() != "tr" {
+	if got, err := s.Open(context.Background(), where, sealed); err != nil || got.Reveal() != "tr" {
 		t.Errorf("Open = %q, %v", got.Reveal(), err)
 	}
 	if want := string(dataAD(formatV2, where)); calls[0] != want {
 		t.Errorf("the wrapper got AAD %q, want %q", calls[0], want)
 	}
 	// The AAD swap: a value at another row gives the wrapper another AAD and does not open.
-	if _, err := s.Open(Context{Table: where.Table, Column: where.Column, RowID: "other"}, sealed); !errors.Is(err, ErrOpen) {
+	if _, err := s.Open(context.Background(), Context{Table: where.Table, Column: where.Column, RowID: "other"}, sealed); !errors.Is(err, ErrOpen) {
 		t.Errorf("Open at another row: %v", err)
 	}
 	// Down is not ErrOpen.
 	errDown := errors.New("down")
 	down, _ := NewSealerWith(fixedWrapper{kind: KindTransit, id: "transit/rpmgr", calls: &calls, down: errDown})
-	if _, err := down.Open(where, sealed); !errors.Is(err, errDown) || errors.Is(err, ErrOpen) {
+	if _, err := down.Open(context.Background(), where, sealed); !errors.Is(err, errDown) || errors.Is(err, ErrOpen) {
 		t.Errorf("Open with the wrapper down: %v", err)
 	}
 	// Moving a Transit value to a local KEK keeps the encrypted secret.
 	k := newKEK(t)
 	both, _ := NewSealerWith(NewLocalWrapper(k), w)
-	re, err := both.Rewrap(where, sealed)
+	re, err := both.Rewrap(context.Background(), where, sealed)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if v, _ := KEKVersion(re); v != k.Version() || !bytes.HasSuffix(re, sealed[len(sealed)-nonceLen-len("tr")-tagLen:]) {
 		t.Errorf("Rewrap: version %s", v)
 	}
-	if got, err := newSealer(t, k).Open(where, re); err != nil || got.Reveal() != "tr" {
+	if got, err := newSealer(t, k).Open(context.Background(), where, re); err != nil || got.Reveal() != "tr" {
 		t.Errorf("Open under the local KEK = %q, %v", got.Reveal(), err)
 	}
 	if _, err := NewSealerWith(nil); err == nil {
@@ -494,15 +495,15 @@ func TestAADSwap(t *testing.T) {
 	k := newKEK(t)
 	s := newSealer(t, k)
 	other := Context{Table: where.Table, Column: where.Column, RowID: "cak_other"}
-	a, _ := s.Seal(where, New("a"))
-	b, _ := s.Seal(other, New("b"))
+	a, _ := s.Seal(context.Background(), where, New("a"))
+	b, _ := s.Seal(context.Background(), other, New("b"))
 	// a's wrapped key with b's secret, and the reverse, each opened at its own row.
 	const hdr = 14 + 60
 	mixed := append(append([]byte(nil), a[:hdr]...), b[hdr:]...)
-	if _, err := s.Open(where, mixed); !errors.Is(err, ErrOpen) {
+	if _, err := s.Open(context.Background(), where, mixed); !errors.Is(err, ErrOpen) {
 		t.Errorf("a's key, b's secret at a: %v", err)
 	}
-	if _, err := s.Open(other, mixed); !errors.Is(err, ErrOpen) {
+	if _, err := s.Open(context.Background(), other, mixed); !errors.Is(err, ErrOpen) {
 		t.Errorf("a's key, b's secret at b: %v", err)
 	}
 	// The wrapped key at another row does not unwrap.
@@ -545,15 +546,15 @@ func TestDataADIsBound(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := Context{Table: "t", Column: "c", RowID: "a"}
-	sealed, err := s.Seal(a, New("x"))
+	sealed, err := s.Seal(context.Background(), a, New("x"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, err := s.Open(a, sealed); err != nil || got.Reveal() != "x" {
+	if got, err := s.Open(context.Background(), a, sealed); err != nil || got.Reveal() != "x" {
 		t.Fatalf("Open at its own row: %v", err)
 	}
 	for _, other := range []Context{{"t", "c", "b"}, {"t", "d", "a"}, {"u", "c", "a"}, {}} {
-		if _, err := s.Open(other, sealed); !errors.Is(err, ErrOpen) {
+		if _, err := s.Open(context.Background(), other, sealed); !errors.Is(err, ErrOpen) {
 			t.Errorf("Open at %+v: %v, want ErrOpen", other, err)
 		}
 	}
@@ -588,22 +589,152 @@ func TestV1Vector(t *testing.T) {
 	}
 	cur := newKEK(t)
 	for name, s := range map[string]*Sealer{"current": newSealer(t, old), "previous": newSealer(t, cur, old)} {
-		got, err := s.Open(v1VectorCtx, raw)
+		got, err := s.Open(context.Background(), v1VectorCtx, raw)
 		if err != nil || got.Reveal() != "phase-1 secret" {
 			t.Fatalf("%s: Open = %q, %v", name, got.Reveal(), err)
 		}
-		re, err := s.Rewrap(v1VectorCtx, raw)
+		re, err := s.Rewrap(context.Background(), v1VectorCtx, raw)
 		if err != nil || re[0] != formatV2 {
 			t.Fatalf("%s: Rewrap: %v", name, err)
 		}
-		if got, err := s.Open(v1VectorCtx, re); err != nil || got.Reveal() != "phase-1 secret" {
+		if got, err := s.Open(context.Background(), v1VectorCtx, re); err != nil || got.Reveal() != "phase-1 secret" {
 			t.Errorf("%s: Open rewrapped = %q, %v", name, got.Reveal(), err)
 		}
 	}
-	if _, err := newSealer(t, cur).Open(v1VectorCtx, raw); !errors.Is(err, ErrOpen) {
+	if _, err := newSealer(t, cur).Open(context.Background(), v1VectorCtx, raw); !errors.Is(err, ErrOpen) {
 		t.Errorf("Open without the old KEK: %v", err)
 	}
-	if _, err := newSealer(t, old).Open(Context{Table: "instance_secrets", Column: "value_enc", RowID: "other"}, raw); !errors.Is(err, ErrOpen) {
+	if _, err := newSealer(t, old).Open(context.Background(), Context{Table: "instance_secrets", Column: "value_enc", RowID: "other"}, raw); !errors.Is(err, ErrOpen) {
 		t.Errorf("Open at another row: %v", err)
+	}
+}
+
+// TestKEKVersionOfTransit: the key version comes from the "vault:v<n>:" prefix of the wrapped key;
+// a wrapped key without a version number gives the identifier alone.
+func TestKEKVersionOfTransit(t *testing.T) {
+	hdr := func(wrapped string) []byte {
+		id := "transit/rpmgr"
+		b := []byte{formatV2, KindTransit, 0, byte(len(id))} //nolint:gosec // G115: short test strings
+		b = append(b, id...)
+		b = append(b, 0, byte(len(wrapped))) //nolint:gosec // G115: short test strings
+		b = append(b, wrapped...)
+		return append(b, make([]byte, nonceLen+tagLen)...)
+	}
+	for wrapped, want := range map[string]string{
+		"vault:v1:AAAA":           "transit/rpmgr@v1",
+		"vault:v12:AAAA":          "transit/rpmgr@v12",
+		"vault:v:AAAA":            "transit/rpmgr",
+		"vault:vx1:AAAA":          "transit/rpmgr",
+		"vault:v01:AAAA":          "transit/rpmgr",
+		"vault:v0:AAAA":           "transit/rpmgr",
+		"vault:v12345678901:AAAA": "transit/rpmgr",
+		"vault:v1":                "transit/rpmgr",
+		"other":                   "transit/rpmgr",
+	} {
+		if got, err := KEKVersion(hdr(wrapped)); err != nil || got != want {
+			t.Errorf("KEKVersion(%q) = %q, %v; want %q", wrapped, got, err, want)
+		}
+	}
+}
+
+// versionedWrapper is a Rewrapper whose key keeps its identifier and changes its version, as a
+// Transit key does. The wrapped key is "v<n>:" and the data key.
+type versionedWrapper struct {
+	latest  *int
+	rewraps *int
+}
+
+func (versionedWrapper) Kind() byte { return KindTransit }
+func (versionedWrapper) ID() []byte { return []byte("transit/rpmgr") }
+func (w versionedWrapper) Wrap(_ context.Context, dk, _ []byte) ([]byte, error) {
+	return append([]byte(fmt.Sprintf("v%d:", *w.latest)), dk...), nil
+}
+func (versionedWrapper) Unwrap(_ context.Context, wr, _ []byte) ([]byte, error) {
+	_, dk, ok := bytes.Cut(wr, []byte(":"))
+	if !ok {
+		return nil, ErrOpen
+	}
+	return dk, nil
+}
+func (w versionedWrapper) Rewrap(_ context.Context, wr, _ []byte) ([]byte, error) {
+	if bytes.HasPrefix(wr, []byte(fmt.Sprintf("v%d:", *w.latest))) {
+		return wr, nil
+	}
+	*w.rewraps++
+	_, dk, _ := bytes.Cut(wr, []byte(":"))
+	return append([]byte(fmt.Sprintf("v%d:", *w.latest)), dk...), nil
+}
+
+// TestRewrapSameIdentifierNewVersion: a Rewrapper is asked about a value that already has the
+// current identifier; a value on an older key version is re-wrapped, one on the latest is returned
+// as it is, and the secret opens before and after.
+func TestRewrapSameIdentifierNewVersion(t *testing.T) {
+	latest, rewraps := 1, 0
+	s, err := NewSealerWith(versionedWrapper{latest: &latest, rewraps: &rewraps})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed, err := s.Seal(context.Background(), where, New("tr"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	same, err := s.Rewrap(context.Background(), where, sealed)
+	if err != nil || !bytes.Equal(same, sealed) || rewraps != 0 {
+		t.Fatalf("Rewrap on the latest version: changed=%v, rewraps=%d, err=%v", !bytes.Equal(same, sealed), rewraps, err)
+	}
+	latest = 2
+	moved, err := s.Rewrap(context.Background(), where, sealed)
+	if err != nil || bytes.Equal(moved, sealed) || rewraps != 1 {
+		t.Fatalf("Rewrap after a key rotation: changed=%v, rewraps=%d, err=%v", !bytes.Equal(moved, sealed), rewraps, err)
+	}
+	if bytes.Contains(moved, []byte("v1:")) || !bytes.Contains(moved, []byte("v2:")) {
+		t.Fatalf("the rewrapped value is not on version 2: %q", moved)
+	}
+	v, err := s.Open(context.Background(), where, moved)
+	if err != nil || v.Reveal() != "tr" {
+		t.Fatalf("Open after Rewrap = %q, %v", v.Reveal(), err)
+	}
+	// A truncated value is refused before any call.
+	if _, err := s.Rewrap(context.Background(), where, []byte{formatV2}); !errors.Is(err, ErrOpen) {
+		t.Fatalf("Rewrap of a truncated value: %v, want ErrOpen", err)
+	}
+}
+
+// TestUnknownKey: a value under a KEK identifier or kind that is not configured returns
+// ErrUnknownKey, which is an ErrOpen, and calls no wrapper; the same for a version 1 value.
+func TestUnknownKey(t *testing.T) {
+	var calls []string
+	a, err := NewSealerWith(fixedWrapper{kind: KindTransit, id: "transit/a", calls: &calls})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed, err := a.Seal(context.Background(), where, New("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls = nil
+	other, err := NewSealerWith(fixedWrapper{kind: KindTransit, id: "transit/b", calls: &calls})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, run := range map[string]func() error{
+		"open":   func() error { _, err := other.Open(context.Background(), where, sealed); return err },
+		"rewrap": func() error { _, err := other.Rewrap(context.Background(), where, sealed); return err },
+	} {
+		err := run()
+		if !errors.Is(err, ErrUnknownKey) || !errors.Is(err, ErrOpen) {
+			t.Errorf("%s of another key's value: %v, want ErrUnknownKey and ErrOpen", name, err)
+		}
+	}
+	if len(calls) != 0 {
+		t.Errorf("a wrapper was called for a value of another key: %v", calls)
+	}
+	local := newSealer(t, newKEK(t))
+	v1 := sealV1(t, newKEK(t), where, "old")
+	if _, err := local.Open(context.Background(), where, v1); !errors.Is(err, ErrUnknownKey) {
+		t.Errorf("Open of a version 1 value of another KEK: %v, want ErrUnknownKey", err)
+	}
+	if _, err := local.Open(context.Background(), where, []byte{9, 9, 9}); errors.Is(err, ErrUnknownKey) || !errors.Is(err, ErrOpen) {
+		t.Errorf("Open of garbage: %v, want ErrOpen and not ErrUnknownKey", err)
 	}
 }

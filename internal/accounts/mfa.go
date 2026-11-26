@@ -67,6 +67,11 @@ func (m *MFA) EnrollTOTP(userID, issuer string) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	id := ids.New("tot") // the seed is sealed for its row, before the transaction, which a key service may delay
+	sealed, err := m.Sealer.Seal(m.sys, seedContext(id), secret.FromBytes(seed))
+	if err != nil {
+		return nil, "", err
+	}
 	err = store.WriteTx(m.sys, m.db, func(tx *ent.Tx) error {
 		old, err := tx.TOTPCredential.Query().Where(totpcredential.UserID(userID)).Only(m.sys)
 		switch {
@@ -80,9 +85,7 @@ func (m *MFA) EnrollTOTP(userID, issuer string) ([]byte, string, error) {
 				return err
 			}
 		}
-		id := ids.New("tot") // the seed is sealed for its row, recorded for `rpmgr kek status`
-		sealed, err := store.Seal(m.sys, tx, m.Sealer, seedContext(id), secret.FromBytes(seed))
-		if err != nil {
+		if err := store.RecordSealed(m.sys, tx, seedContext(id), sealed); err != nil { // for `rpmgr kek status`
 			return err
 		}
 		return tx.TOTPCredential.Create().SetID(id).SetUserID(userID).SetSeedEnc(sealed).SetCreatedAt(m.now()).Exec(m.sys)
@@ -225,7 +228,7 @@ func (m *MFA) VerifySecondFactor(userID, code string) (string, error) {
 }
 
 func (m *MFA) seed(cred *ent.TOTPCredential) ([]byte, error) {
-	v, err := m.Sealer.Open(seedContext(cred.ID), cred.SeedEnc)
+	v, err := m.Sealer.Open(m.sys, seedContext(cred.ID), cred.SeedEnc)
 	if err != nil {
 		return nil, err
 	}
