@@ -120,8 +120,13 @@ func PlanNewRoot(ctx context.Context, c *ent.CAKeyClient, s *secret.Sealer, now 
 	if r.overlap || r.next[cakey.KindRoot] != nil {
 		return nil, ErrRotationInProgress
 	}
-	if n := r.next[cakey.KindIntermediate]; n != nil && len(n.Certificate) == 0 {
-		return nil, fmt.Errorf("%w: the next intermediate waits for the root's signature; import it first", ErrRotationInProgress)
+	if n := r.next[cakey.KindIntermediate]; n != nil {
+		// Whether it waits for the root's signature or for the schedule to activate it, a second next
+		// intermediate under the new root would collide with it.
+		if len(n.Certificate) == 0 {
+			return nil, fmt.Errorf("%w: the next intermediate waits for the root's signature; import it first", ErrRotationInProgress)
+		}
+		return nil, fmt.Errorf("%w: an intermediate is signed and waits for the schedule to activate it; rotate the root after that", ErrRotationInProgress)
 	}
 	r1cert, err := x509.ParseCertificate(r1.Certificate)
 	if err != nil {
@@ -208,15 +213,17 @@ func planNewRootOffline(ctx context.Context, s *secret.Sealer, p *Plan, r2, i2 p
 // it, as importing needs no KEK and the keys of the signing certificates are sealed here.
 func planSwitch(ctx context.Context, s *secret.Sealer, p *Plan, active, next map[cakey.Kind]*ent.CAKey, now time.Time) error {
 	nr, ni := next[cakey.KindRoot], next[cakey.KindIntermediate]
-	r2, err := openKey(ctx, s, nr)
+	// Only the new root's certificate is needed: it does not sign here, so its key stays sealed (or
+	// offline) and is not opened.
+	r2, err := x509.ParseCertificate(nr.Certificate)
 	if err != nil {
-		return err
+		return fmt.Errorf("pki: certificate of the new root: %w", err)
 	}
 	i2, err := openKey(ctx, s, ni)
 	if err != nil {
 		return err
 	}
-	is, err := pki.NewIssuer(r2.Cert, i2, func() time.Time { return now })
+	is, err := pki.NewIssuer(r2, i2, func() time.Time { return now })
 	if err != nil {
 		return err
 	}
@@ -305,7 +312,16 @@ func importCrossCertificate(ctx context.Context, tx *ent.Tx, cert *x509.Certific
 		if err != nil {
 			return true, err
 		}
-		return true, tx.CAKey.UpdateOne(r).SetCrossCertificate(cert.Raw).Exec(ctx)
+		// Only while the row is still next: a switch between the read and this write must not have a
+		// certificate land on a row that is no longer waiting for it.
+		n, err := tx.CAKey.Update().Where(cakey.ID(r.ID), cakey.StatusEQ(cakey.StatusNext)).SetCrossCertificate(cert.Raw).Save(ctx)
+		if err != nil {
+			return true, err
+		}
+		if n != 1 {
+			return true, ErrRotated
+		}
+		return true, nil
 	}
 	return false, nil
 }

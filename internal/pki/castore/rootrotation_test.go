@@ -650,3 +650,68 @@ func TestDropRootNeedsANextSigner(t *testing.T) {
 		}
 	})
 }
+
+// TestSwitchNeedsNoKeyOfTheNewRoot: the new root signs nothing at the switch, so one that was taken offline
+// again before the rotation job ran does not stop it.
+func TestSwitchNeedsNoKeyOfTheNewRoot(t *testing.T) {
+	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *castore.CA) {
+		sys := storetest.SystemCtx(t)
+		s := sealer(t, kek)
+		now := t0.Add(day)
+		offline := exportOffline(t, db, s)
+		req, err := newRoot(t, db, s, now)
+		if err != nil || req == nil {
+			t.Fatalf("new-root with an offline root: %v, %v", req, err)
+		}
+		x, err := pki.SignCrossRoot(offline, req.Cross, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		y, err := pki.SignIntermediate(offline, req.Intermediate, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range []*x509.Certificate{x, y} {
+			if err := importDER(t, db, c.Raw, now); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
+			return tx.CAKey.Update().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusNext)).ClearKeyEnc().Exec(sys)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if done := rotate(t, db, s, now); len(done) == 0 {
+			t.Fatal("the job did not move issuing without the new root's key")
+		}
+	})
+}
+
+// TestNewRootRefusesASignedNextIntermediate: an intermediate that is signed and waits for the schedule is a
+// next intermediate too, and a rotation of the root would collide with it.
+func TestNewRootRefusesASignedNextIntermediate(t *testing.T) {
+	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *castore.CA) {
+		sys := storetest.SystemCtx(t)
+		s := sealer(t, kek)
+		now := t0.Add(day)
+		offline := exportOffline(t, db, s)
+		var csr []byte
+		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
+			var err error
+			csr, err = castore.RequestIntermediateSigning(sys, tx, s, now)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		inter, err := pki.SignIntermediate(offline, csr, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := importDER(t, db, inter.Raw, now); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := newRoot(t, db, s, now); !errors.Is(err, castore.ErrRotationInProgress) {
+			t.Fatalf("new-root beside a signed next intermediate = %v, want ErrRotationInProgress", err)
+		}
+	})
+}

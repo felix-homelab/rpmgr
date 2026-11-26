@@ -281,12 +281,18 @@ func plan(ctx context.Context, c *ent.CAKeyClient, s *secret.Sealer, now time.Ti
 // while it is still active, so of two rotations at once one fails with ErrRotated instead of
 // leaving two active intermediates.
 func (p *Plan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
-	if p.lock != "" {
-		// PostgreSQL runs at READ COMMITTED: two requests could both find none waiting. Taking the root's
-		// row lock first makes them take turns, and the second then sees the first's request.
-		if err := lockRoot(ctx, tx, p.lock); err != nil {
+	// PostgreSQL runs at READ COMMITTED: two plans could both find the keys they saw. Taking the root's
+	// row lock first, whatever the plan, makes them take turns, and the second then sees the first's keys.
+	lock := p.lock
+	if lock == "" {
+		id, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusActive)).OnlyID(ctx)
+		if err != nil {
 			return nil, err
 		}
+		lock = id
+	}
+	if err := lockRoot(ctx, tx, lock); err != nil {
+		return nil, err
 	}
 	rows, err := readActive(ctx, tx.CAKey)
 	if err != nil {
