@@ -309,3 +309,185 @@ func importCrossCertificate(ctx context.Context, tx *ent.Tx, cert *x509.Certific
 	}
 	return false, nil
 }
+
+// StragglerCount counts the enabled agents that were seen since the overlap began and do not hold
+// the new root; the caller reads it from the agents' Hello digests.
+type StragglerCount func(ctx context.Context, tx *ent.Tx, since time.Time) (int, error)
+
+// DropOptions are the inputs of PlanDropRoot.
+type DropOptions struct {
+	// Overlap is how long after issuing moved the old root stays: the longest agent leaf lifetime
+	// plus the Reauth grace period.
+	Overlap time.Duration
+	// Force drops before the overlap has passed, which is accepted only while no agent is a straggler;
+	// Strand drops after it although enabled agents still lack the new root.
+	Force, Strand bool
+	// Stragglers counts the agents that lack the new root.
+	Stragglers StragglerCount
+}
+
+// A DropPlan is the drop of the old root of a rotation. It opens no key, so there is nothing to
+// seal before its transaction; it is a plan so that Apply checks, in its transaction, every premise
+// it was made from.
+type DropPlan struct {
+	seen string
+	o    DropOptions
+	now  time.Time
+	r2   string
+	// swaps are the signing keys that chain to the old root and the next ones, issued under the new
+	// intermediate, that replace them with the drop.
+	swaps []signerSwap
+}
+
+type signerSwap struct{ old, next string }
+
+// PlanDropRoot checks that a root is in the overlap and that dropping it is allowed at now: not
+// before Overlap has passed since issuing moved (a DropEarlyError, unless Force and no agent is a straggler), and not while enabled agents that were seen since lack the new
+// root (a StragglersError), unless Strand. c reads outside a transaction; Apply repeats every check.
+func PlanDropRoot(ctx context.Context, c *ent.CAKeyClient, now time.Time, o DropOptions) (*DropPlan, error) {
+	rows, err := readActive(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	p := &DropPlan{seen: keysSeen(rows), o: o, now: now}
+	if _, err := p.check(ctx, rows, nil); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+// check decides whether the drop is allowed on rows, and returns the root in the overlap. tx is nil
+// for the plan, which counts no stragglers then and only decides the checks that do not need them.
+func (p *DropPlan) check(ctx context.Context, rows []*ent.CAKey, tx *ent.Tx) (*ent.CAKey, error) {
+	var r1, r2 *ent.CAKey
+	for _, r := range rows {
+		switch {
+		case r.Kind == cakey.KindRoot && r.Status == cakey.StatusOverlap:
+			r1 = r
+		case r.Kind == cakey.KindRoot && r.Status == cakey.StatusActive:
+			r2 = r
+		}
+	}
+	if r1 == nil || r2 == nil || r1.RotatedAt == nil {
+		return nil, ErrNoRotation
+	}
+	p.r2 = r2.ID
+	swaps, err := signerSwaps(rows)
+	if err != nil {
+		return nil, err
+	}
+	p.swaps = swaps
+	earliest := r1.RotatedAt.Add(p.o.Overlap)
+	early := p.now.Before(earliest)
+	if early && !p.o.Force {
+		return nil, &DropEarlyError{Earliest: earliest}
+	}
+	if p.o.Strand && early {
+		return nil, &DropEarlyError{Earliest: earliest}
+	}
+	if tx == nil || p.o.Stragglers == nil {
+		return r1, nil
+	}
+	n, err := p.o.Stragglers(ctx, tx, *r1.RotatedAt)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case n > 0 && p.o.Force:
+		return nil, &StragglersError{N: n, Force: true}
+	case n > 0 && !p.o.Strand:
+		return nil, &StragglersError{N: n}
+	}
+	return r1, nil
+}
+
+// Apply drops the old root in tx: it leaves the bundle, which becomes the new root alone, and its
+// row is retired. It repeats every check on what tx reads and fails with ErrRotated when the keys
+// are not the ones the plan was made from. The caller writes it in a configuration transaction, so
+// that agents get the bundle in a snapshot of a new revision, and records the audit entry. It needs
+// the system scope.
+func (p *DropPlan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
+	// Two drops, or a drop and the rotation job, take turns on the issuing root's row.
+	if err := lockRoot(ctx, tx, p.r2); err != nil {
+		return nil, err
+	}
+	rows, err := readActive(ctx, tx.CAKey)
+	if err != nil {
+		return nil, err
+	}
+	if keysSeen(rows) != p.seen {
+		return nil, ErrRotated
+	}
+	r1, err := p.check(ctx, rows, tx)
+	if err != nil {
+		return nil, err
+	}
+	n, err := tx.CAKey.Update().Where(cakey.ID(r1.ID), cakey.StatusEQ(cakey.StatusOverlap)).SetStatus(cakey.StatusRetired).Save(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if n != 1 {
+		return nil, ErrRotated
+	}
+	// The signing keys that chain to the old root give way to the next ones, which agents hold.
+	for _, sw := range p.swaps {
+		if n, err := tx.CAKey.Update().Where(cakey.ID(sw.old), cakey.StatusEQ(cakey.StatusActive)).SetStatus(cakey.StatusRetired).Save(ctx); err != nil {
+			return nil, err
+		} else if n != 1 {
+			return nil, ErrRotated
+		}
+		if n, err := tx.CAKey.Update().Where(cakey.ID(sw.next), cakey.StatusEQ(cakey.StatusNext)).SetStatus(cakey.StatusActive).Save(ctx); err != nil {
+			return nil, err
+		} else if n != 1 {
+			return nil, ErrRotated
+		}
+	}
+	return []string{"old root dropped from the trust bundle"}, nil
+}
+
+// ErrNoSigner is returned by the drop of the old root when an active signing key chains to it and no
+// next key issued under the new intermediate can replace it: the agents would be left with
+// snapshots they cannot verify.
+var ErrNoSigner = errors.New("pki: a signing key still chains to the old root and no next key under the new root can replace it")
+
+// signerSwaps pairs each active signing key that the active intermediate did not sign with the next
+// key of its kind that it did.
+func signerSwaps(rows []*ent.CAKey) ([]signerSwap, error) {
+	var inter *x509.Certificate
+	for _, r := range rows {
+		if r.Kind == cakey.KindIntermediate && r.Status == cakey.StatusActive {
+			c, err := x509.ParseCertificate(r.Certificate)
+			if err != nil {
+				return nil, err
+			}
+			inter = c
+		}
+	}
+	if inter == nil {
+		return nil, errors.New("pki: the database holds no active intermediate")
+	}
+	signedByNew := func(r *ent.CAKey) bool {
+		c, err := x509.ParseCertificate(r.Certificate)
+		return err == nil && c.CheckSignatureFrom(inter) == nil
+	}
+	var swaps []signerSwap
+	for _, kind := range []cakey.Kind{cakey.KindConfigSigning, cakey.KindAuditCheckpoint} {
+		var a, n *ent.CAKey
+		for _, r := range rows {
+			switch {
+			case r.Kind == kind && r.Status == cakey.StatusActive:
+				a = r
+			case r.Kind == kind && r.Status == cakey.StatusNext && len(r.Certificate) > 0 && signedByNew(r):
+				n = r
+			}
+		}
+		switch {
+		case a == nil || signedByNew(a):
+		case n == nil:
+			return nil, fmt.Errorf("%w (%s)", ErrNoSigner, kind)
+		default:
+			swaps = append(swaps, signerSwap{old: a.ID, next: n.ID})
+		}
+	}
+	return swaps, nil
+}

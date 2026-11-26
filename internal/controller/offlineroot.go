@@ -201,7 +201,9 @@ type SignOptions struct {
 	// KeyHash, when set, is the SHA-256 of the key the request must carry (hexadecimal, as `ca status`
 	// and `rotate-intermediate --csr-out` show it); another request is refused before it is signed.
 	KeyHash string
-	Now     func() time.Time
+	// CrossRoot signs the cross-certificate of a new root (`--kind cross-root`) and not an intermediate.
+	CrossRoot bool
+	Now       func() time.Time
 	// Confirm shows the summary and reports whether to sign; nil signs without asking.
 	Confirm func(IntermediateSummary) (bool, error)
 }
@@ -238,11 +240,19 @@ func SignIntermediate(o SignOptions) (IntermediateSummary, error) {
 			return sum, fmt.Errorf("controller: the request carries the key with the SHA-256 %s, not %s; nothing was signed", got, want)
 		}
 	}
-	cert, err := pki.SignIntermediate(root, csr, o.Now())
+	sign := pki.SignIntermediate
+	if o.CrossRoot {
+		sign = pki.SignCrossRoot
+	}
+	cert, err := sign(root, csr, o.Now())
 	if err != nil {
 		return sum, err
 	}
 	sum = summarize(cert)
+	if o.CrossRoot {
+		sum.Constraints = fmt.Sprintf("the cross-certificate of a new root of the same trust domain: a CA that may sign one intermediate (path length %d)",
+			cert.MaxPathLen)
+	}
 	if o.Confirm != nil {
 		if ok, err := o.Confirm(sum); err != nil || !ok {
 			if err == nil {

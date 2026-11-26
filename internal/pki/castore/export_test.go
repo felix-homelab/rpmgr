@@ -76,3 +76,12 @@ func NewRoot(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) (
 	done, err := p.Apply(ctx, tx)
 	return done, p.Requests(), err
 }
+
+// DropRoot plans and applies the drop of the old root in tx, for tests.
+func DropRoot(ctx context.Context, tx *ent.Tx, now time.Time, o DropOptions) ([]string, error) {
+	p, err := PlanDropRoot(ctx, tx.CAKey, now, o)
+	if err != nil {
+		return nil, err
+	}
+	return p.Apply(ctx, tx)
+}

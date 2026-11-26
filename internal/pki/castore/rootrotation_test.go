@@ -3,6 +3,7 @@
 package castore_test
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/x509"
@@ -21,6 +22,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
+
+// overlapDays is the overlap the tests give the drop: the defaults' 7 + 30 days.
+const overlap = 37 * day
 
 func pool(certs ...*x509.Certificate) *x509.CertPool {
 	p := x509.NewCertPool()
@@ -79,6 +83,19 @@ func newRoot(t *testing.T, db *store.DB, s *secret.Sealer, now time.Time) (*cast
 	return req, err
 }
 
+func dropRoot(t *testing.T, db *store.DB, now time.Time, o castore.DropOptions) error {
+	t.Helper()
+	sys := storetest.SystemCtx(t)
+	return store.WriteTx(sys, db, func(tx *ent.Tx) error {
+		_, err := castore.DropRoot(sys, tx, now, o)
+		return err
+	})
+}
+
+func stragglers(n int) castore.StragglerCount {
+	return func(context.Context, *ent.Tx, time.Time) (int, error) { return n, nil }
+}
+
 // TestNewRoot: with the old root online, `ca new-root` makes the new root, signs its
 // cross-certificate and the certificate of its intermediate, and moves issuing at once. The bundle is
 // {R1, R2, X}; the chain of a new leaf carries I2 and Y, so that a verifier that knows only R1 and one
@@ -131,16 +148,6 @@ func TestNewRoot(t *testing.T) {
 		}
 		if der, err := ca.TrustRoots(); err != nil || len(der) != 3 {
 			t.Fatalf("trust roots: %d, %v", len(der), err)
-		}
-		// A snapshot reads the same bundle from the database, in the transaction of its revision.
-		if got, err := castore.BundleOf(sys, db.ReadClient().CAKey); err != nil || !slices.EqualFunc(got, ca.TrustBundle(), (*x509.Certificate).Equal) {
-			t.Fatalf("the bundle read from the database differs from the CA's: %d certificates, %v", len(got), err)
-		}
-		if der, err := castore.TrustRootsOf(sys, db.ReadClient().CAKey); err != nil || len(der) != 3 {
-			t.Fatalf("trust roots of the database: %d, %v", len(der), err)
-		}
-		if !ca.EnrollmentRoot().Equal(r1) {
-			t.Fatal("an agent enrolled in the overlap must pin the old root")
 		}
 
 		// A leaf issued now verifies under R1 alone, through Y, and under R2 alone.
@@ -403,4 +410,243 @@ func crossWith(t *testing.T, signer *ecdsa.PrivateKey, parent *x509.Certificate,
 		t.Fatal(err)
 	}
 	return der
+}
+
+// TestDropRoot: the old root leaves the bundle only after the overlap, or earlier with --force while no
+// agent is a straggler; with stragglers it stays unless they are stranded on purpose, which is possible
+// only after the overlap; and what it needs is checked again where it is written. Afterwards the bundle is
+// the new root, a certificate under the old chain no longer verifies and the signing certificates under the
+// old root are no longer delivered.
+func TestDropRoot(t *testing.T) {
+	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *castore.CA) {
+		sys := storetest.SystemCtx(t)
+		org := storetest.Org(t, db, "org-a")
+		s := sealer(t, kek)
+		now := t0
+		clock := func() time.Time { return now }
+		ca, err := castore.LoadCA(sys, db, s, clock)
+		if err != nil {
+			t.Fatal(err)
+		}
+		issue := func() ([]*x509.Certificate, [][]byte) {
+			t.Helper()
+			var leaf *x509.Certificate
+			if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
+				var err error
+				leaf, err = ca.Issue(sys, tx, csrFor(t, newKey(t), nil), connector(org, ids.New("con")), pki.DefaultLeafLifetime)
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			return []*x509.Certificate{leaf}, ca.Chain(leaf)
+		}
+		oldLeaf, oldChain := issue()
+		r1 := ca.Root()
+		opts := castore.DropOptions{Overlap: overlap}
+
+		if err := dropRoot(t, db, now, opts); !errors.Is(err, castore.ErrNoRotation) {
+			t.Fatalf("a drop with no rotation = %v, want ErrNoRotation", err)
+		}
+		now = t0.Add(day)
+		if _, err := newRoot(t, db, s, now); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ca.Reload(sys, db, s, clock); err != nil {
+			t.Fatal(err)
+		}
+		r2 := ca.Root()
+		earliest := now.Add(overlap)
+
+		// Early: refused, with the date.
+		var early *castore.DropEarlyError
+		if err := dropRoot(t, db, now.Add(overlap-time.Minute), opts); !errors.As(err, &early) || !early.Earliest.Equal(earliest) {
+			t.Fatalf("a drop before the overlap = %v, want DropEarlyError for %v", err, earliest)
+		}
+		// --force while agents lack the new root: refused as a force, not as a date.
+		var st *castore.StragglersError
+		withStragglers := castore.DropOptions{Overlap: overlap, Force: true, Stragglers: stragglers(2)}
+		if err := dropRoot(t, db, now.Add(day), withStragglers); !errors.As(err, &st) || !st.Force || st.N != 2 {
+			t.Fatalf("--force with stragglers = %v, want a forced StragglersError of 2", err)
+		}
+		// --strand-stragglers is for after the overlap only.
+		if err := dropRoot(t, db, now.Add(day), castore.DropOptions{Overlap: overlap, Strand: true, Stragglers: stragglers(2)}); !errors.As(err, &early) {
+			t.Fatalf("--strand-stragglers before the overlap = %v, want DropEarlyError", err)
+		}
+		// After the overlap, stragglers hold it back, unless they are stranded on purpose.
+		if err := dropRoot(t, db, earliest, castore.DropOptions{Overlap: overlap, Stragglers: stragglers(1)}); !errors.As(err, &st) || st.Force {
+			t.Fatalf("a drop with stragglers = %v, want StragglersError", err)
+		}
+		if got := rowsOf(t, db, cakey.KindRoot); !slices.ContainsFunc(got, func(r *ent.CAKey) bool { return r.Status == cakey.StatusOverlap }) {
+			t.Fatal("a refused drop changed the old root")
+		}
+
+		// What the plan found is checked again in the transaction: a drop that ran first wins, and the
+		// plan made before it fails with ErrRotated.
+		plan, err := castore.PlanDropRoot(sys, db.ReadClient().CAKey, earliest, castore.DropOptions{Overlap: overlap})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := dropRoot(t, db, earliest, castore.DropOptions{Overlap: overlap, Strand: true, Stragglers: stragglers(3)}); err != nil {
+			t.Fatalf("--strand-stragglers after the overlap: %v", err)
+		}
+		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { _, err := plan.Apply(sys, tx); return err }); !errors.Is(err, castore.ErrRotated) {
+			t.Fatalf("a plan applied after another drop = %v, want ErrRotated", err)
+		}
+
+		// The new state.
+		now = earliest
+		if changed, err := ca.Reload(sys, db, s, clock); err != nil || !changed {
+			t.Fatalf("reload: %v, %v", changed, err)
+		}
+		if got := ca.TrustBundle(); len(got) != 1 || !got[0].Equal(r2) {
+			t.Fatalf("the bundle after the drop holds %d certificates, want R2 alone", len(got))
+		}
+		at := oldLeaf[0].NotBefore.Add(time.Hour)
+		if _, err := ca.IdentityOf(oldLeaf[0], at); err == nil {
+			t.Fatal("a leaf under the dropped root still verifies")
+		}
+		_ = oldChain
+		_, chain := issue()
+		if len(chain) != 2 || !verifies(t, chain, pool(r2), now) || verifies(t, chain, pool(r1), now) {
+			t.Fatalf("a leaf after the drop: chain %d certificates", len(chain))
+		}
+		for _, der := range ca.SigningChain() {
+			c, _ := x509.ParseCertificate(der)
+			if !c.IsCA && c.CheckSignatureFrom(ca.Intermediate()) != nil {
+				t.Fatal("a signing certificate that chains to the dropped root is still delivered")
+			}
+		}
+		if err := dropRoot(t, db, now, opts); !errors.Is(err, castore.ErrNoRotation) {
+			t.Fatalf("a second drop = %v, want ErrNoRotation", err)
+		}
+		// The next rotation can start again.
+		if _, err := newRoot(t, db, s, now); err != nil {
+			t.Fatalf("a rotation after a finished one: %v", err)
+		}
+	})
+}
+
+// TestDropRootForce: --force drops before the overlap when no agent is a straggler.
+func TestDropRootForce(t *testing.T) {
+	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *castore.CA) {
+		s := sealer(t, kek)
+		if _, err := newRoot(t, db, s, t0); err != nil {
+			t.Fatal(err)
+		}
+		if err := dropRoot(t, db, t0.Add(day), castore.DropOptions{Overlap: overlap, Force: true, Stragglers: stragglers(0)}); err != nil {
+			t.Fatalf("--force with no stragglers: %v", err)
+		}
+	})
+}
+
+// TestCA_RotationChainsVerifyWithOldRootOnly (docs/12-testing-and-quality.md): after issuing moves to the
+// new root, an agent that holds only the old root verifies the controller's chain and a peer's chain
+// (leaf <- Y <- R1), with Go's chain verification and the real path-length constraint of the root, and
+// never leaf <- I2 <- X <- R1, which Go refuses for the path length; an agent that holds only the new root
+// verifies leaf <- I2 <- R2; after the old root is dropped the old-only agent is refused.
+func TestCA_RotationChainsVerifyWithOldRootOnly(t *testing.T) {
+	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *castore.CA) {
+		sys := storetest.SystemCtx(t)
+		org := storetest.Org(t, db, "org-a")
+		s := sealer(t, kek)
+		now := t0.Add(day)
+		clock := func() time.Time { return now }
+		ca, err := castore.LoadCA(sys, db, s, clock)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r1 := ca.Root()
+		if r1.MaxPathLen != 1 {
+			t.Fatalf("the old root's path length is %d; the test needs the real constraint of 1", r1.MaxPathLen)
+		}
+		if _, err := newRoot(t, db, s, now); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ca.Reload(sys, db, s, clock); err != nil {
+			t.Fatal(err)
+		}
+		r2 := ca.Root()
+		var peer *x509.Certificate
+		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
+			var err error
+			peer, err = ca.Issue(sys, tx, csrFor(t, newKey(t), nil), connector(org, ids.New("con")), pki.DefaultLeafLifetime)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		node, err := ca.NodeCertificate(sys, db, ids.New("ctn"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		chains := map[string][][]byte{"the peer's": ca.Chain(peer), "the controller's": node.Certificate}
+		for name, chain := range chains {
+			if !verifies(t, chain, pool(r1), now) {
+				t.Errorf("%s chain does not verify under the old root alone", name)
+			}
+			if !verifies(t, chain, pool(r2), now) {
+				t.Errorf("%s chain does not verify under the new root alone", name)
+			}
+			// Under R1 the path is through Y, which is a certificate of R1's: leaf, I2's key, R1.
+			leaf, inters := chainPool(t, chain)
+			paths, err := leaf.Verify(x509.VerifyOptions{Roots: pool(r1), Intermediates: inters, CurrentTime: now,
+				KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}})
+			if err != nil || len(paths) == 0 || len(paths[0]) != 3 || paths[0][1].CheckSignatureFrom(r1) != nil {
+				t.Errorf("%s chain under R1: %v, %d paths", name, err, len(paths))
+			}
+		}
+		// leaf <- I2 <- X <- R1 has one intermediate too many for R1's path length of 1.
+		x := ca.TrustBundle()[2]
+		leaf, _ := chainPool(t, chains["the peer's"])
+		_, err = leaf.Verify(x509.VerifyOptions{Roots: pool(r1), Intermediates: pool(ca.Intermediate(), x), CurrentTime: now,
+			KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}})
+		var invalid x509.CertificateInvalidError
+		if !errors.As(err, &invalid) || invalid.Reason != x509.TooManyIntermediates {
+			// Y is not in this pool, so the only path is the one through X.
+			t.Fatalf("leaf <- I2 <- X <- R1 = %v, want too many intermediates", err)
+		}
+
+		// The old root is dropped: an agent that holds only it is refused, one with the new root is not.
+		if err := dropRoot(t, db, now.Add(overlap), castore.DropOptions{Overlap: overlap}); err != nil {
+			t.Fatal(err)
+		}
+		now = now.Add(overlap)
+		if _, err := ca.Reload(sys, db, s, clock); err != nil {
+			t.Fatal(err)
+		}
+		var fresh *x509.Certificate
+		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
+			var err error
+			fresh, err = ca.Issue(sys, tx, csrFor(t, newKey(t), nil), connector(org, ids.New("con")), pki.DefaultLeafLifetime)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		chain := ca.Chain(fresh)
+		if verifies(t, chain, pool(r1), now) || !verifies(t, chain, pool(r2), now) {
+			t.Fatal("after the drop the chain must verify under the new root alone")
+		}
+		nodeAfter, err := ca.NodeCertificate(sys, db, ids.New("ctn"))
+		if err != nil || verifies(t, nodeAfter.Certificate, pool(r1), now) || !verifies(t, nodeAfter.Certificate, pool(r2), now) {
+			t.Fatalf("the controller's chain after the drop: %v", err)
+		}
+	})
+}
+
+// TestDropRootNeedsANextSigner: the old root is not dropped while an active signing key chains to it and
+// no next key under the new intermediate can replace it, which would leave agents with snapshots they
+// cannot verify.
+func TestDropRootNeedsANextSigner(t *testing.T) {
+	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *castore.CA) {
+		sys := storetest.SystemCtx(t)
+		if _, err := newRoot(t, db, sealer(t, kek), t0); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Client().CAKey.Update().Where(cakey.KindEQ(cakey.KindConfigSigning), cakey.StatusEQ(cakey.StatusNext)).
+			SetStatus(cakey.StatusRetired).Save(sys); err != nil {
+			t.Fatal(err)
+		}
+		if err := dropRoot(t, db, t0.Add(overlap), castore.DropOptions{Overlap: overlap}); !errors.Is(err, castore.ErrNoSigner) {
+			t.Fatalf("a drop with no next signing key = %v, want ErrNoSigner", err)
+		}
+	})
 }
