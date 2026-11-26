@@ -64,11 +64,11 @@ func OfflineRoot(ctx context.Context, o OfflineRootOptions) (OfflineRootResult, 
 	if err != nil {
 		return res, err
 	}
-	kek, err := localKEK(cfg, o.Getenv)
+	kek, err := localWrapper(ctx, cfg, o.Getenv)
 	if err != nil {
 		return res, err
 	}
-	sealer, err := secret.NewSealer(kek)
+	sealer, err := secret.NewSealerWith(kek.Wrapper)
 	if err != nil {
 		return res, err
 	}
@@ -263,11 +263,11 @@ func RequestIntermediate(ctx context.Context, path, out string, getenv func(stri
 	if err != nil {
 		return "", err
 	}
-	kek, err := localKEK(cfg, getenv)
+	kek, err := localWrapper(ctx, cfg, getenv)
 	if err != nil {
 		return "", err
 	}
-	sealer, err := secret.NewSealer(kek)
+	sealer, err := secret.NewSealerWith(kek.Wrapper)
 	if err != nil {
 		return "", err
 	}
