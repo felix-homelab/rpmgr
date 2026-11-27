@@ -67,10 +67,27 @@ func NewS3Backend(ctx context.Context, c *objstore.Client, prefix string) *S3Bac
 }
 
 // refusesHeader reports whether the store answered a conditional create in a way that says it does
-// not know the header.
+// not know the header: 501, or 400 with a code that does not name the caller. A 400
+// that says the credentials, the region or the bucket are wrong is a refusal of the caller, which
+// is no verdict on the store.
 func refusesHeader(err error) bool {
 	var oe *objstore.Error
-	return errors.As(err, &oe) && (oe.Status == http.StatusNotImplemented || oe.Status == http.StatusBadRequest)
+	if !errors.As(err, &oe) {
+		return false
+	}
+	switch oe.Status {
+	case http.StatusNotImplemented:
+		return true
+	case http.StatusBadRequest:
+		switch oe.Code {
+		case "AuthorizationHeaderMalformed", "AuthorizationQueryParametersError", "InvalidAccessKeyId",
+			"SignatureDoesNotMatch", "AccessDenied", "InvalidToken", "ExpiredToken", "NoSuchBucket",
+			"InvalidBucketName", "InvalidRegion", "RequestTimeTooSkewed":
+			return false // the caller's credentials, region or bucket, not the header
+		}
+		return true
+	}
+	return false
 }
 
 // Probe checks that the store refuses a second create of a key with If-None-Match: *: it creates
@@ -101,7 +118,7 @@ func (b *S3Backend) Probe(ctx context.Context) error {
 		case refusesHeader(err):
 			var oe *objstore.Error
 			_ = errors.As(err, &oe)
-			b.refused = fmt.Errorf("%w: the store answered %d", ErrNoConditionalCreate, oe.Status)
+			b.refused = fmt.Errorf("%w: the store answered %d %s", ErrNoConditionalCreate, oe.Status, oe.Code)
 			return b.refused
 		}
 		return fmt.Errorf("probe of the store: %w", err)
@@ -110,19 +127,25 @@ func (b *S3Backend) Probe(ctx context.Context) error {
 	return b.refused
 }
 
-// List returns the keys after the given key in ascending order, those of entries only. It fails
-// on a listing that repeats a continuation token, runs out of order or has more than MaxListPages.
+// List returns the keys after the given key in ascending order, those of entries only. It keeps
+// the keys up to the first one out of sequence and the key after that, so that the caller can tell
+// a gap at the tail, which a lagging listing shows for a moment, from one with keys after it; the
+// memory is that of real entries. It fails on a key that is not 20 digits, a listing that repeats
+// a continuation token, runs out of order or has more than MaxListPages.
 func (b *S3Backend) List(after string) ([]string, error) {
-	start := ""
+	start, expect := "", uint64(1)
 	if after != "" {
 		start = b.prefix + after
+		if n, ok := parseKey(after); ok {
+			expect = n + 1
+		}
 	}
 	var keys []string
-	last := start
+	last, gap := start, false
 	seen := map[string]bool{}
 	for token, pages := "", 0; ; pages++ {
 		if pages >= maxListPages {
-			return nil, fmt.Errorf("%w: more than %d pages", ErrListing, MaxListPages)
+			return nil, fmt.Errorf("%w: more than %d pages", ErrListing, maxListPages)
 		}
 		page, err := b.client.ListAfter(b.ctx, b.prefix, start, token, 0)
 		if err != nil {
@@ -134,8 +157,21 @@ func (b *S3Backend) List(after string) ([]string, error) {
 			}
 			last = o.Key
 			k := strings.TrimPrefix(o.Key, b.prefix)
-			if !strings.HasPrefix(k, "_probe/") {
-				keys = append(keys, k)
+			if strings.HasPrefix(k, "_probe/") {
+				continue
+			}
+			n, ok := parseKey(k)
+			if !ok {
+				return nil, fmt.Errorf("%w: the sink holds the unexpected key %q", ErrBroken, k)
+			}
+			if gap { // the key after the gap is enough
+				return append(keys, k), nil
+			}
+			keys = append(keys, k)
+			if n == expect {
+				expect++
+			} else {
+				gap = true
 			}
 		}
 		if page.Next == "" {
@@ -148,6 +184,9 @@ func (b *S3Backend) List(after string) ([]string, error) {
 		token = page.Next
 	}
 }
+
+// Close drops the client's idle connections.
+func (b *S3Backend) Close() { b.client.Close() }
 
 // Get returns the object at key.
 func (b *S3Backend) Get(key string) ([]byte, error) {

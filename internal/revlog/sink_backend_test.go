@@ -141,7 +141,7 @@ func TestSinkNoFullReread(t *testing.T) {
 func TestSinkChainBreakMidPrefix(t *testing.T) {
 	for name, damage := range map[string]func(m *memBackend){
 		"a bad link": func(m *memBackend) { m.objs[revlog.Key(4)] = m.objs[revlog.Key(3)] },
-		"a gap":      func(m *memBackend) { delete(m.objs, revlog.Key(4)) },
+		"a gap":      func(m *memBackend) { delete(m.objs, revlog.Key(3)) }, // two keys follow it: no lagging listing
 		"a changed entry": func(m *memBackend) {
 			m.objs[revlog.Key(3)] = []byte(strings.Replace(string(m.objs[revlog.Key(3)]), "ses_3", "ses_X", 1))
 		},
@@ -507,7 +507,7 @@ func TestSinkLosesEntries(t *testing.T) {
 // TestSinkReverify (finding B1): a key deleted below the tip is found by the full verification
 // that runs every ReverifyEvery, and not before.
 func TestSinkReverify(t *testing.T) {
-	src, _ := logWith(t, "ses_1", "ses_2", "ses_3")
+	src, _ := logWith(t, "ses_1", "ses_2", "ses_3", "ses_4")
 	mem := newMem()
 	now := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
 	sink := revlog.NewSink(mem)
@@ -521,8 +521,8 @@ func TestSinkReverify(t *testing.T) {
 		t.Fatalf("before the interval the loss below the tip is not looked for: %v", err)
 	}
 	now = now.Add(time.Second)
-	if left, err := sink.Ship(src, "node-a"); !errors.Is(err, revlog.ErrBroken) || len(left) != 3 {
-		t.Fatalf("at the interval: %d unshipped, %v; want 3 and ErrBroken", len(left), err)
+	if left, err := sink.Ship(src, "node-a"); !errors.Is(err, revlog.ErrBroken) || len(left) != 4 {
+		t.Fatalf("at the interval: %d unshipped, %v; want 4 and ErrBroken", len(left), err)
 	}
 	if _, err := sink.Ship(src, "node-a"); !errors.Is(err, revlog.ErrBroken) {
 		t.Errorf("the break is kept: %v", err)
@@ -536,8 +536,8 @@ func TestSinkReverify(t *testing.T) {
 	}
 	now = now.Add(revlog.ReverifyEvery)
 	ok.gets = 0
-	if left, err := s2.Ship(src, "node-a"); err != nil || len(left) != 0 || ok.gets != 3 || ok.count() != 3 {
-		t.Errorf("an intact sink: %v %v, %d gets, %d objects; want a full read of 3 and no new object", left, err, ok.gets, ok.count())
+	if left, err := s2.Ship(src, "node-a"); err != nil || len(left) != 0 || ok.gets != 4 || ok.count() != 4 {
+		t.Errorf("an intact sink: %v %v, %d gets, %d objects; want a full read of 4 and no new object", left, err, ok.gets, ok.count())
 	}
 }
 
@@ -682,6 +682,7 @@ func TestSinkForgedEntryClaimsHash(t *testing.T) {
 	for name, mutate := range map[string]func(e *revlog.SinkEntry){
 		"another entry under the marker's hash": func(e *revlog.SinkEntry) { e.Entry.Kind, e.Entry.Subject = revlog.SessionRevoked, "harmless" },
 		"a field too long":                      func(e *revlog.SinkEntry) { e.Entry.Detail = strings.Repeat("x", revlog.MaxField+1) },
+		"an empty subject":                      func(e *revlog.SinkEntry) { e.Entry.Subject = "" },
 	} {
 		t.Run(name, func(t *testing.T) {
 			m := newMem()
@@ -702,6 +703,88 @@ func TestSinkForgedEntryClaimsHash(t *testing.T) {
 			}
 			if _, err := revlog.NewSink(m).Ship(path, "node-b"); !errors.Is(err, revlog.ErrBroken) {
 				t.Errorf("ship: %v, want a broken chain", err)
+			}
+		})
+	}
+}
+
+// TestSinkTailGap (review item 4): a key ahead of the chain at the end of the listing, such as n+2
+// listed with n+1 not yet, is a listing that lags: an error to retry, and a break after
+// MaxUnlistedRounds. It heals when the key shows. A gap with a key after it is a break at once.
+func TestSinkTailGap(t *testing.T) {
+	src, _ := logWith(t, "ses_1", "ses_2", "ses_3")
+	mem := newMem()
+	if _, err := revlog.NewSink(mem).Ship(src, "node-a"); err != nil {
+		t.Fatal(err)
+	}
+	// A reader that already verified entry 1 sees 3 but not yet 2.
+	hidden := mem.objs[revlog.Key(2)]
+	delete(mem.objs, revlog.Key(2))
+	fresh := revlog.NewSink(mem)
+	left, err := fresh.Ship(src, "node-b")
+	if !errors.Is(err, revlog.ErrListingLags) || errors.Is(err, revlog.ErrBroken) || len(left) != 3 {
+		t.Fatalf("a gap at the tail: %d unshipped, %v", len(left), err)
+	}
+	mem.objs[revlog.Key(2)] = hidden // the listing catches up
+	if left, err := fresh.Ship(src, "node-b"); err != nil || len(left) != 0 {
+		t.Fatalf("after the listing caught up: %d unshipped, %v", len(left), err)
+	}
+	// A gap that stays at the tail is a break after the bound.
+	mem2 := newMem()
+	if _, err := revlog.NewSink(mem2).Ship(src, "node-a"); err != nil {
+		t.Fatal(err)
+	}
+	delete(mem2.objs, revlog.Key(2))
+	sink := revlog.NewSink(mem2)
+	for round := 1; round <= revlog.MaxUnlistedRounds; round++ {
+		_, err := sink.Ship(src, "node-b")
+		want := revlog.ErrListingLags
+		if round == revlog.MaxUnlistedRounds {
+			want = revlog.ErrBroken
+		}
+		if !errors.Is(err, want) {
+			t.Fatalf("round %d: %v, want %v", round, err, want)
+		}
+	}
+}
+
+// TestSinkShapeChecked (review item 8): an entry whose hashes are all consistent but which no
+// replica would have written, with an empty subject or a field over the limit, is a break; a kind
+// this version does not know is not, since a newer replica may have written it.
+func TestSinkShapeChecked(t *testing.T) {
+	path, _ := logWith(t, "ses_1", "ses_2")
+	rehash := func(t *testing.T, e *revlog.SinkEntry) {
+		t.Helper()
+		e.Entry.Hash = ""
+		h := sha256.Sum256(mustJSON(t, e.Entry))
+		e.Entry.Hash = hex.EncodeToString(h[:])
+		e.Hash = ""
+		h = sha256.Sum256(mustJSON(t, e))
+		e.Hash = hex.EncodeToString(h[:])
+	}
+	for name, tc := range map[string]struct {
+		mutate func(e *revlog.SinkEntry)
+		broken bool
+	}{
+		"an empty subject":  {func(e *revlog.SinkEntry) { e.Entry.Subject = "" }, true},
+		"a field too long":  {func(e *revlog.SinkEntry) { e.Entry.Actor = strings.Repeat("x", revlog.MaxField+1) }, true},
+		"a kind of a later": {func(e *revlog.SinkEntry) { e.Entry.Kind = "kind_from_a_later_release" }, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := newMem()
+			if _, err := revlog.NewSink(m).Ship(path, "node-a"); err != nil {
+				t.Fatal(err)
+			}
+			var e revlog.SinkEntry
+			if err := json.Unmarshal(m.objs[revlog.Key(2)], &e); err != nil {
+				t.Fatal(err)
+			}
+			tc.mutate(&e)
+			rehash(t, &e)
+			m.objs[revlog.Key(2)] = append(mustJSON(t, e), '\n')
+			_, err := revlog.NewSink(m).Read()
+			if errors.Is(err, revlog.ErrBroken) != tc.broken {
+				t.Errorf("read: %v, broken want %v", err, tc.broken)
 			}
 		})
 	}

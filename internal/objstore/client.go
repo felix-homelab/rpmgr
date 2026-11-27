@@ -8,8 +8,10 @@ package objstore
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -235,6 +237,10 @@ func (c *Client) Put(ctx context.Context, key string, body []byte, o PutOptions)
 		}
 		h.Set("X-Amz-Object-Lock-Mode", o.LockMode)
 		h.Set("X-Amz-Object-Lock-Retain-Until-Date", o.RetainUntil.UTC().Format("2006-01-02T15:04:05.000Z"))
+		// AWS requires a checksum of the body on a write with retention headers [V VB-24]. It is
+		// a signed header like the others.
+		sum := sha256.Sum256(body)
+		h.Set("X-Amz-Checksum-Sha256", base64.StdEncoding.EncodeToString(sum[:]))
 	default:
 		return "", errors.New("objstore: the lock mode is COMPLIANCE or GOVERNANCE")
 	}

@@ -183,8 +183,12 @@ func (r RevocationLog) check() error {
 		if err != nil {
 			return err
 		}
-		if u, err := url.Parse(r.S3.Endpoint); err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+		u, err := url.Parse(r.S3.Endpoint)
+		if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
 			return errors.New("revocation_log.s3.endpoint: want an https:// URL")
+		}
+		if ip := net.ParseIP(u.Hostname()); u.Scheme == "http" && (ip == nil || !ip.IsLoopback()) && u.Hostname() != "localhost" {
+			return errors.New("revocation_log.s3.endpoint: an http:// endpoint is allowed on a loopback address only")
 		}
 		if r.S3.Region == "" {
 			return errors.New("revocation_log.s3.region: an s3:// sink needs the region the store signs for")

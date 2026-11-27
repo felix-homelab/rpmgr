@@ -67,7 +67,8 @@ func countingProxy(t *testing.T, g objstoretest.Target) (objstoretest.Target, *a
 	var lost atomic.Int32
 	rp := httputil.NewSingleHostReverseProxy(u) // keeps the Host header, which the signature covers
 	rp.ModifyResponse = func(r *http.Response) error {
-		if r.StatusCode == http.StatusPreconditionFailed {
+		// The probe's own 412 is no lost race.
+		if r.StatusCode == http.StatusPreconditionFailed && !strings.Contains(r.Request.URL.Path, "_probe/") {
 			lost.Add(1)
 		}
 		return nil
@@ -347,16 +348,21 @@ func TestS3Backend_IdleTickAfterStarts(t *testing.T) {
 // runs out of order is an error, and a cancelled context ends the requests.
 func TestS3Backend_ListingBounds(t *testing.T) {
 	for name, set := range map[string]func(*objstoretest.Server){
-		"endless":         func(s *objstoretest.Server) { s.EndlessListing = true },
-		"a repeated page": func(s *objstoretest.Server) { s.RepeatListing = true },
+		"endless":               func(s *objstoretest.Server) { s.EndlessListing = true },
+		"keys that do not rise": func(s *objstoretest.Server) { s.RepeatListing = true },
+		"a repeated token":      func(s *objstoretest.Server) { s.RepeatToken = true },
 	} {
 		t.Run(name, func(t *testing.T) {
 			revlog.SetMaxListPages(t, 20)
 			s := objstoretest.New(t)
 			set(s)
 			b := revlog.NewS3Backend(context.Background(), s.Target().Client(t, 0), "p")
-			if _, err := b.List(""); !errors.Is(err, revlog.ErrListing) {
+			_, err := b.List("")
+			if !errors.Is(err, revlog.ErrListing) {
 				t.Fatalf("list: %v", err)
+			}
+			if name == "endless" && !strings.Contains(err.Error(), "20 pages") {
+				t.Errorf("the error does not name the cap in effect: %v", err)
 			}
 			if n := s.Count("GET"); n > 21 {
 				t.Errorf("%d requests for a limit of 20 pages", n)
@@ -412,5 +418,56 @@ func TestS3Backend_ProbeUnreachableFirstCreate(t *testing.T) {
 	}
 	if len(s.Keys()) != 0 {
 		t.Errorf("a store that was not probed holds %v", s.Keys())
+	}
+}
+
+// TestS3Backend_ListSequence (review item 3): a key that is not 20 digits is refused before it is
+// kept, and a listing stops at the first key out of sequence and the one after it, so the memory
+// is that of real entries however many keys follow.
+func TestS3Backend_ListSequence(t *testing.T) {
+	g := objstoretest.NewTarget(t)
+	b := revlog.NewS3Backend(context.Background(), g.Client(t, 0), "sink")
+	for _, n := range []int{1, 2, 4, 5, 6, 7, 8, 9} {
+		if err := b.CreateIfAbsent(revlog.Key(uint64(n)), []byte("x\n")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	keys, err := b.List("")
+	if err != nil || len(keys) != 4 || keys[2] != revlog.Key(4) || keys[3] != revlog.Key(5) {
+		t.Errorf("a gap at 3: %v, %v; want 1, 2, 4 and the key after the gap", keys, err)
+	}
+	// Right after the verified prefix, the first key is the one expected.
+	if keys, err := b.List(revlog.Key(2)); err != nil || len(keys) != 2 || keys[0] != revlog.Key(4) {
+		t.Errorf("after 2: %v, %v", keys, err)
+	}
+	for _, name := range []string{"notes.txt", "7", "00000000000000000010x"} {
+		g := objstoretest.NewTarget(t)
+		b := revlog.NewS3Backend(context.Background(), g.Client(t, 0), "sink")
+		if err := b.CreateIfAbsent(name, []byte("x\n")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := b.List(""); !errors.Is(err, revlog.ErrBroken) {
+			t.Errorf("the key %q: %v, want ErrBroken", name, err)
+		}
+	}
+}
+
+// TestS3Backend_ProbeCallerErrors (review item 8): a 400 that names the caller's credentials or
+// region is no verdict on the store, and the refusal names the store's answer.
+func TestS3Backend_ProbeCallerErrors(t *testing.T) {
+	for _, code := range []string{"AuthorizationHeaderMalformed", "InvalidAccessKeyId", "SignatureDoesNotMatch"} {
+		s := objstoretest.New(t)
+		s.PutAnswer = func() (int, string) { return 400, code }
+		b := revlog.NewS3Backend(context.Background(), s.Target().Client(t, 0), "p")
+		err := b.Probe(t.Context())
+		if err == nil || errors.Is(err, revlog.ErrNoConditionalCreate) || !objstore.Refused(err) {
+			t.Errorf("%s: %v", code, err)
+		}
+	}
+	s := objstoretest.New(t)
+	s.RejectConditional = true
+	err := revlog.NewS3Backend(context.Background(), s.Target().Client(t, 0), "p").Probe(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "400 InvalidArgument") {
+		t.Errorf("the refusal does not name the answer: %v", err)
 	}
 }

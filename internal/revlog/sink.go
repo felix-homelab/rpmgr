@@ -109,12 +109,17 @@ func (e SinkEntry) hash() (string, error) {
 // also when it returns an error.
 func (s *Sink) scan(keys []string, seq uint64, prev string) ([]SinkEntry, error) {
 	var out []SinkEntry
-	for _, key := range keys {
+	for i, key := range keys {
 		n, ok := parseKey(key)
 		if !ok {
 			return out, fmt.Errorf("%w: the sink holds the unexpected key %q", ErrBroken, key)
 		}
 		if n != seq+1 {
+			if i == len(keys)-1 && n > seq+1 {
+				// The last key is ahead of the chain: a store whose listing lags shows the key
+				// before it a moment later. A gap with a key after it is a break.
+				return out, fmt.Errorf("%w: the sink has no entry %d, and the last key listed is %d: %w", errTailGap, seq+1, n, ErrBroken)
+			}
 			return out, fmt.Errorf("%w: the sink has no entry %d", ErrBroken, seq+1)
 		}
 		b, err := s.backend.Get(key)
@@ -169,6 +174,18 @@ func (s *Sink) now() time.Time {
 	return time.Now()
 }
 
+// errTailGap marks a scan that ended at a key ahead of the chain, which may be a lagging listing.
+var errTailGap = errors.New("revlog: a gap at the tail of the listing")
+
+// tailGap is the answer to a gap at the tail: an error to retry, and a break after
+// MaxUnlistedRounds in a row.
+func (s *Sink) tailGap(err error) error {
+	if s.lagged++; s.lagged >= MaxUnlistedRounds {
+		return s.fail(err)
+	}
+	return fmt.Errorf("%w: %s", ErrListingLags, err)
+}
+
 func (s *Sink) fail(err error) error {
 	s.broken = err
 	return err
@@ -185,6 +202,9 @@ func (s *Sink) fullCheck() error {
 	}
 	got, err := s.scan(keys, 0, "")
 	if err != nil {
+		if errors.Is(err, errTailGap) {
+			return s.tailGap(err)
+		}
 		if errors.Is(err, ErrBroken) {
 			return s.fail(err)
 		}
@@ -254,10 +274,16 @@ func (s *Sink) sync(checkTip bool) ([]SinkEntry, error) {
 	got, err := s.scan(keys, s.last, s.prev)
 	s.extend(got)
 	if err != nil {
+		if errors.Is(err, errTailGap) {
+			return got, s.tailGap(err)
+		}
 		if errors.Is(err, ErrBroken) {
 			return got, s.fail(err)
 		}
 		return got, err
+	}
+	if len(got) > 0 {
+		s.lagged = 0
 	}
 	return got, nil
 }

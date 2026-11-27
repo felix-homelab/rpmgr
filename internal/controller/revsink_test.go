@@ -275,3 +275,35 @@ func TestRevocationShipper_StoreUnfitAtRuntime(t *testing.T) {
 		}
 	}
 }
+
+// TestOpenRevocationSink_LockDays (review item 6): the lock_days of the boot file reach the
+// backend, so that the shipped entries are locked in compliance mode; without it they are not.
+func TestOpenRevocationSink_LockDays(t *testing.T) {
+	for name, days := range map[string]int{"locked": 90, "not locked": 0} {
+		t.Run(name, func(t *testing.T) {
+			s := objstoretest.New(t)
+			rl := s3Boot(t, s.Target())
+			rl.S3.LockDays = days
+			b, err := controller.OpenRevocationSink(t.Context(), rl, logTo(&bytes.Buffer{}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			logPath := filepath.Join(t.TempDir(), "revocations.log")
+			l, err := revlog.Open(logPath, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := l.Append(revlog.Entry{Kind: revlog.SessionRevoked, Subject: "ses_1"}); err != nil {
+				t.Fatal(err)
+			}
+			r := &controller.RevocationShipper{Path: logPath, Sink: rl.Sink, Backend: b, Replica: "ctn_a", Logger: logTo(&bytes.Buffer{})}
+			if err := r.Ship(); err != nil {
+				t.Fatal(err)
+			}
+			mode, retain := s.Lock("revocations/" + revlog.Key(1))
+			if (days > 0) != (mode == "COMPLIANCE") || (days > 0) != (retain != "") {
+				t.Errorf("lock_days %d: mode %q until %q", days, mode, retain)
+			}
+		})
+	}
+}

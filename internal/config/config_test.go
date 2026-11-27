@@ -207,6 +207,7 @@ func TestRefused(t *testing.T) {
 		{"an s3 prefix with a control character", "controller", ctl + "revocation_log: {sink: \"s3://b/a\\u0001b\", s3: " + s3 + "}\n", "nothing else"},
 		{"an s3 lock below the minimum", "controller", ctl + "revocation_log: {sink: \"s3://b/p\", s3: {endpoint: \"https://s3.example.com\", region: r, credentials_file: /c, lock_days: 7}}\n", "lock_days"},
 		{"an s3 lock above the maximum", "controller", ctl + "revocation_log: {sink: \"s3://b/p\", s3: {endpoint: \"https://s3.example.com\", region: r, credentials_file: /c, lock_days: 4000}}\n", "lock_days"},
+		{"an http endpoint on a public host", "controller", ctl + "revocation_log: {sink: \"s3://b/p\", s3: {endpoint: \"http://s3.example.com\", region: r, credentials_file: /c}}\n", "loopback"},
 		{"an unknown s3 key", "controller", ctl + "revocation_log: {sink: \"s3://b/p\", s3: {endpoint: \"https://s3.example.com\", region: r, credentials_file: /c, secret: x}}\n", "secret"},
 	}
 	for _, tc := range cases {

@@ -435,6 +435,7 @@ func readSource(ctx context.Context, path string, rl config.RevocationLog) ([]re
 		if err != nil {
 			return nil, err
 		}
+		defer b.Close()
 		return readSink(revlog.NewSink(b))
 	}
 	st, err := os.Stat(path)
