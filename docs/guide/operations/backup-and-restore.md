@@ -5,6 +5,9 @@ log. This page shows how to back it up while it runs, what a backup holds and wh
 to keep the key-encryption key (KEK) safe, how to restore on the same host or a new one, and how to
 test a restore. Read it when you set up a controller, and again before you need it.
 
+This page describes a controller on SQLite, and says where a controller on PostgreSQL differs
+([Topologies](../install/topologies.md#a-controller-on-postgresql)).
+
 Gateways and connectors need no backup: their configuration comes from the controller, and a lost
 agent host is installed and enrolled again ([Enrolling connectors](../connectors/enroll.md)).
 
@@ -49,6 +52,14 @@ Back up the KEK separately and keep it apart from this archive: without it the a
 - **Never overwrites:** `--out` must name a file that does not exist; a failed backup leaves
   nothing behind.
 - **Audited:** the backup is recorded in the audit log with the actor `local-cli`.
+- **On PostgreSQL:** the same command copies the database into a SQLite file inside one snapshot
+  transaction, so the archive holds one consistent state even while the controller writes. The
+  archive is the same as on SQLite, and so is its restore. A database that `rpmgr migrate-db`
+  retired is refused. A PostgreSQL controller keeps its revocation log and audit checkpoints in
+  `/var/lib/rpmgr`, which the backup reads them from, so only the controller host can back up: a host
+  whose state directory lacks `controller-node.id` or `revocations.log` is refused. The backup does not replace the PostgreSQL
+  server's own backups, which you keep as well
+  ([10](../../10-operations.md#backup-and-restore)).
 - **The boot file:** `--config <file>`, default `$RPMGR_CONFIG`, else
   `/etc/rpmgr/controller.yaml`, else `/etc/rpmgr/all-in-one.yaml`.
 - **In a container:** run it inside, into the state volume, and copy it out:
@@ -181,13 +192,41 @@ re-enroll agents enrolled after the backup.
 | Flag | Meaning |
 |---|---|
 | `--in <file>` | Required. The archive of `rpmgr backup` |
-| `--revocation-log <dir or file>` | A revocation-log sink directory, or a controller's `revocations.log`. Repeat it for each. Default: the state directory's `revocations.log` |
+| `--revocation-log <dir or file>` | A revocation-log sink directory, or a controller's `revocations.log`. Repeat it for each. Default: the state directory's `revocations.log`; required for a restore into PostgreSQL |
+| `--replaces <boot file>` | For a restore into a new PostgreSQL database: the boot file, or the SQLite file, of the database it replaces. The restore refuses while a controller holds that database's lock. Without it, stop every controller yourself first. Refused for a SQLite restore |
 | `--config <file>` | The boot file, as for `rpmgr backup` |
 
 The restore refuses to run while a controller holds the database. It prepares everything next to
 the live files and renames them into place only when every step succeeded, so a failed restore
 changes nothing. The replaced files stay in `/var/lib/rpmgr` with the suffix
 `.before-restore-<time>`; delete them once the restored controller runs.
+
+### Into PostgreSQL
+
+When the boot file names a PostgreSQL database, the restore does not replace it: it needs an
+**empty** database that was made for the restore, and it fills it. The restore never drops or
+empties a database, and the database it replaces stays yours to retire. An archive from SQLite
+restores into PostgreSQL and the other way round.
+
+```sh
+sudo rpmgr restore --in /root/rpmgr-20261015T0300.tar --replaces /etc/rpmgr/controller.yaml.old
+```
+
+The boot file of the new database is `--config`. The restore takes that database's controller
+lock, so it refuses while any controller runs on it. The lock is per database, so a controller on
+the **old** database is not seen unless `--replaces` names it; the restore then refuses while it
+holds its lock, and warns when `rpmgr migrate-db` retired that database. A new database gets a new
+epoch like any restore. The restore prepares everything first and fills the database in one
+transaction, so a restore that fails before it commits leaves the database without a row, and the
+logs in the state directory as they were. If it fails after the commit, the database holds the
+restore: the error names the log files to put in place by hand, and a second restore into that
+database is refused. An archive of a database that `rpmgr migrate-db` retired is refused.
+
+The restore also makes the host it runs on the controller host. Before it writes, it ends the
+sessions of an earlier controller and waits as a starting controller does, and it creates
+`controller-node.id` in `/var/lib/rpmgr` if the host has none. The database then names this host,
+so the controller starts here, and the host of the backup, if it comes back with its files, is
+refused until `rpmgr controller adopt-state --old-host-lost` is run there on purpose.
 
 ### On a new host
 

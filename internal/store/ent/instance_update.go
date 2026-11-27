@@ -102,6 +102,53 @@ func (_u *InstanceUpdate) ClearRetiredTo() *InstanceUpdate {
 	return _u
 }
 
+// SetActiveNode sets the "active_node" field.
+func (_u *InstanceUpdate) SetActiveNode(v string) *InstanceUpdate {
+	_u.mutation.SetActiveNode(v)
+	return _u
+}
+
+// SetNillableActiveNode sets the "active_node" field if the given value is not nil.
+func (_u *InstanceUpdate) SetNillableActiveNode(v *string) *InstanceUpdate {
+	if v != nil {
+		_u.SetActiveNode(*v)
+	}
+	return _u
+}
+
+// ClearActiveNode clears the value of the "active_node" field.
+func (_u *InstanceUpdate) ClearActiveNode() *InstanceUpdate {
+	_u.mutation.ClearActiveNode()
+	return _u
+}
+
+// SetFenceEpoch sets the "fence_epoch" field.
+func (_u *InstanceUpdate) SetFenceEpoch(v int64) *InstanceUpdate {
+	_u.mutation.ResetFenceEpoch()
+	_u.mutation.SetFenceEpoch(v)
+	return _u
+}
+
+// SetNillableFenceEpoch sets the "fence_epoch" field if the given value is not nil.
+func (_u *InstanceUpdate) SetNillableFenceEpoch(v *int64) *InstanceUpdate {
+	if v != nil {
+		_u.SetFenceEpoch(*v)
+	}
+	return _u
+}
+
+// AddFenceEpoch adds value to the "fence_epoch" field.
+func (_u *InstanceUpdate) AddFenceEpoch(v int64) *InstanceUpdate {
+	_u.mutation.AddFenceEpoch(v)
+	return _u
+}
+
+// ClearFenceEpoch clears the value of the "fence_epoch" field.
+func (_u *InstanceUpdate) ClearFenceEpoch() *InstanceUpdate {
+	_u.mutation.ClearFenceEpoch()
+	return _u
+}
+
 // Mutation returns the InstanceMutation object of the builder.
 func (_u *InstanceUpdate) Mutation() *InstanceMutation {
 	return _u.mutation
@@ -176,6 +223,21 @@ func (_u *InstanceUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.RetiredToCleared() {
 		_spec.ClearField(instance.FieldRetiredTo, field.TypeString)
+	}
+	if value, ok := _u.mutation.ActiveNode(); ok {
+		_spec.SetField(instance.FieldActiveNode, field.TypeString, value)
+	}
+	if _u.mutation.ActiveNodeCleared() {
+		_spec.ClearField(instance.FieldActiveNode, field.TypeString)
+	}
+	if value, ok := _u.mutation.FenceEpoch(); ok {
+		_spec.SetField(instance.FieldFenceEpoch, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedFenceEpoch(); ok {
+		_spec.AddField(instance.FieldFenceEpoch, field.TypeInt64, value)
+	}
+	if _u.mutation.FenceEpochCleared() {
+		_spec.ClearField(instance.FieldFenceEpoch, field.TypeInt64)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -268,6 +330,53 @@ func (_u *InstanceUpdateOne) SetNillableRetiredTo(v *string) *InstanceUpdateOne 
 // ClearRetiredTo clears the value of the "retired_to" field.
 func (_u *InstanceUpdateOne) ClearRetiredTo() *InstanceUpdateOne {
 	_u.mutation.ClearRetiredTo()
+	return _u
+}
+
+// SetActiveNode sets the "active_node" field.
+func (_u *InstanceUpdateOne) SetActiveNode(v string) *InstanceUpdateOne {
+	_u.mutation.SetActiveNode(v)
+	return _u
+}
+
+// SetNillableActiveNode sets the "active_node" field if the given value is not nil.
+func (_u *InstanceUpdateOne) SetNillableActiveNode(v *string) *InstanceUpdateOne {
+	if v != nil {
+		_u.SetActiveNode(*v)
+	}
+	return _u
+}
+
+// ClearActiveNode clears the value of the "active_node" field.
+func (_u *InstanceUpdateOne) ClearActiveNode() *InstanceUpdateOne {
+	_u.mutation.ClearActiveNode()
+	return _u
+}
+
+// SetFenceEpoch sets the "fence_epoch" field.
+func (_u *InstanceUpdateOne) SetFenceEpoch(v int64) *InstanceUpdateOne {
+	_u.mutation.ResetFenceEpoch()
+	_u.mutation.SetFenceEpoch(v)
+	return _u
+}
+
+// SetNillableFenceEpoch sets the "fence_epoch" field if the given value is not nil.
+func (_u *InstanceUpdateOne) SetNillableFenceEpoch(v *int64) *InstanceUpdateOne {
+	if v != nil {
+		_u.SetFenceEpoch(*v)
+	}
+	return _u
+}
+
+// AddFenceEpoch adds value to the "fence_epoch" field.
+func (_u *InstanceUpdateOne) AddFenceEpoch(v int64) *InstanceUpdateOne {
+	_u.mutation.AddFenceEpoch(v)
+	return _u
+}
+
+// ClearFenceEpoch clears the value of the "fence_epoch" field.
+func (_u *InstanceUpdateOne) ClearFenceEpoch() *InstanceUpdateOne {
+	_u.mutation.ClearFenceEpoch()
 	return _u
 }
 
@@ -375,6 +484,21 @@ func (_u *InstanceUpdateOne) sqlSave(ctx context.Context) (_node *Instance, err 
 	}
 	if _u.mutation.RetiredToCleared() {
 		_spec.ClearField(instance.FieldRetiredTo, field.TypeString)
+	}
+	if value, ok := _u.mutation.ActiveNode(); ok {
+		_spec.SetField(instance.FieldActiveNode, field.TypeString, value)
+	}
+	if _u.mutation.ActiveNodeCleared() {
+		_spec.ClearField(instance.FieldActiveNode, field.TypeString)
+	}
+	if value, ok := _u.mutation.FenceEpoch(); ok {
+		_spec.SetField(instance.FieldFenceEpoch, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedFenceEpoch(); ok {
+		_spec.AddField(instance.FieldFenceEpoch, field.TypeInt64, value)
+	}
+	if _u.mutation.FenceEpochCleared() {
+		_spec.ClearField(instance.FieldFenceEpoch, field.TypeInt64)
 	}
 	_node = &Instance{config: _u.config}
 	_spec.Assign = _node.assignValues

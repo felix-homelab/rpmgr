@@ -23,9 +23,15 @@ import (
 // on a single node without a sink, a revocation is enforced and appended to the local
 // revocations.log; the API reports no sink, which the UI shows as the standing hardening warning,
 // and never the "not yet off-host" alert; a second controller on the database refuses to start.
+// It runs on SQLite and on PostgreSQL (RPMGR_TEST_PG; skipped without it).
 func TestRevocationLog_SingleNodeWithoutSink(t *testing.T) {
+	t.Run("sqlite", func(t *testing.T) { singleNodeWithoutSink(t, false) })
+	t.Run("postgresql", func(t *testing.T) { singleNodeWithoutSink(t, true) })
+}
+
+func singleNodeWithoutSink(t *testing.T, pg bool) {
 	var link string
-	r := startRunWith(t, runSetup{prepare: func(r *running) { link = r.firstUserLink }})
+	r := startRunWith(t, runSetup{pg: pg, prepare: func(r *running) { link = r.firstUserLink }})
 	if r.cfg.RevocationLog.Sink != "" {
 		t.Fatal("the test controller has a sink")
 	}
@@ -51,7 +57,7 @@ func TestRevocationLog_SingleNodeWithoutSink(t *testing.T) {
 	if err := login("correct horse battery staple"); err == nil {
 		t.Error("the old password still signs in")
 	}
-	entries, err := revlog.Read(filepath.Join(filepath.Dir(r.cfg.Database.DSN), "revocations.log"))
+	entries, err := revlog.Read(filepath.Join(r.cfg.State(), "revocations.log"))
 	if err != nil || len(entries) == 0 || entries[len(entries)-1].Kind != revlog.CredentialSuperseded {
 		t.Fatalf("the local log: %v %v", entries, err)
 	}
@@ -65,6 +71,20 @@ func TestRevocationLog_SingleNodeWithoutSink(t *testing.T) {
 	}
 	if st := set.Msg.GetRevocationLog(); st == nil || st.GetSink() || st.GetUnshipped() != 0 || st.GetAlert() || st.GetOldestUnshippedTime() != nil {
 		t.Errorf("without a sink: %v", st)
+	}
+
+	if pg { // the boot settings name the driver and where the password comes from, never the password
+		b, err := rpmgrv1connect.NewSettingsServiceClient(client, r.url).GetBootSettings(ctx, connect.NewRequest(&rpmgrv1.GetBootSettingsRequest{}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		d := b.Msg.GetSettings().GetDatabase()
+		if d.GetDriver() != rpmgrv1.DatabaseDriver_DATABASE_DRIVER_POSTGRES || d.GetPasswordSource() != rpmgrv1.PasswordSource_PASSWORD_SOURCE_FILE || d.GetHost() == "" {
+			t.Errorf("the boot settings of a PostgreSQL controller: %v", d)
+		}
+		if strings.Contains(b.Msg.String(), r.cfg.Database.PasswordFile) {
+			t.Errorf("the boot settings name the password file: %v", b.Msg)
+		}
 	}
 
 	second := r.cfg

@@ -26,6 +26,10 @@ const (
 	FieldRetiredAt = "retired_at"
 	// FieldRetiredTo holds the string denoting the retired_to field in the database.
 	FieldRetiredTo = "retired_to"
+	// FieldActiveNode holds the string denoting the active_node field in the database.
+	FieldActiveNode = "active_node"
+	// FieldFenceEpoch holds the string denoting the fence_epoch field in the database.
+	FieldFenceEpoch = "fence_epoch"
 	// Table holds the table name of the instance in the database.
 	Table = "instance"
 )
@@ -39,6 +43,8 @@ var Columns = []string{
 	FieldRestoreReviewSince,
 	FieldRetiredAt,
 	FieldRetiredTo,
+	FieldActiveNode,
+	FieldFenceEpoch,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -105,4 +111,14 @@ func ByRetiredAt(opts ...sql.OrderTermOption) OrderOption {
 // ByRetiredTo orders the results by the retired_to field.
 func ByRetiredTo(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRetiredTo, opts...).ToFunc()
+}
+
+// ByActiveNode orders the results by the active_node field.
+func ByActiveNode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldActiveNode, opts...).ToFunc()
+}
+
+// ByFenceEpoch orders the results by the fence_epoch field.
+func ByFenceEpoch(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFenceEpoch, opts...).ToFunc()
 }

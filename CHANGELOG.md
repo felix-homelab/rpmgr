@@ -28,6 +28,29 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- A controller can run on PostgreSQL: `database.driver: postgres` in the controller's boot file,
+  with `dsn` and, for the password, `password_file` or `password_credential` (never in the DSN)
+  ([Boot files](docs/guide/reference/boot-files.md#postgresql)). Fill an empty database with
+  `rpmgr controller init`, or move a SQLite controller with `rpmgr migrate-db`
+  ([Topologies](docs/guide/install/topologies.md#a-controller-on-postgresql)). One controller runs
+  on a database: a second one is refused by the database's controller lock, and a controller that
+  loses the lock stops. The controller does not start when the server does not answer in time. The
+  Settings page shows the driver, the server and the password's source, never the password. A
+  controller that loses the lock stops writing at once and exits. The node ID and the revocation
+  log stay in `/var/lib/rpmgr` on the controller host; the controller and the commands that use
+  them refuse a host without them (`rpmgr controller adopt-state --old-host-lost` makes them on purpose, and the database then refuses
+  the old host). The controller that takes the database's lock ends the sessions of the one before
+  it, and every write transaction checks a fence epoch on the server, so a stale transaction cannot
+  commit late, whether it ran in a transaction or as a single statement. For now
+  `rpmgr migrate` and `rpmgr kek rotate` refuse a PostgreSQL controller, and an all-in-one stays on
+  SQLite. (#689)
+- `rpmgr backup` and `rpmgr restore` work on a controller on PostgreSQL. The backup copies the
+  database inside one snapshot transaction into the same archive as on SQLite and runs only on the
+  controller host. The restore fills an empty PostgreSQL database from an archive of either engine,
+  takes the controller lock and ends the sessions of an earlier controller first, and makes the
+  host it runs on the controller host: the host of the backup is refused afterwards until
+  `rpmgr controller adopt-state --old-host-lost` is run there
+  ([Backup and restore](docs/guide/operations/backup-and-restore.md#into-postgresql)). (#688)
 - The controller can keep its key-encryption key in a key of Vault or OpenBao Transit:
   `kek.source: kms` with the new `kek.kms` section in the boot file
   ([Boot files](docs/guide/reference/boot-files.md#controller)). The controller reads the key at
@@ -71,6 +94,15 @@ Changes to the design documents are not recorded here: see the git history and t
   the database under the controller's system context, which ends a moment before the job's own, so
   a pass that began in that gap failed as if it were an error. It now reads under the job's
   context, so the stop ends it as a shutdown.
+
+### Security
+
+- `rpmgr backup` stages its copy of the database in a private temporary directory, no longer in
+  the controller's state directory, and removes only the files it created. Run as root, as the
+  guide shows, an earlier release let the account that owns the state directory make the backup
+  create and remove a file named `controller.db` in another directory. Severity low; affects
+  0.1.0 to 0.4.1. On those releases, run the backup as the service user (`sudo -u rpmgr rpmgr
+  backup …`). (#688)
 
 ## [0.4.1] - 2026-11-23
 

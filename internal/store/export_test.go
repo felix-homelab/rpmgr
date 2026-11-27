@@ -33,6 +33,31 @@ func SetLockCheckInterval(cleanup func(func()), d time.Duration) {
 	cleanup(func() { lockCheckInterval = old })
 }
 
+// SetConnectTimeout sets how long OpenPostgres waits for a server until the test ends.
+func SetConnectTimeout(cleanup func(func()), d time.Duration) {
+	old := connectTimeout
+	connectTimeout = d
+	cleanup(func() { connectTimeout = old })
+}
+
+// SetMigrationLockWait sets how long a migrator waits for the migration lock until the test ends.
+func SetMigrationLockWait(cleanup func(func()), d time.Duration) {
+	old := migrationLockWait
+	migrationLockWait = d
+	cleanup(func() { migrationLockWait = old })
+}
+
+// ResetClaim forgets db's claimed epoch, so that ClaimFence runs again.
+func ResetClaim(db *DB) { db.fence.epoch.Store(0) }
+
+// SetClaimTimeout sets how long ClaimFence waits for a transaction of an earlier controller until
+// the test ends.
+func SetClaimTimeout(cleanup func(func()), d time.Duration) {
+	old := claimLockTimeout
+	claimLockTimeout = d
+	cleanup(func() { claimLockTimeout = old })
+}
+
 // CopyOrder is the order in which CopyDatabase copies the tables of db.
 func CopyOrder(db *DB) ([]*schema.Table, error) {
 	return copyOrder(context.Background(), db.Reader, db.Dialect)

@@ -1240,6 +1240,8 @@ var (
 		{Name: "restore_review_since", Type: field.TypeTime, Nullable: true},
 		{Name: "retired_at", Type: field.TypeTime, Nullable: true},
 		{Name: "retired_to", Type: field.TypeString, Nullable: true},
+		{Name: "active_node", Type: field.TypeString, Nullable: true},
+		{Name: "fence_epoch", Type: field.TypeInt64, Nullable: true},
 	}
 	// InstanceTable holds the schema information for the "instance" table.
 	InstanceTable = &schema.Table{

@@ -373,7 +373,7 @@ RestartSec=2s
   `install.json` and `state.json` on every Linux host with systemd, whatever its role. On a host
   whose roles include a controller or an all-in-one the updater backs the database up first and
   updates it on the Instance Admin's request ([D158](14-open-decisions.md#engineering)), on SQLite
-  only until P2-M08 provides a PostgreSQL backup method.
+  only until a later slice of P2-M08 lets the updater use the PostgreSQL backup method.
   - **What is recorded:** `install.json` records the method (`script`, or `setup` for a binary
     that no script installed), the binary's path, the variant and a `roles` list, so that a host
     with a gateway and a connector restarts both; `rpmgr systemd-unit update` prints the units
@@ -560,7 +560,7 @@ listen:
   # internal: ":7384"                     # Phase 2, HA: the replicas' listener; "" = a single controller
   # internal_address: "10.0.0.5:7384"     # HA: how the other replicas dial it; required with internal
 database:
-  driver: sqlite              # sqlite | postgres (Phase 2, D174)
+  driver: sqlite              # sqlite | postgres (a controller, Phase 2, D174)
   dsn: /var/lib/rpmgr/controller.db
   # postgres: dsn: postgres://rpmgr@db.example.com/rpmgr?sslmode=verify-full&sslrootcert=/etc/rpmgr/pg-ca.pem
   # password_file: /etc/rpmgr/db-password       # or password_credential: <name>; never in the DSN
@@ -671,8 +671,8 @@ Rules for every boot file:
   `host:port`; `hostnames` are lower-case DNS names (internationalised ones in their `xn--` form)
   and need an address ([03](03-connections.md#reaching-a-private-controller)).
 - URLs are `https://<host>[:<port>]` without user, path, query or fragment; listen addresses are
-  `[host]:port`; paths are absolute. `database.driver: postgres` is refused before Phase 2 (slice
-  8.6); from then on these rules hold as well, and `kek.source: kms` has them from slice 8.9:
+  `[host]:port`; paths are absolute. `database.driver: postgres` and `kek.source: kms` have these
+  rules as well:
   - **PostgreSQL.** The `dsn` is a PostgreSQL URL or key-value string **without a password**: one
     that has one, or a `PGPASSWORD` in the environment or a `.pgpass` file that would supply one,
     stops the process. At most one of `password_file` and `password_credential` is set. The file
@@ -680,8 +680,22 @@ Rules for every boot file:
     [03](03-connections.md#timeouts-keepalive-and-backoff), with one non-empty line; the
     credential is the systemd credential of that name in `$CREDENTIALS_DIRECTORY`. A host that is
     neither loopback nor a Unix socket needs `sslmode=verify-full`. The reasons are in
-    [06](06-data-model.md#connecting-to-postgresql-phase-2). All-in-one accepts PostgreSQL as well,
-    and never `listen.internal`.
+    [06](06-data-model.md#connecting-to-postgresql-phase-2). A PostgreSQL database has no file to
+    name a state directory, so a controller on it keeps its files outside the database
+    ([Filesystem layout](#filesystem-layout)) in `/var/lib/rpmgr`, the service's
+    `StateDirectory`. The controller takes the controller lock exclusively, so a second controller
+    on the database is refused until replicas exist ([High availability](#high-availability));
+    it then waits the stop bound of [03](03-connections.md#timeouts-keepalive-and-backoff) and a
+    margin before its first write, gives up on a server that does not answer within the time
+    listed there, and stops without draining when the lock is lost. The node ID and the revocation
+    log in that directory belong to the host: the controller and the local commands that use them
+    refuse a host that lacks them, the database names the host that runs the controller (a host that
+    `adopt-state --old-host-lost` replaced is refused), and `rpmgr controller adopt-state` makes
+    them on purpose
+    ([06](06-data-model.md#connecting-to-postgresql-phase-2)). All-in-one does not accept PostgreSQL yet, and never
+    `listen.internal`; `rpmgr migrate` and `rpmgr kek rotate` refuse a PostgreSQL controller until
+    their slices of P2-M08 and P2-M09 land (the controller itself migrates when it starts);
+    `rpmgr backup` and `rpmgr restore` work on it ([Backup and restore](#backup-and-restore)).
   - **Transit.** `kek.kms` takes `address` (an `https://` URL), `mount` (default `transit`), `key`,
     an optional `ca_file` of PEM certificates, and exactly one of `token_file` and `approle`
     (`role_id_file`, `secret_id_file`, optional `mount`, default `approle`). Every file is regular
@@ -822,10 +836,15 @@ service that still runs the previous binary, with the command that restarts it.
   in the backup stay envelope-encrypted, and the copier never opens them.
   - **The archive:** one tar file, mode 0600, with `controller.db`, `revocations.log`,
     `audit-checkpoints.log` (both without a line still being written) and `backup.json` (format,
-    version, time, trust domain, `db_epoch` and, from Phase 2, `source_dialect`). `controller.db`
-    is a SQLite database also when the source is PostgreSQL, at the schema version of the source.
+    version, time, trust domain, `db_epoch` and, from Phase 2, `source_dialect`, `sqlite` or
+    `postgres`). `controller.db` is a SQLite database also when the source is PostgreSQL, at the
+    schema version of the source.
     With replicas, `revocations.log` is the log of the host the command runs on, and
-    `audit-checkpoints.log` is written from the table ([04](04-security.md#audit-log)).
+    `audit-checkpoints.log` is written from the table ([04](04-security.md#audit-log)). A
+    PostgreSQL controller keeps both logs in `/var/lib/rpmgr`, which the command reads them
+    from, and refuses a host whose state directory lacks the node ID or the revocation log: only the
+    controller host backs up its host files ([`adopt-state`](16-cli.md) makes them on a new host).
+    A database that `rpmgr migrate-db` retired is refused.
   - **Other PostgreSQL backups** (a dump, a physical backup) are the operator's own and keep their
     place next to this one, but a database restored from one skips the restore's steps below: the
     new `db_epoch`, the invalidations and the revocations applied again. `rpmgr restore` takes
@@ -856,15 +875,25 @@ service that still runs the previous binary, with the command that restarts it.
   random UUIDv7, as at init, so restoring the same backup twice never reuses an epoch. Agents accept
   the restored, lower revisions only together with the new epoch
   ([03](03-connections.md#revisions-and-ordering)). The boot file decides the dialect of the
-  result: a SQLite file, or, on PostgreSQL, an **empty** database that was made for it, which the
-  copier fills and the restore's steps change in **one transaction**; the restore never drops or
-  empties a database, and the old one stays the operator's to retire. **The controller lock is per
-  database**, so a restore into a new database would not stop replicas still running on the old
-  one: `--replaces <boot file>` names the old database, and the restore refuses while its
-  controller lock is held or `controller_nodes` there has a live row; without it the restore
-  cannot tell, so **stop every replica yourself first**. Before it commits, the restore compares
-  the KEK identifiers in the archive's `secrets_meta` with the boot file's `kek` section and
-  refuses when that KEK cannot open them, naming both.
+  result: a SQLite file, or, on PostgreSQL, an **empty** database that was made for it. The restore
+  does its steps (migrations, the new `db_epoch`, the invalidations and the revocations applied
+  again) on a staged SQLite copy of the archive's database, then the copier fills the empty
+  database with it in **one transaction**; the restore never drops or empties a database, and the
+  old one stays the operator's to retire. An archive from either dialect restores into either.
+  **The controller lock is per database**, so a restore into a new database would not stop replicas
+  still running on the old one: `--replaces <boot file>` names the old database, and the restore
+  refuses while its controller lock is held, or [T] `controller_nodes` there has a live row (slice
+  9.2); it warns when `migrate-db` retired that database. Without it the restore cannot tell, so
+  **stop every replica yourself first**. On PostgreSQL the restore takes the controller lock
+  exclusively as `adopt-state` does, ends the sessions of an earlier controller, waits the settle
+  time a starting controller waits ([03](03-connections.md#timeouts-keepalive-and-backoff)) and
+  claims the fence epoch before it writes. It then makes **this host** the controller host: the
+  database names this host's node ID (`instance.active_node`), which the restore creates in the
+  state directory if the host has none, beside the restored `revocations.log`. The controller starts
+  here afterwards, and the host of the backup, if it comes back, is refused until `adopt-state` is
+  run there on purpose ([06](06-data-model.md#connecting-to-postgresql-phase-2)). [T] Before it commits, the restore compares the KEK
+  identifiers in the archive's `secrets_meta` with the boot file's `kek` section and refuses when
+  that KEK cannot open them, naming both.
 - **Relying parties never shrink their deny-list across epochs**: agents merge deny-list updates by
   union and drop an entry only after its own expiry, never because of a version number or a new
   `db_epoch`, so certificates revoked after the backup stay denied on every gateway, connector and
@@ -921,9 +950,10 @@ service that still runs the previous binary, with the command that restarts it.
 - **Restore side effects**, applied automatically:
   - the restore merges the sink with every reachable replica's local log, checks the sink's hash
     chain, then re-applies every entry newer than the backup, with its original time and reason;
-    without `--revocation-log` it reads the local `revocations.log` of the host it runs on. The
-    re-applied entries are appended to the restored local log, so a later restore finds them
-    without the sink.
+    without `--revocation-log` it reads the local `revocations.log` of the host it runs on, except
+    into PostgreSQL, where the option is required: the host's own log says nothing of what other
+    controllers on that database revoked. The re-applied entries are appended to the restored local
+    log, so a later restore finds them without the sink.
   - **Re-applying:** a revoked certificate the backup does not hold, because it was issued after
     the backup, stays on the deny-list until it expires; so does a revoked identity of an org created
     after the backup. A role downgrade never raises a role. A password changed after the backup is
@@ -977,9 +1007,16 @@ service that still runs the previous binary, with the command that restarts it.
   (on PostgreSQL its exclusive advisory lock, which a replica's shared one also blocks) and refuses
   while a controller holds it. It prepares the restored database and logs next to the
   live ones (`*.restoring`) and renames them into place only when every step succeeded, so a failed
-  restore changes nothing; on PostgreSQL the single transaction is what leaves the empty database
-  empty after a failure. The replaced database and logs stay in the state directory with the
-  suffix `.before-restore-<time>`; delete them once the restored controller runs.
+  restore changes nothing. On PostgreSQL the live logs are moved aside first and put back when the
+  copy fails, and the single transaction leaves the database without a row; the one thing a failure
+  can leave behind is the migration of an empty target, which holds no row. Once that transaction
+  has committed, a failure to put the logs in place keeps every file and the error names them, with
+  the epoch the database holds, for the operator to move into place by hand: a second restore into
+  that database is refused, because it is no longer empty. The replaced logs, and a SQLite
+  database, stay in the state directory with the suffix `.before-restore-<time>`, which has a
+  number added when a file of that name exists; delete them once the restored controller runs. An
+  archive of a database that `migrate-db` retired is refused, because the restored database would
+  refuse to start.
 - [R] Back up daily and before every controller upgrade; test a restore at least quarterly.
 
 ## High availability

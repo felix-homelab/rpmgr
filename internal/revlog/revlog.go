@@ -113,11 +113,19 @@ type Log struct {
 
 // Open opens the log at path, creating it with mode 0640 if it does not exist, and verifies its
 // hash chain. now stamps new entries; nil is time.Now.
-func Open(path string, now func() time.Time) (*Log, error) {
+func Open(path string, now func() time.Time) (*Log, error) { return OpenFile(path, now, true) }
+
+// OpenFile is Open that creates the file only if create is set; without it a missing file is an
+// error, for a host that must already hold the log.
+func OpenFile(path string, now func() time.Time, create bool) (*Log, error) {
 	if now == nil {
 		now = time.Now
 	}
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o640) //nolint:gosec // G304: the configured state directory
+	flags := os.O_RDWR
+	if create {
+		flags |= os.O_CREATE
+	}
+	f, err := os.OpenFile(path, flags, 0o640) //nolint:gosec // G304: the configured state directory
 	if err != nil {
 		return nil, err
 	}

@@ -2,7 +2,7 @@
 
 rpmgr's parts can share one server or spread over several. This page describes the layouts rpmgr
 supports, what each needs and how to set it up: the all-in-one, a controller on its own host, a
-private controller reached through a gateway, several gateways in a group, and gateway groups in
+controller on PostgreSQL, a private controller reached through a gateway, several gateways in a group, and gateway groups in
 several regions. Read it before you install, to choose a layout, and when you outgrow the one you
 have. The parts themselves are explained in [Concepts](../concepts.md).
 
@@ -10,6 +10,7 @@ have. The parts themselves are explained in [Concepts](../concepts.md).
 |---|---|---|
 | [All-in-one](#all-in-one) | One public server, plus connectors | You start, or a homelab or small team is served by one public server |
 | [Controller on its own host](#a-controller-on-its-own-host) | A controller, one or more gateways, connectors | The web UI and the CA should not share a host with the public traffic |
+| [Controller on PostgreSQL](#a-controller-on-postgresql) | A controller with its database on a PostgreSQL server | You want the database on a server of its own, or to prepare for several controllers later |
 | [Private controller](#a-private-controller-behind-a-gateway) | A controller in a private network, gateways, connectors | The controller should have no public address at all |
 | [Several gateways in a group](#several-gateways-in-a-group) | Two or more gateways for the same routes | The routes must survive the loss or the maintenance of one gateway |
 | [Regions](#gateway-groups-in-several-regions) | One gateway group per region | Visitors or services are spread over regions |
@@ -21,8 +22,8 @@ controller ([02](../../02-architecture.md#planes)).
 **One instance per role per host.** Paths, unit names and admin ports are fixed per role, so a
 host runs at most one controller or all-in-one, one gateway and one connector
 ([10](../../10-operations.md#supported-platforms)). Several controllers sharing one database
-(high availability) are not available yet; they are planned for Phase 2 with PostgreSQL
-([13](../../13-roadmap.md#phase-2--production)).
+(high availability) are not available yet; a second controller on a database is refused. They are
+planned for Phase 2 with PostgreSQL ([13](../../13-roadmap.md#phase-2--production)).
 
 ## All-in-one
 
@@ -100,6 +101,38 @@ rpmgr create gateway --group edge --name gw1 --tunnel-endpoint gw1.example.com:4
 rpmgr create gateway-token --gateway gw1
 rpmgr get --role gateway install-command
 ```
+
+## A controller on PostgreSQL
+
+A controller can keep its database on a PostgreSQL server instead of in a SQLite file. Nothing else
+changes: the gateways and connectors see the same controller, and the files outside the database,
+such as the revocation log and the `/dl/` mirror, stay in `/var/lib/rpmgr` on the controller's host
+([Boot files](../reference/boot-files.md#postgresql)). One controller runs on the database; a
+second one is refused while the first holds it, and several controllers are not available yet.
+
+1. On the PostgreSQL server, make an empty database and a role that owns it. A server that is not
+   on the controller's own host needs a TLS certificate the controller can verify
+   (`sslmode=verify-full`). Put the role's password in a file that only the service user can read,
+   or in a systemd credential; it never goes into the connection string.
+2. Write the `database` section of the controller's boot file:
+
+   ```yaml
+   database:
+     driver: postgres
+     dsn: postgres://rpmgr@db.example.com/rpmgr?sslmode=verify-full
+     password_file: /etc/rpmgr/database-password
+   ```
+
+3. A new controller: run `sudo rpmgr controller init`, which reads the boot file and fills the
+   empty database, then start the service. An existing controller on SQLite: move its database with
+   `rpmgr migrate-db` ([Move between SQLite and PostgreSQL](../operations/sqlite-and-postgresql.md)).
+
+The controller does not start when the server does not answer in time, when the password file is
+missing or readable by others, or when the connection string holds a password. The Settings page
+shows the Instance Admin the driver, the server and where the password comes from, never the
+password ([Settings](../operations/settings.md)). `rpmgr backup` and `rpmgr restore` work on it
+([Backup and restore](../operations/backup-and-restore.md)); `rpmgr migrate` and `rpmgr kek rotate`
+refuse it for now.
 
 ## A private controller behind a gateway
 

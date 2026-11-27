@@ -138,6 +138,9 @@ func Run(ctx context.Context, o RunOptions) error {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
 	cfg := o.Config
+	if err := requireHostState(cfg); err != nil {
+		return err
+	}
 	public, err := url.Parse(cfg.PublicURL)
 	if err != nil {
 		return err
@@ -168,19 +171,50 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
-	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{Lock: true})
+	db, err := openDatabase(ctx, cfg, o.Getenv, dbOptions{Lock: true})
 	if err != nil {
 		return err
 	}
 	defer func() { _ = db.Close() }()
+	// From here on a lost lock ends the run: every context below derives from ctx, so the jobs, the
+	// sessions and the requests in flight stop at once, and the database fences what is left
+	// (store.ErrLockLost).
+	ctx, endRun := context.WithCancelCause(ctx)
+	defer endRun(nil)
+	go func() {
+		select {
+		case <-db.LockLost():
+			endRun(ErrLockLost)
+		case <-ctx.Done():
+		}
+	}()
+	// A host that adopt-state replaced is refused before anything is written: no migration, no
+	// epoch, no audit entry of its own.
+	if cfg.Database.Driver == "postgres" {
+		if err := refuseReplacedHost(ctx, cfg, db); err != nil {
+			return err
+		}
+	}
+	if err := settleLock(ctx, db); err != nil {
+		return err
+	}
 	dir, err := migrations.Dir(db.Dialect)
 	if err != nil {
+		return err
+	}
+	// A schema that has the fence column is claimed before the migrations, one that has not after.
+	if err := store.ClaimFence(ctx, db); err != nil {
 		return err
 	}
 	if n, err := store.Migrate(ctx, db, dir); err != nil {
 		return err
 	} else if n > 0 {
 		o.Logger.Info("applied database migrations", "files", n)
+	}
+	// From here the server accepts only this controller's write transactions: a transaction of the
+	// controller before it fails, however late it arrives.
+	if err := store.ClaimFence(ctx, db); err != nil { // a no-op when it was claimed above
+		return err
 	}
 	sys, err := authz.System(ctx, "controller", "rpmgr controller", audit.SystemScopes(db))
 	if err != nil {
@@ -199,14 +233,22 @@ func Run(ctx context.Context, o RunOptions) error {
 		return explainOpen(err)
 	}
 	td := ca.TrustDomain()
-	stateDir := filepath.Dir(cfg.Database.DSN)
-	rl, err := revlog.Open(filepath.Join(stateDir, "revocations.log"), o.Now)
+	stateDir := cfg.State()
+	// On PostgreSQL the log and the node ID are this host's files and exist (requireHostState): a
+	// host that lacks them is refused, not given new ones.
+	create := cfg.Database.Driver != "postgres"
+	rl, err := revlog.OpenFile(filepath.Join(stateDir, revocationLogFile), o.Now, create)
 	if err != nil {
 		return err
 	}
-	nodeID, err := nodeIdentity(filepath.Join(stateDir, "controller-node.id"))
+	nodeID, err := nodeIdentity(filepath.Join(stateDir, nodeIDFile), create)
 	if err != nil {
 		return err
+	}
+	if cfg.Database.Driver == "postgres" {
+		if err := claimHost(sys, db, nodeID); err != nil {
+			return err
+		}
 	}
 	node, err := ca.NodeCertificate(sys, db, nodeID)
 	if err != nil {
@@ -468,7 +510,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_settings_proto.Services().ByName("SettingsService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewSettingsServiceHandler(&apisvc.Settings{DB: db, Sys: sys, Sealer: sealer, Now: o.Now, RevocationLog: shipper.Status,
-				Boot: &apisvc.BootSource{Config: cfg, NodeID: nodeID, ConfigFile: o.ConfigFile, LoadedAt: o.Now()}}, opts...)
+				Boot: &apisvc.BootSource{Config: cfg, NodeID: nodeID, ConfigFile: o.ConfigFile, LoadedAt: o.Now(),
+					PasswordFile: cfg.Database.PasswordFile, PasswordCredential: cfg.Database.PasswordCredential}}, opts...)
 		}); err != nil {
 		return err
 	}
@@ -533,6 +576,13 @@ func Run(ctx context.Context, o RunOptions) error {
 		redirect = &http.Server{Handler: port80, ReadHeaderTimeout: 10 * time.Second}
 	}
 	split := NewSplitter(td, ln.Addr())
+	if errors.Is(context.Cause(ctx), ErrLockLost) { // lost while starting
+		_ = ln.Close()
+		if httpLn != nil {
+			_ = httpLn.Close()
+		}
+		return ErrLockLost
+	}
 
 	run, stop := context.WithCancel(ctx)
 	defer stop()
@@ -631,7 +681,26 @@ func Run(ctx context.Context, o RunOptions) error {
 	var result error
 	select {
 	case <-ctx.Done():
+		if errors.Is(context.Cause(ctx), ErrLockLost) {
+			result = ErrLockLost
+		}
 	case result = <-errs:
+	}
+	if errors.Is(result, ErrLockLost) || errors.Is(context.Cause(ctx), ErrLockLost) {
+		// Another controller may hold the database: no drain, no final checkpoint, nothing that
+		// waits. The listeners close, the connections are cut and the jobs stop.
+		_ = ln.Close()
+		if httpLn != nil {
+			_ = redirect.Close()
+		}
+		agents.Stop()
+		_ = web.Close()
+		stop()
+		<-sessionsDone
+		stopJobs()
+		bg.Wait()
+		admin.Wait()
+		return ErrLockLost
 	}
 	// Drain: agents move to another endpoint, then the servers stop.
 	select {
@@ -745,7 +814,7 @@ func loadKEK(cfg config.Controller, getenv func(string) string) (secret.KEK, err
 
 // nodeIdentity returns this replica's node ID, kept in path so that a restart presents the same
 // identity; the first start creates it.
-func nodeIdentity(path string) (string, error) {
+func nodeIdentity(path string, create bool) (string, error) {
 	b, err := os.ReadFile(path) //nolint:gosec // G304: in the configured state directory
 	if err == nil {
 		id := strings.TrimSpace(string(b))
@@ -754,7 +823,7 @@ func nodeIdentity(path string) (string, error) {
 		}
 		return id, nil
 	}
-	if !errors.Is(err, os.ErrNotExist) {
+	if !errors.Is(err, os.ErrNotExist) || !create {
 		return "", err
 	}
 	id := ids.New("ctn")
