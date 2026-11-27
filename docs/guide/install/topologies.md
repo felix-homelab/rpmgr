@@ -130,9 +130,9 @@ second one is refused while the first holds it, and several controllers are not 
 The controller does not start when the server does not answer in time, when the password file is
 missing or readable by others, or when the connection string holds a password. The Settings page
 shows the Instance Admin the driver, the server and where the password comes from, never the
-password ([Settings](../operations/settings.md)). Backup and restore of a controller on PostgreSQL
-come with a later release ([Backup and restore](../operations/backup-and-restore.md)); until then
-`rpmgr backup`, `rpmgr restore`, `rpmgr migrate` and `rpmgr kek rotate` refuse it.
+password ([Settings](../operations/settings.md)). `rpmgr backup` and `rpmgr restore` work on it
+([Backup and restore](../operations/backup-and-restore.md)); `rpmgr migrate` and `rpmgr kek rotate`
+refuse it for now.
 
 ## A private controller behind a gateway
 

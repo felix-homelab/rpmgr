@@ -373,7 +373,7 @@ RestartSec=2s
   `install.json` and `state.json` on every Linux host with systemd, whatever its role. On a host
   whose roles include a controller or an all-in-one the updater backs the database up first and
   updates it on the Instance Admin's request ([D158](14-open-decisions.md#engineering)), on SQLite
-  only until P2-M08 provides a PostgreSQL backup method.
+  only until a later slice of P2-M08 lets the updater use the PostgreSQL backup method.
   - **What is recorded:** `install.json` records the method (`script`, or `setup` for a binary
     that no script installed), the binary's path, the variant and a `roles` list, so that a host
     with a gateway and a connector restarts both; `rpmgr systemd-unit update` prints the units
@@ -693,9 +693,9 @@ Rules for every boot file:
     `adopt-state --old-host-lost` replaced is refused), and `rpmgr controller adopt-state` makes
     them on purpose
     ([06](06-data-model.md#connecting-to-postgresql-phase-2)). All-in-one does not accept PostgreSQL yet, and never
-    `listen.internal`; `rpmgr backup`, `rpmgr restore`, `rpmgr migrate` and `rpmgr kek rotate`
-    refuse a PostgreSQL controller until their slices of P2-M08 and P2-M09 land (the controller
-    itself migrates when it starts).
+    `listen.internal`; `rpmgr migrate` and `rpmgr kek rotate` refuse a PostgreSQL controller until
+    their slices of P2-M08 and P2-M09 land (the controller itself migrates when it starts);
+    `rpmgr backup` and `rpmgr restore` work on it ([Backup and restore](#backup-and-restore)).
   - **Transit.** `kek.kms` takes `address` (an `https://` URL), `mount` (default `transit`), `key`,
     an optional `ca_file` of PEM certificates, and exactly one of `token_file` and `approle`
     (`role_id_file`, `secret_id_file`, optional `mount`, default `approle`). Every file is regular
@@ -842,7 +842,9 @@ service that still runs the previous binary, with the command that restarts it.
     With replicas, `revocations.log` is the log of the host the command runs on, and
     `audit-checkpoints.log` is written from the table ([04](04-security.md#audit-log)). A
     PostgreSQL controller keeps both logs in `/var/lib/rpmgr`, which the command reads them
-    from. A database that `rpmgr migrate-db` retired is refused.
+    from, and refuses a host whose state directory lacks the node ID or the revocation log: only the
+    controller host backs up its host files ([`adopt-state`](16-cli.md) makes them on a new host).
+    A database that `rpmgr migrate-db` retired is refused.
   - **Other PostgreSQL backups** (a dump, a physical backup) are the operator's own and keep their
     place next to this one, but a database restored from one skips the restore's steps below: the
     new `db_epoch`, the invalidations and the revocations applied again. `rpmgr restore` takes
@@ -882,7 +884,14 @@ service that still runs the previous binary, with the command that restarts it.
   still running on the old one: `--replaces <boot file>` names the old database, and the restore
   refuses while its controller lock is held, or [T] `controller_nodes` there has a live row (slice
   9.2); it warns when `migrate-db` retired that database. Without it the restore cannot tell, so
-  **stop every replica yourself first**. [T] Before it commits, the restore compares the KEK
+  **stop every replica yourself first**. On PostgreSQL the restore takes the controller lock
+  exclusively as `adopt-state` does, ends the sessions of an earlier controller, waits the settle
+  time a starting controller waits ([03](03-connections.md#timeouts-keepalive-and-backoff)) and
+  claims the fence epoch before it writes. It then makes **this host** the controller host: the
+  database names this host's node ID (`instance.active_node`), which the restore creates in the
+  state directory if the host has none, beside the restored `revocations.log`. The controller starts
+  here afterwards, and the host of the backup, if it comes back, is refused until `adopt-state` is
+  run there on purpose ([06](06-data-model.md#connecting-to-postgresql-phase-2)). [T] Before it commits, the restore compares the KEK
   identifiers in the archive's `secrets_meta` with the boot file's `kek` section and refuses when
   that KEK cannot open them, naming both.
 - **Relying parties never shrink their deny-list across epochs**: agents merge deny-list updates by

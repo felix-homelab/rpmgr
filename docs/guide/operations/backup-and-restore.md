@@ -5,9 +5,8 @@ log. This page shows how to back it up while it runs, what a backup holds and wh
 to keep the key-encryption key (KEK) safe, how to restore on the same host or a new one, and how to
 test a restore. Read it when you set up a controller, and again before you need it.
 
-This page describes a controller on SQLite. A controller on PostgreSQL is not backed up or restored
-by these commands yet: `rpmgr backup` and `rpmgr restore` refuse it, and a later release adds its
-method ([Topologies](../install/topologies.md#a-controller-on-postgresql)).
+This page describes a controller on SQLite, and says where a controller on PostgreSQL differs
+([Topologies](../install/topologies.md#a-controller-on-postgresql)).
 
 Gateways and connectors need no backup: their configuration comes from the controller, and a lost
 agent host is installed and enrolled again ([Enrolling connectors](../connectors/enroll.md)).
@@ -57,7 +56,8 @@ Back up the KEK separately and keep it apart from this archive: without it the a
   transaction, so the archive holds one consistent state even while the controller writes. The
   archive is the same as on SQLite, and so is its restore. A database that `rpmgr migrate-db`
   retired is refused. A PostgreSQL controller keeps its revocation log and audit checkpoints in
-  `/var/lib/rpmgr`, which the backup reads them from. The backup does not replace the PostgreSQL
+  `/var/lib/rpmgr`, which the backup reads them from, so only the controller host can back up: a host
+  whose state directory lacks `controller-node.id` or `revocations.log` is refused. The backup does not replace the PostgreSQL
   server's own backups, which you keep as well
   ([10](../../10-operations.md#backup-and-restore)).
 - **The boot file:** `--config <file>`, default `$RPMGR_CONFIG`, else
@@ -221,6 +221,12 @@ transaction, so a restore that fails before it commits leaves the database witho
 logs in the state directory as they were. If it fails after the commit, the database holds the
 restore: the error names the log files to put in place by hand, and a second restore into that
 database is refused. An archive of a database that `rpmgr migrate-db` retired is refused.
+
+The restore also makes the host it runs on the controller host. Before it writes, it ends the
+sessions of an earlier controller and waits as a starting controller does, and it creates
+`controller-node.id` in `/var/lib/rpmgr` if the host has none. The database then names this host,
+so the controller starts here, and the host of the backup, if it comes back with its files, is
+refused until `rpmgr controller adopt-state --old-host-lost` is run there on purpose.
 
 ### On a new host
 

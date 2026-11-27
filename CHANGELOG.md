@@ -42,8 +42,15 @@ Changes to the design documents are not recorded here: see the git history and t
   the old host). The controller that takes the database's lock ends the sessions of the one before
   it, and every write transaction checks a fence epoch on the server, so a stale transaction cannot
   commit late. For now
-  `rpmgr backup`, `rpmgr restore`, `rpmgr migrate` and `rpmgr kek rotate` refuse a PostgreSQL
-  controller, and an all-in-one stays on SQLite. (#689)
+  `rpmgr migrate` and `rpmgr kek rotate` refuse a PostgreSQL controller, and an all-in-one stays on
+  SQLite. (#689)
+- `rpmgr backup` and `rpmgr restore` work on a controller on PostgreSQL. The backup copies the
+  database inside one snapshot transaction into the same archive as on SQLite and runs only on the
+  controller host. The restore fills an empty PostgreSQL database from an archive of either engine,
+  takes the controller lock and ends the sessions of an earlier controller first, and makes the
+  host it runs on the controller host: the host of the backup is refused afterwards until
+  `rpmgr controller adopt-state --old-host-lost` is run there
+  ([Backup and restore](docs/guide/operations/backup-and-restore.md#into-postgresql)). (#688)
 - The controller can keep its key-encryption key in a key of Vault or OpenBao Transit:
   `kek.source: kms` with the new `kek.kms` section in the boot file
   ([Boot files](docs/guide/reference/boot-files.md#controller)). The controller reads the key at
