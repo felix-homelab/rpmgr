@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/felix-homelab/rpmgr/internal/pki"
 )
@@ -231,15 +232,18 @@ func (h ExportHeader) trust(pin string) (Trust, error) {
 		}
 		t.Intermediates = append(t.Intermediates, c)
 	}
-	for _, c := range candidates {
-		if c == pinned || c.CheckSignatureFrom(c) != nil {
-			continue
-		}
-		for _, x := range t.Intermediates {
-			if x.Subject.String() == c.Subject.String() && bytes.Equal(x.RawSubjectPublicKeyInfo, c.RawSubjectPublicKeyInfo) &&
-				x.CheckSignatureFrom(pinned) == nil {
+	// Trust spreads along cross-certificates, in the direction they were signed, until nothing changes: a
+	// root is trusted when a cross-certificate that a trusted root signed certifies its key, so that
+	// R1 trusted gives R2 (through X) and R2 then R3 (through X'), and what each signed chains to it directly.
+	for changed := true; changed; {
+		changed = false
+		for _, c := range candidates {
+			if slices.Contains(t.Roots, c) || c.CheckSignatureFrom(c) != nil {
+				continue
+			}
+			if certifiedBy(c, t.Intermediates, t.Roots) {
 				t.Roots = append(t.Roots, c)
-				break
+				changed = true
 			}
 		}
 	}
@@ -251,4 +255,19 @@ func (h ExportHeader) trust(pin string) (Trust, error) {
 		t.Signers = append(t.Signers, c)
 	}
 	return t, nil
+}
+
+// certifiedBy reports whether one of the cross-certificates carries the subject and key of root and was signed by one of the trusted roots.
+func certifiedBy(root *x509.Certificate, cross, trusted []*x509.Certificate) bool {
+	for _, x := range cross {
+		if x.Subject.String() != root.Subject.String() || !bytes.Equal(x.RawSubjectPublicKeyInfo, root.RawSubjectPublicKeyInfo) {
+			continue
+		}
+		for _, r := range trusted {
+			if x.CheckSignatureFrom(r) == nil {
+				return true
+			}
+		}
+	}
+	return false
 }

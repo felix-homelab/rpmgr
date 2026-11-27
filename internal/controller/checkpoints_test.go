@@ -272,3 +272,76 @@ func TestAuditExportAcrossRootRotation(t *testing.T) {
 		t.Fatalf("a pin of another root = %v, want ErrExportPin", err)
 	}
 }
+
+// TestAuditExportAcrossTwoRootRotations: after R1 -> R2 -> R3 the pin of R1 verifies the whole export, trusting R2
+// through X and R3 through X', the pin of R2 does not verify what R1's chain signed, and the pin of R3 verifies a
+// chain signed under it alone.
+func TestAuditExportAcrossTwoRootRotations(t *testing.T) {
+	db := storetest.Migrated(t, store.SQLite)
+	e := startSessions(t, db, "0.1.0", 0)
+	leases := lease.New(db, "ctn_test", nil)
+	at := time.Now()
+	o := controller.CheckpointOptions{DB: db, CA: e.ca, Leases: leases, Now: func() time.Time { return at },
+		Log: &audit.CheckpointLog{Path: filepath.Join(t.TempDir(), "audit-checkpoints.log")}}
+	record := func(org string) {
+		t.Helper()
+		if _, err := audit.Record(context.Background(), db, audit.Entry{OrgID: org, ActorType: audit.ActorSystem, ActorID: "test", Action: "test.run",
+			Result: audit.Success}); err != nil {
+			t.Fatal(err)
+		}
+		if err := controller.FinalCheckpoints(e.sys, o); err != nil {
+			t.Fatal(err)
+		}
+	}
+	verify := func(org string, r *x509.Certificate) error {
+		signers, inters, roots, err := castore.SignerCertificates(e.sys, db, pki.PurposeAuditCheckpoint)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx := e.sys
+		if org != "" {
+			ctx = storetest.OrgCtx(t, org)
+		}
+		var lines []string
+		if err := audit.Export(ctx, db, org, audit.Trust{Root: roots[0], Roots: roots, Intermediates: inters, Signers: signers}, at,
+			func(l []byte) error { lines = append(lines, string(l)); return nil }); err != nil {
+			t.Fatal(err)
+		}
+		_, err = audit.VerifyExport(strings.NewReader(strings.Join(lines, "\n")+"\n"), pki.RootPin(r))
+		return err
+	}
+	co := controller.CAOptions{DB: db, CA: e.ca, Sealer: e.sealer, Leases: leases, Now: func() time.Time { return at }}
+	rotate := func() {
+		t.Helper()
+		e.newRootOnline(t, at)
+		at = at.Add(38 * rotationDay)
+		if err := runOnce(t, leases, controller.CARotation(co)); err != nil {
+			t.Fatal(err)
+		}
+		if len(e.ca.Roots()) != 1 {
+			t.Fatal("the job did not drop the old root")
+		}
+	}
+	r1 := e.ca.Root()
+	record("")
+	rotate()
+	r2 := e.ca.Root()
+	record("")
+	rotate()
+	r3 := e.ca.Root()
+	record("")
+	org := storetest.Org(t, db, "org-y")
+	record(org)
+	if err := verify("", r1); err != nil {
+		t.Fatalf("the whole export across two rotations, with the first root's pin: %v", err)
+	}
+	if err := verify("", r2); err == nil {
+		t.Fatal("what the first root's chain signed verified with the second root's pin")
+	}
+	if err := verify("", r3); err == nil {
+		t.Fatal("what the first root's chain signed verified with the third root's pin")
+	}
+	if err := verify(org, r3); err != nil {
+		t.Fatalf("a chain signed under the third root, with its pin: %v", err)
+	}
+}

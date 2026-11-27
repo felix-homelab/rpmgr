@@ -571,6 +571,10 @@ func TestDropRootAuditsWhatItOverrode(t *testing.T) {
 				active++
 			}
 		}
+		// The old root was online, so the new one being online afterwards is nothing to warn of.
+		if rs, err := controller.CARotationStatus(ctx, h.cfg, time.Now); err != nil || rs.IssuingRootOnline {
+			t.Errorf("status after the rotation of an online root: %+v, %v", rs, err)
+		}
 		if retired < 4 || active < 4 {
 			t.Errorf("%d retired and %d active keys; want the old root, intermediate and two signing keys retired, and four active", retired, active)
 		}
@@ -714,5 +718,43 @@ func TestDropRootForceIgnoresLeavesThatDoNotCount(t *testing.T) {
 	_ = db.Close()
 	if _, err := controller.DropRoot(ctx, h.cfg, true, false, func() time.Time { return now.Add(rotationDay) }); err != nil {
 		t.Fatalf("--force with no leaf that counts: %v", err)
+	}
+}
+
+// TestDropWipesOlderRetiredSigners: a signing key the schedule retired before the rotation chained to the old
+// root through the old intermediate and is wiped by the drop with the others, not only the keys the drop swapped.
+func TestDropWipesOlderRetiredSigners(t *testing.T) {
+	db := storetest.Migrated(t, store.SQLite)
+	e := startSessions(t, db, "0.1.0", 0)
+	leases := lease.New(db, "ctn_test", nil)
+	at := time.Now()
+	co := controller.CAOptions{DB: db, CA: e.ca, Sealer: e.sealer, Leases: leases, Now: func() time.Time { return at }}
+	run := func() {
+		t.Helper()
+		if err := runOnce(t, leases, controller.CARotation(co)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	signers := func(status cakey.Status) []*ent.CAKey {
+		return e.db.Client().CAKey.Query().Where(cakey.KindIn(cakey.KindConfigSigning, cakey.KindAuditCheckpoint), cakey.StatusEQ(status)).AllX(e.sys)
+	}
+	// The schedule makes the next signing keys and then promotes them, which retires the first ones.
+	at = at.Add(pki.SignerLifetime - castore.SignerNextBefore + rotationDay)
+	run()
+	at = at.Add(castore.SignerNextBefore - castore.SignerPromoteBefore)
+	run()
+	if older := signers(cakey.StatusRetired); len(older) != 2 {
+		t.Fatalf("%d signing keys retired by the schedule, want 2", len(older))
+	}
+	e.newRootOnline(t, at)
+	at = at.Add(38 * rotationDay)
+	run()
+	if len(e.ca.Roots()) != 1 {
+		t.Fatal("the job did not drop the old root")
+	}
+	for _, r := range e.db.Client().CAKey.Query().Where(cakey.StatusEQ(cakey.StatusRetired)).AllX(e.sys) {
+		if r.KeyEnc != nil && len(*r.KeyEnc) != 0 {
+			t.Errorf("the key of the retired %s %s is still in the database", r.Kind, r.ID)
+		}
 	}
 }
