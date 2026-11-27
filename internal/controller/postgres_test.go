@@ -150,7 +150,8 @@ func TestPostgres_LockLostStopsController(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	var n int
 	if err := db.Writer.QueryRow(`SELECT count(pg_terminate_backend(pid)) FROM pg_locks
- WHERE locktype = 'advisory' AND classid::bigint = 1919970663 AND objid::bigint = 2 AND granted`).Scan(&n); err != nil || n != 1 {
+ WHERE locktype = 'advisory' AND classid::bigint = 1919970663 AND objid::bigint = 2 AND granted
+ AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("ending the lock's session: %d %v", n, err)
 	}
 	select {
@@ -181,12 +182,12 @@ func auditCount(t *testing.T, db *store.DB) int {
 }
 
 // TestPostgres_WaitsBeforeFirstWrite: a controller that has just taken the lock writes nothing for
-// the settle time: the first audit entry of its start (a system scope's) lands after it, so that a
-// controller that lost the lock is not writing at the same time.
+// the settle time: the first audit entry of its start (a system scope's) lands after it, counted
+// from the moment the lock is taken, so that a controller that lost the lock is not writing at the
+// same time.
 func TestPostgres_WaitsBeforeFirstWrite(t *testing.T) {
 	const settle = 1500 * time.Millisecond
-	var begin time.Time
-	var first atomic.Int64 // when the audit log first grew, unix nanoseconds
+	var locked, first atomic.Int64 // when the lock was first seen, and the audit log first grew (unix ns)
 	done := make(chan struct{})
 	startRunWith(t, runSetup{pg: true, prepare: func(r *running) {
 		controller.SetLockSettle(t, settle)
@@ -196,13 +197,17 @@ func TestPostgres_WaitsBeforeFirstWrite(t *testing.T) {
 		}
 		t.Cleanup(func() { _ = db.Close() })
 		base := auditCount(t, db)
-		begin = time.Now()
 		go func() {
 			for {
 				select {
 				case <-done:
 					return
 				case <-time.After(5 * time.Millisecond):
+					var held bool
+					if db.Writer.QueryRow(`SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND classid::bigint = 1919970663
+ AND objid::bigint = 2 AND granted AND database = (SELECT oid FROM pg_database WHERE datname = current_database()))`).Scan(&held) == nil && held {
+						locked.CompareAndSwap(0, time.Now().UnixNano())
+					}
 					var n int
 					if db.Writer.QueryRow("SELECT count(*) FROM audit_log").Scan(&n) == nil && n != base {
 						first.CompareAndSwap(0, time.Now().UnixNano())
@@ -213,12 +218,12 @@ func TestPostgres_WaitsBeforeFirstWrite(t *testing.T) {
 		}()
 	}})
 	close(done)
-	at := first.Load()
-	if at == 0 {
-		t.Fatal("the controller wrote no audit entry while starting; the test sees nothing")
+	at, lock := first.Load(), locked.Load()
+	if at == 0 || lock == 0 {
+		t.Fatalf("the test saw no lock (%d) or no write (%d) while the controller started", lock, at)
 	}
-	if d := time.Unix(0, at).Sub(begin); d < settle {
-		t.Errorf("the first write came %s after the start, before the settle time of %s", d, settle)
+	if d := time.Unix(0, at).Sub(time.Unix(0, lock)); d < settle-50*time.Millisecond { // the poll is 5 ms
+		t.Errorf("the first write came %s after the lock was taken, before the settle time of %s", d, settle)
 	}
 }
 
@@ -235,7 +240,8 @@ func TestPostgres_StartsOnlyOnTheControllerHost(t *testing.T) {
 			t.Fatalf("init did not make %s: %v", name, err)
 		}
 	}
-	ctx := context.Background()
+	ctx, cancelCtx := context.WithTimeout(context.Background(), 90*time.Second) // a regression fails, not hangs
+	defer cancelCtx()
 	for _, name := range []string{"controller-node.id", "revocations.log"} {
 		kept := filepath.Join(t.TempDir(), name)
 		if err := os.Rename(filepath.Join(state, name), kept); err != nil {
@@ -258,11 +264,14 @@ func TestPostgres_StartsOnlyOnTheControllerHost(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	made, err := controller.AdoptState(ctx, r.h.cfg)
+	if _, err := controller.AdoptState(ctx, r.h.cfg, false); !errors.Is(err, controller.ErrAdoptNeedsAck) {
+		t.Errorf("adopt-state without --old-host-lost: %v, want ErrAdoptNeedsAck", err)
+	}
+	made, err := controller.AdoptState(ctx, r.h.cfg, true)
 	if err != nil || len(made) != 2 {
 		t.Fatalf("adopt-state: %v %v", made, err)
 	}
-	if made, err := controller.AdoptState(ctx, r.h.cfg); err != nil || len(made) != 0 {
+	if made, err := controller.AdoptState(ctx, r.h.cfg, true); err != nil || len(made) != 0 {
 		t.Errorf("adopt-state again: %v %v", made, err)
 	}
 	o := r.replica(t)
@@ -279,7 +288,7 @@ func TestPostgres_StartsOnlyOnTheControllerHost(t *testing.T) {
 		t.Fatal("the controller after adopt-state did not start")
 	}
 	// It runs, so adopt-state is refused: it needs the database to itself.
-	if _, err := controller.AdoptState(ctx, r.h.cfg); !errors.Is(err, controller.ErrStopController) {
+	if _, err := controller.AdoptState(ctx, r.h.cfg, true); !errors.Is(err, controller.ErrStopController) {
 		t.Errorf("adopt-state beside a controller: %v, want ErrStopController", err)
 	}
 	stop()
@@ -385,5 +394,130 @@ func TestPostgres_SQLiteOnlyCommands(t *testing.T) {
 	}
 	if _, err := controller.Migrate(ctx, r.h.cfg, time.Now); !errors.Is(err, controller.ErrSQLiteOnly) {
 		t.Errorf("migrate: %v", err)
+	}
+}
+
+// TestPostgres_AdoptStateReplacesTheHost: host A is down, so the operator adopts the state on host
+// B; when A comes back, its files still pass the host check, but the database names B, so A is
+// refused until the operator adopts there on purpose. Without the node recorded in the database,
+// both hosts would start, each with a revocation log that lacks the other's entries.
+func TestPostgres_AdoptStateReplacesTheHost(t *testing.T) {
+	a := startRunWith(t, runSetup{pg: true})
+	a.stop(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	idA, err := os.ReadFile(filepath.Join(a.cfg.State(), "controller-node.id"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Host B: another state directory, nothing in it.
+	stateB := t.TempDir()
+	controller.SetStateDir(t, stateB)
+	if _, err := controller.AdoptState(ctx, a.h.cfg, true); err != nil {
+		t.Fatalf("adopt-state on B: %v", err)
+	}
+	b := a.replica(t)
+	b.Config.StateDir = stateB
+	runOnce := func(o controller.RunOptions) error {
+		rctx, stop := context.WithCancel(ctx)
+		o.Listening = func() { stop() } // it started: that is all this looks at
+		return controller.Run(rctx, o)
+	}
+	if err := runOnce(b); err != nil {
+		t.Errorf("host B after adopt-state: %v", err)
+	}
+
+	// Host A is back, its files intact.
+	if err := runOnce(a.replica(t)); !errors.Is(err, controller.ErrHostReplaced) {
+		t.Errorf("host A after B adopted the state: %v, want ErrHostReplaced", err)
+	}
+	idNow, _ := os.ReadFile(filepath.Join(a.cfg.State(), "controller-node.id"))
+	if string(idNow) != string(idA) {
+		t.Error("the refused start changed the node ID of host A")
+	}
+	// A is brought back on purpose: adopt-state there makes it the controller host again.
+	controller.SetStateDir(t, a.cfg.State())
+	if _, err := controller.AdoptState(ctx, a.h.cfg, true); err != nil {
+		t.Fatalf("adopt-state on A: %v", err)
+	}
+	if err := runOnce(a.replica(t)); err != nil {
+		t.Errorf("host A after adopting on purpose: %v", err)
+	}
+	if err := runOnce(b); !errors.Is(err, controller.ErrHostReplaced) {
+		t.Errorf("host B after A adopted again: %v, want ErrHostReplaced", err)
+	}
+}
+
+// TestPostgres_FirstStartClaimsTheHost: a database with no active node, as one copied from SQLite
+// is, is claimed by the first controller that starts on it.
+func TestPostgres_FirstStartClaimsTheHost(t *testing.T) {
+	r := startRunWith(t, runSetup{pg: true})
+	r.stop(t)
+	db, err := storetest.OpenPostgres(t, r.cfg.Database.DSN, store.PostgresOptions{PasswordFile: r.cfg.Database.PasswordFile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err := db.Writer.Exec("UPDATE instance SET active_node = NULL"); err != nil {
+		t.Fatal(err)
+	}
+	r2 := r.replica(t)
+	ctx, stop := context.WithCancel(context.Background())
+	r2.Listening = func() { stop() }
+	if err := controller.Run(ctx, r2); err != nil {
+		t.Fatal(err)
+	}
+	var id string
+	if err := db.Writer.QueryRow("SELECT active_node FROM instance").Scan(&id); err != nil || id == "" {
+		t.Errorf("the active node after the first start: %q %v", id, err)
+	}
+}
+
+// TestPostgres_MigrateDBWaitsBeforeItWrites: migrate-db takes the lock of a PostgreSQL target and
+// copies through the pool directly, past the fence, so it waits the settle time after it has the
+// lock, as a controller does, before it writes anything: the target's first table appears only
+// after that.
+func TestPostgres_MigrateDBWaitsBeforeItWrites(t *testing.T) {
+	const settle = 1200 * time.Millisecond
+	src := newMigrateHost(t)
+	pgBoot, dsn := pgDatabase(t)
+	controller.SetLockSettle(t, settle)
+	watch, err := storetest.OpenPostgres(t, dsn, store.PostgresOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = watch.Close() }()
+	var locked, wrote atomic.Int64
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case <-time.After(5 * time.Millisecond):
+				var held bool
+				if watch.Writer.QueryRow(`SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND classid::bigint = 1919970663
+ AND objid::bigint = 2 AND granted AND database = (SELECT oid FROM pg_database WHERE datname = current_database()))`).Scan(&held) == nil && held {
+					locked.CompareAndSwap(0, time.Now().UnixNano())
+				}
+				var n int
+				if watch.Writer.QueryRow("SELECT count(*) FROM pg_tables WHERE schemaname = current_schema()").Scan(&n) == nil && n > 0 {
+					wrote.CompareAndSwap(0, time.Now().UnixNano())
+					return
+				}
+			}
+		}
+	}()
+	if _, err := migrateDB(src.cfg, pgBoot, true); err != nil {
+		t.Fatal(err)
+	}
+	close(done)
+	lock, at := locked.Load(), wrote.Load()
+	if lock == 0 || at == 0 {
+		t.Fatalf("the test saw no lock (%d) or no write (%d)", lock, at)
+	}
+	if d := time.Unix(0, at).Sub(time.Unix(0, lock)); d < settle-50*time.Millisecond {
+		t.Errorf("the first write came %s after the lock was taken, before the settle time of %s", d, settle)
 	}
 }

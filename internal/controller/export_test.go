@@ -21,6 +21,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/rollouttarget"
 )
 
+func init() { lockSettle = func() time.Duration { return 0 } } // tests that look at it set it
+
 // SetRunTimers shortens the drain wait and the certificate reload interval of Run for one test,
 // which must not run in parallel with others.
 func SetRunTimers(t testing.TB, drain, reload time.Duration) {

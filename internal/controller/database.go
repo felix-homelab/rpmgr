@@ -70,21 +70,29 @@ func openDatabase(ctx context.Context, cfg config.Controller, getenv func(string
 	return store.OpenSQLite(ctx, d.DSN, store.SQLiteOptions{Lock: o.Lock, RefuseRetired: o.RefuseRetired})
 }
 
-// settleLock waits out lockSettle after a controller took the PostgreSQL lock, and ends early when
-// the lock is lost or ctx ends. SQLite has no such wait: its file lock ends with the process.
-func settleLock(ctx context.Context, db *store.DB) error {
+// settleLock waits out lockSettle after a controller (or a command that writes, as migrate-db does)
+// took the PostgreSQL lock of dbs, and ends early when a lock is lost or ctx ends. SQLite has no
+// such wait: its file lock ends with the process.
+func settleLock(ctx context.Context, dbs ...*store.DB) error {
 	wait := lockSettle()
-	if db.Dialect != store.Postgres || wait <= 0 {
+	postgres := false
+	for _, db := range dbs {
+		postgres = postgres || db.Dialect == store.Postgres
+	}
+	if !postgres || wait <= 0 {
 		return nil
 	}
+	lctx, cancel := untilLost(ctx, dbs...)
+	defer cancel(nil)
 	t := time.NewTimer(wait)
 	defer t.Stop()
 	select {
 	case <-t.C:
 		return nil
-	case <-db.LockLost():
-		return ErrLockLost
-	case <-ctx.Done():
+	case <-lctx.Done():
+		if errors.Is(context.Cause(lctx), ErrLockLost) {
+			return ErrLockLost
+		}
 		return ctx.Err()
 	}
 }

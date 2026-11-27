@@ -200,6 +200,11 @@ func Run(ctx context.Context, o RunOptions) error {
 	} else if n > 0 {
 		o.Logger.Info("applied database migrations", "files", n)
 	}
+	// From here the server accepts only this controller's write transactions: a transaction of the
+	// controller before it fails, however late it arrives.
+	if err := store.ClaimFence(ctx, db); err != nil {
+		return err
+	}
 	sys, err := authz.System(ctx, "controller", "rpmgr controller", audit.SystemScopes(db))
 	if err != nil {
 		return err
@@ -218,13 +223,21 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	td := ca.TrustDomain()
 	stateDir := cfg.State()
-	rl, err := revlog.Open(filepath.Join(stateDir, "revocations.log"), o.Now)
+	// On PostgreSQL the log and the node ID are this host's files and exist (requireHostState): a
+	// host that lacks them is refused, not given new ones.
+	create := cfg.Database.Driver != "postgres"
+	rl, err := revlog.OpenFile(filepath.Join(stateDir, revocationLogFile), o.Now, create)
 	if err != nil {
 		return err
 	}
-	nodeID, err := nodeIdentity(filepath.Join(stateDir, "controller-node.id"))
+	nodeID, err := nodeIdentity(filepath.Join(stateDir, nodeIDFile), create)
 	if err != nil {
 		return err
+	}
+	if cfg.Database.Driver == "postgres" {
+		if err := claimHost(sys, db, nodeID); err != nil {
+			return err
+		}
 	}
 	node, err := ca.NodeCertificate(sys, db, nodeID)
 	if err != nil {
@@ -790,7 +803,7 @@ func loadKEK(cfg config.Controller, getenv func(string) string) (secret.KEK, err
 
 // nodeIdentity returns this replica's node ID, kept in path so that a restart presents the same
 // identity; the first start creates it.
-func nodeIdentity(path string) (string, error) {
+func nodeIdentity(path string, create bool) (string, error) {
 	b, err := os.ReadFile(path) //nolint:gosec // G304: in the configured state directory
 	if err == nil {
 		id := strings.TrimSpace(string(b))
@@ -799,7 +812,7 @@ func nodeIdentity(path string) (string, error) {
 		}
 		return id, nil
 	}
-	if !errors.Is(err, os.ErrNotExist) {
+	if !errors.Is(err, os.ErrNotExist) || !create {
 		return "", err
 	}
 	id := ids.New("ctn")

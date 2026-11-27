@@ -177,6 +177,9 @@ func Init(ctx context.Context, o InitOptions) (res InitResult, err error) {
 	if err != nil {
 		return InitResult{}, err
 	}
+	if err := store.ClaimFence(ctx, db); err != nil { // after the instance exists
+		return InitResult{}, err
+	}
 	ca, err := castore.LoadCA(ctx, db, sealer, o.Now)
 	if err != nil {
 		return InitResult{}, err
@@ -184,8 +187,12 @@ func Init(ctx context.Context, o InitOptions) (res InitResult, err error) {
 	// A PostgreSQL database belongs to no host, so init gives this one its node ID and revocation
 	// log, which Run and the commands that use them look for (ErrNotControllerHost).
 	if cfg.Database.Driver == "postgres" {
-		if _, err := createHostState(cfg); err != nil {
-			return InitResult{}, fmt.Errorf("controller: initialised, but the state directory %s cannot take the node ID and the revocation log (`rpmgr controller adopt-state` makes them): %w", cfg.State(), err)
+		_, id, err := createHostState(cfg)
+		if err == nil {
+			err = store.SetActiveNode(ctx, db, id)
+		}
+		if err != nil {
+			return InitResult{}, fmt.Errorf("controller: initialised, but the state directory %s cannot take the node ID and the revocation log (`rpmgr controller adopt-state --old-host-lost` makes them): %w", cfg.State(), err)
 		}
 	}
 	tok, err := accounts.New(db, ctx, o.Now).FirstUserLink("local-cli")

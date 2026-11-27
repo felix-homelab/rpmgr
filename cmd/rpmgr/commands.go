@@ -249,14 +249,16 @@ func controllerInit() *cli.Command {
 // controller the node ID and the empty revocation log that a controller needs there.
 func controllerAdoptState() *cli.Command {
 	var configPath string
+	var lost bool
 	return &cli.Command{
 		Name:    "adopt-state",
-		Summary: "make the node ID and revocation log of a PostgreSQL controller on this host",
+		Summary: "make this host the PostgreSQL controller's: its node ID and revocation log",
 		Flags: func(fs *flag.FlagSet) {
 			fs.StringVar(&configPath, "config", "", bootFlagHelp)
+			fs.BoolVar(&lost, "old-host-lost", false, "confirm that the old controller host will not run the controller again (required); the database then refuses it")
 		},
 		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
-			made, err := controller.AdoptState(ctx, controllerBoot(configPath, env.Getenv))
+			made, err := controller.AdoptState(ctx, controllerBoot(configPath, env.Getenv), lost)
 			if err != nil {
 				return err
 			}
