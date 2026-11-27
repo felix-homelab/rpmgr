@@ -689,7 +689,9 @@ Rules for every boot file:
     margin before its first write, gives up on a server that does not answer within the time
     listed there, and stops without draining when the lock is lost. The node ID and the revocation
     log in that directory belong to the host: the controller and the local commands that use them
-    refuse a host that lacks them, and `rpmgr controller adopt-state` makes them on purpose
+    refuse a host that lacks them, the database names the host that runs the controller (a host that
+    `adopt-state --old-host-lost` replaced is refused), and `rpmgr controller adopt-state` makes
+    them on purpose
     ([06](06-data-model.md#connecting-to-postgresql-phase-2)). All-in-one does not accept PostgreSQL yet, and never
     `listen.internal`; `rpmgr backup`, `rpmgr restore`, `rpmgr migrate` and `rpmgr kek rotate`
     refuse a PostgreSQL controller until their slices of P2-M08 and P2-M09 land (the controller

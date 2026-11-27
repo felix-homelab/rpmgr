@@ -204,10 +204,15 @@ database:
   release import` refuse a host whose `/var/lib/rpmgr` lacks `controller-node.id` and
   `revocations.log` ("run this on the controller host"), and create nothing. `rpmgr controller
   init` makes both. On a new host, move them from the old one; only when they are gone for good,
-  `rpmgr controller adopt-state` makes new ones, with a revocation log that misses everything
-  revoked before.
+  `rpmgr controller adopt-state --old-host-lost` makes new ones, with a revocation log that misses
+  everything revoked before. Move `audit-checkpoints.log` and `dl/` with them. The database
+  records which host runs the controller, and `adopt-state` re-points it: the old host, if it comes
+  back, is refused until `adopt-state` is run there too.
 - **A lost lock.** A controller that loses its database lock stops writing at once, closes its
-  connections without draining and exits; the service manager starts it again.
+  connections without draining and exits; the service manager starts it again. A controller that
+  takes the lock ends the database sessions of the one before it, so the role needs to see and end
+  them: the same role as before does, another role needs `pg_signal_backend` and
+  `pg_read_all_stats`.
 - **All-in-one** does not accept PostgreSQL yet.
 
 ## Gateway

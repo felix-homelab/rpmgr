@@ -529,13 +529,23 @@ method, list filter or search returns or modifies the other org's data
   The lock's connection is made with `idle_session_timeout` set to 0 and TCP keepalives, so
   neither the server nor a middlebox ends it for being idle. It is checked on the interval in the
   table of [03](03-connections.md#timeouts-keepalive-and-backoff); **a detected loss stops the
-  controller at once**: its database then **fences every write**, since every statement and every
-  commit fails with `ErrLockLost`, one in flight included, and the controller closes its listeners
-  and connections without draining or writing a final checkpoint. The server releases the lock
-  only when it notices that the connection has gone, so a controller that has just taken the lock
-  **waits the stop bound of that table plus a margin before its first write**, which keeps the
-  controller that lost it, and has not yet noticed, from writing at the same time as the one that
-  took it over. Administration commands that run beside a controller, such as
+  controller at once**: every statement it starts and every commit then fails with `ErrLockLost`,
+  and it closes its listeners and connections without draining or writing a final checkpoint.
+  That is local, and a statement already on the wire is beyond it (a COMMIT held back by a stalled
+  socket, a process that was frozen). Two guards on the server cover that. **The new exclusive
+  holder ends the other sessions of the controller before it**: every connection of a controller
+  carries `application_name = rpmgr-controller:<random>`, and the holder runs
+  `pg_terminate_backend` on those of another name in the database right after it took the lock; a
+  role that may see but not end them (another role, without `pg_signal_backend` and
+  `pg_read_all_stats`) stops the start with an error. And **a fence epoch** in the `instance` row,
+  bumped by each controller after its migrations, is read `FOR SHARE` by every write transaction:
+  a transaction of an earlier controller, however late, finds another epoch and fails, and the
+  bump waits for a transaction still open (at most the time in [03](03-connections.md#timeouts-keepalive-and-backoff))
+  or stops the start. The server releases the lock only when it notices that the connection has
+  gone, so a controller that has just taken the lock **waits the stop bound of that table plus a
+  margin before its first write**; that covers the rest, such as a controller that has not yet
+  noticed. A migration file commits on the pool outside the epoch, and is safe because the
+  migration lock makes the new holder wait for it. Administration commands that run beside a controller, such as
   `rpmgr user reset-password`, open the database without the lock, as on SQLite.
 - **Poolers.** The controller runs on direct connections or behind a session pool. PgBouncer in
   transaction mode is unsupported: `LISTEN` and session locks do not work there
@@ -546,8 +556,12 @@ method, list filter or search returns or modifies the other org's data
   makes. The controller, `rpmgr ca offline-root`, the warnings of `rpmgr ca status` and `rpmgr
   release import` refuse a host whose state directory lacks them, and create nothing: started
   elsewhere, a controller would begin with a log that misses every earlier revocation. Moving the
-  controller to another host means moving the two files (and the mirror in `dl/`); `rpmgr
-  controller adopt-state` makes new ones when the old are gone for good.
+  controller to another host means moving the two files, `audit-checkpoints.log` and the mirror in
+  `dl/`; `rpmgr controller adopt-state --old-host-lost` makes new ones when the old are gone for
+  good. The database records the node ID of the controller host (`instance.active_node`, set by
+  `init` and `adopt-state`, or by the first controller on a database that has none), and a
+  controller whose node ID differs refuses to start: after `adopt-state` on another host, the old
+  host, even with its files intact, is refused until `adopt-state` is run there on purpose.
 - **The database's clock** decides lease expiry ([`leases`](#system)).
 
 ### Copying a database

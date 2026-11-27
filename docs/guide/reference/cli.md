@@ -122,7 +122,7 @@ rpmgr controller <command>
 | Command | What it does |
 |---|---|
 | [`rpmgr controller init`](#rpmgr-controller-init) | Initialise a controller: boot file, KEK, database, trust domain and CA |
-| [`rpmgr controller adopt-state`](#rpmgr-controller-adopt-state) | Make the node ID and revocation log of a PostgreSQL controller on this host |
+| [`rpmgr controller adopt-state`](#rpmgr-controller-adopt-state) | Make this host the PostgreSQL controller's: its node ID and revocation log |
 
 | Flag | Default | Description |
 |---|---|---|
@@ -145,7 +145,7 @@ rpmgr controller init [flags]
 
 ## rpmgr controller adopt-state
 
-Make the node ID and revocation log of a PostgreSQL controller on this host.
+Make this host the PostgreSQL controller's: its node ID and revocation log.
 
 ```text
 rpmgr controller adopt-state [flags]
@@ -154,6 +154,7 @@ rpmgr controller adopt-state [flags]
 | Flag | Default | Description |
 |---|---|---|
 | `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
+| `--old-host-lost` |  | confirm that the old controller host will not run the controller again (required); the database then refuses it |
 
 ## rpmgr gateway
 

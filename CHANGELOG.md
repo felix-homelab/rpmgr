@@ -38,7 +38,10 @@ Changes to the design documents are not recorded here: see the git history and t
   Settings page shows the driver, the server and the password's source, never the password. A
   controller that loses the lock stops writing at once and exits. The node ID and the revocation
   log stay in `/var/lib/rpmgr` on the controller host; the controller and the commands that use
-  them refuse a host without them (`rpmgr controller adopt-state` makes them on purpose). For now
+  them refuse a host without them (`rpmgr controller adopt-state --old-host-lost` makes them on purpose, and the database then refuses
+  the old host). The controller that takes the database's lock ends the sessions of the one before
+  it, and every write transaction checks a fence epoch on the server, so a stale transaction cannot
+  commit late. For now
   `rpmgr backup`, `rpmgr restore`, `rpmgr migrate` and `rpmgr kek rotate` refuse a PostgreSQL
   controller, and an all-in-one stays on SQLite. (#689)
 - The controller can keep its key-encryption key in a key of Vault or OpenBao Transit:

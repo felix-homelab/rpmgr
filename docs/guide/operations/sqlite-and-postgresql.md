@@ -58,8 +58,9 @@ A controller runs on PostgreSQL with a boot file that has `driver: postgres`
    use them insist on (they refuse a host without them). If the SQLite database was in another
    directory, copy `controller-node.id`, `revocations.log`, `audit-checkpoints.log` and the `dl/`
    directory from there to `/var/lib/rpmgr`, owned by the user `rpmgr`. Going back, copy them from
-   `/var/lib/rpmgr` into the directory of the new SQLite database. `rpmgr controller adopt-state`
-   is only for files that are gone for good: it makes an empty revocation log.
+   `/var/lib/rpmgr` into the directory of the new SQLite database. `rpmgr controller adopt-state
+   --old-host-lost` is only for files that are gone for good: it makes an empty revocation log, and
+   the database then refuses the old host.
 6. Put the new boot file in place and start the controller.
 7. Keep the SQLite database until the controller on PostgreSQL has run for a while. It is retired,
    so it cannot start by mistake.
