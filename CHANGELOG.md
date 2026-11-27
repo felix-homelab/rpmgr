@@ -76,12 +76,15 @@ Changes to the design documents are not recorded here: see the git history and t
 - A webhook endpoint is no longer counted as failing, or disabled after three days, while the key
   service that holds the KEK (Vault or OpenBao Transit) is unreachable: the delivery waits and is
   tried again at the next pass, within the 24 hours in which an event is delivered; one that is
-  still waiting after that is dropped. Storing a secret, rotating a webhook secret and rotating the CA's keys no longer hold the
-  database's write lock while they wait for the key service.
+  still waiting after that is dropped. Storing a secret, rotating a webhook secret and rotating the
+  CA's keys no longer hold the database's write lock while they wait for the key service.
 - A controller that stops no longer logs an `ACME job` warning, `context canceled`. The job read
   the database under the controller's system context, which ends a moment before the job's own, so
   a pass that began in that gap failed as if it were an error. It now reads under the job's
   context, so the stop ends it as a shutdown.
+- An object written with Object Lock, by the audit log's object-storage sink or the revocation
+  log's S3 sink, now carries a SHA-256 checksum, which some S3-compatible stores require for a
+  locked write. (#701)
 
 ## [0.4.1] - 2026-11-23
 
