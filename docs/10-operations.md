@@ -936,7 +936,9 @@ service that still runs the previous binary, with the command that restarts it.
     agents that dropped it no longer trust it: restoring one from before the switch makes the old
     root issue again, and one from before the drop puts the old root back in the bundle, which the
     agents dropped. The restore does not refuse or warn of this: rotate the root again after such a
-    restore, or re-enroll every agent, and take a new backup at once after a rotation.
+    restore, or re-enroll every agent, and take a new backup at once after a rotation. A restore also
+    puts back the keys a drop wiped, and every backup taken before the drop still holds them:
+    destroy those backups once the drop is done.
   - agents enrolled after the backup are unknown and must re-enroll. An agent that renewed its
     certificate after the backup keeps its control session, but `Renew` and `Reauth` refuse a
     certificate the restored database does not record
@@ -1512,7 +1514,8 @@ Each runbook: **symptoms → steps → done when**.
      the KEK. The new root then needs the offline host for the next rotation, as the old one did.
 - **Done when**: the bundle is the new root alone, no enabled agent that was seen lacks it (the
   status lists none; a disabled one that lacks it has to re-enroll), and, when the old root was
-  offline, `rpmgr ca status` shows the new root as offline and no longer warns "issuing root online".
+  offline, `rpmgr ca status` shows the new root as offline and no longer warns "issuing root
+  online".
 
 ### Root compromise
 
