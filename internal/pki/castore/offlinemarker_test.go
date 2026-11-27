@@ -85,7 +85,11 @@ func TestRootOfflineMarker(t *testing.T) {
 		if held, found := apply(exp.PublicKeyHash); held || !found {
 			t.Errorf("an offline root: held %v found %v", held, found)
 		}
-		if held, found := apply("00" + exp.PublicKeyHash[2:]); held || found {
+		other := "00" + exp.PublicKeyHash[2:] // another root's hash, whatever this key's begins with
+		if other == exp.PublicKeyHash {
+			other = "ff" + exp.PublicKeyHash[2:]
+		}
+		if held, found := apply(other); held || found {
 			t.Errorf("another root: held %v found %v", held, found)
 		}
 		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
