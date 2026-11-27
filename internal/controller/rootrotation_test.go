@@ -279,6 +279,25 @@ func TestRootRotationCommands(t *testing.T) {
 	if st, err := controller.CAStatus(ctx, h.cfg); err != nil || st.GetRootPin() != init.RootPin {
 		t.Fatalf("status pin %q, %v; want the old root's during the overlap", st.GetRootPin(), err)
 	}
+	// The old root of the overlap is reported as such, and not as a second active root.
+	if st, err := controller.CAStatus(ctx, h.cfg); err != nil {
+		t.Fatal(err)
+	} else {
+		active, overlap := 0, 0
+		for _, k := range st.GetKeys() {
+			if k.GetKind() == rpmgrv1.CAKeyKind_CA_KEY_KIND_ROOT {
+				switch k.GetState() {
+				case rpmgrv1.CAKeyState_CA_KEY_STATE_ACTIVE:
+					active++
+				case rpmgrv1.CAKeyState_CA_KEY_STATE_OVERLAP:
+					overlap++
+				}
+			}
+		}
+		if active != 1 || overlap != 1 {
+			t.Fatalf("the roots in the overlap: %d active, %d overlap; want one each", active, overlap)
+		}
+	}
 	rs, err := controller.CARotationStatus(ctx, h.cfg, func() time.Time { return now })
 	if err != nil || !rs.Overlap || len(rs.Roots) != 2 || !rs.Roots[0].Issuing || rs.Roots[1].Issuing || len(rs.Stragglers) != 0 {
 		t.Fatalf("rotation status %+v, %v", rs, err)

@@ -30,6 +30,7 @@ const states: Record<CAKeyState, [string, Look]> = {
   [CAKeyState.CA_KEY_STATE_NEXT]: ["next", "pending"],
   [CAKeyState.CA_KEY_STATE_ACTIVE]: ["active", "ok"],
   [CAKeyState.CA_KEY_STATE_RETIRED]: ["retired", "off"],
+  [CAKeyState.CA_KEY_STATE_OVERLAP]: ["overlap", "pending"],
 };
 
 const signingAlerts: Record<SigningAlert, [string, "error" | "info"] | undefined> = {
