@@ -97,6 +97,9 @@ const (
 	CAKeyState_CA_KEY_STATE_ACTIVE CAKeyState = 2
 	// Replaced; it still verifies until its certificate expires.
 	CAKeyState_CA_KEY_STATE_RETIRED CAKeyState = 3
+	// The old root of a root rotation after issuing moved: it no longer issues but is still trusted and in
+	// the trust bundle, until it is dropped and becomes retired.
+	CAKeyState_CA_KEY_STATE_OVERLAP CAKeyState = 4
 )
 
 // Enum value maps for CAKeyState.
@@ -106,12 +109,14 @@ var (
 		1: "CA_KEY_STATE_NEXT",
 		2: "CA_KEY_STATE_ACTIVE",
 		3: "CA_KEY_STATE_RETIRED",
+		4: "CA_KEY_STATE_OVERLAP",
 	}
 	CAKeyState_value = map[string]int32{
 		"CA_KEY_STATE_UNSPECIFIED": 0,
 		"CA_KEY_STATE_NEXT":        1,
 		"CA_KEY_STATE_ACTIVE":      2,
 		"CA_KEY_STATE_RETIRED":     3,
+		"CA_KEY_STATE_OVERLAP":     4,
 	}
 )
 
@@ -556,13 +561,14 @@ const file_rpmgr_v1_pki_proto_rawDesc = "" +
 	"\x10CA_KEY_KIND_ROOT\x10\x01\x12\x1c\n" +
 	"\x18CA_KEY_KIND_INTERMEDIATE\x10\x02\x12\x1e\n" +
 	"\x1aCA_KEY_KIND_CONFIG_SIGNING\x10\x03\x12 \n" +
-	"\x1cCA_KEY_KIND_AUDIT_CHECKPOINT\x10\x04*t\n" +
+	"\x1cCA_KEY_KIND_AUDIT_CHECKPOINT\x10\x04*\x8e\x01\n" +
 	"\n" +
 	"CAKeyState\x12\x1c\n" +
 	"\x18CA_KEY_STATE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11CA_KEY_STATE_NEXT\x10\x01\x12\x17\n" +
 	"\x13CA_KEY_STATE_ACTIVE\x10\x02\x12\x18\n" +
-	"\x14CA_KEY_STATE_RETIRED\x10\x03*\x8c\x01\n" +
+	"\x14CA_KEY_STATE_RETIRED\x10\x03\x12\x18\n" +
+	"\x14CA_KEY_STATE_OVERLAP\x10\x04*\x8c\x01\n" +
 	"\fSigningAlert\x12\x1d\n" +
 	"\x19SIGNING_ALERT_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bSIGNING_ALERT_NEEDS_SIGNING\x10\x01\x12\x1a\n" +

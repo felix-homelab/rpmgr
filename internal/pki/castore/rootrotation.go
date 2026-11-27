@@ -497,17 +497,15 @@ func (p *DropPlan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
 			return nil, ErrRotated
 		}
 	}
-	// Nothing signs under the old root any more: the key of the intermediate it signed and those of the
-	// signing keys that chained to it are wiped, so that a copy of the database no longer holds them. The
-	// old root's own row keeps what it has: with no key it was offline, which `ca status` tells from.
-	var wipe []string
-	for _, sw := range p.swaps {
-		wipe = append(wipe, sw.old)
-	}
+	// Nothing signs under the old root any more: its key, those of the intermediates it signed and those
+	// of every signing key that chained to one of them are wiped, so that a copy of the database no longer
+	// holds them. That the root was offline is recorded in was_offline, which the key's absence no longer says.
 	r1cert, err := x509.ParseCertificate(r1.Certificate)
 	if err != nil {
 		return nil, err
 	}
+	wipe := []string{r1.ID}
+	var inters []*x509.Certificate
 	olds, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusRetired)).All(ctx)
 	if err != nil {
 		return nil, err
@@ -515,10 +513,27 @@ func (p *DropPlan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
 	for _, o := range olds {
 		if c, err := x509.ParseCertificate(o.Certificate); err == nil && c.CheckSignatureFrom(r1cert) == nil {
 			wipe = append(wipe, o.ID)
+			inters = append(inters, c)
 		}
 	}
-	if len(wipe) == 0 {
-		return []string{"old root dropped from the trust bundle"}, nil
+	for _, sw := range p.swaps {
+		wipe = append(wipe, sw.old)
+	}
+	signers, err := tx.CAKey.Query().Where(cakey.KindIn(cakey.KindConfigSigning, cakey.KindAuditCheckpoint), cakey.StatusEQ(cakey.StatusRetired)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range signers {
+		c, err := x509.ParseCertificate(s.Certificate)
+		if err != nil {
+			continue
+		}
+		for _, in := range inters {
+			if c.CheckSignatureFrom(in) == nil {
+				wipe = append(wipe, s.ID)
+				break
+			}
+		}
 	}
 	if err := tx.CAKey.Update().Where(cakey.IDIn(wipe...), cakey.KeyEncNotNil()).ClearKeyEnc().Exec(ctx); err != nil {
 		return nil, err
@@ -573,9 +588,8 @@ func signerSwaps(rows []*ent.CAKey) ([]signerSwap, error) {
 	return swaps, nil
 }
 
-// DropAfter is the earliest date the old root in the overlap, row r, may be dropped: the later of the
-// date recorded when issuing moved and its start plus overlap, the one the settings give now. It is
-// zero for a row that does not record when issuing moved.
+// DropAfter is the earliest date the old root, row r, may be dropped: the later of the date recorded
+// at the switch and its start plus overlap, as the settings give it now; zero without a start.
 func DropAfter(r *ent.CAKey, overlap time.Duration) time.Time {
 	if r.RotatedAt == nil {
 		return time.Time{}
@@ -587,13 +601,12 @@ func DropAfter(r *ent.CAKey, overlap time.Duration) time.Time {
 	return d
 }
 
-// StragglersSince is the time from which an agent that was seen counts as one that may still need the
-// old root: since issuing moved, and, for a drop with Force, since the longest a leaf and the Reauth
-// grace can reach back, so that an agent that was offline across the switch and may still renew
-// through the old root holds the drop back too. It is the start of the overlap the old root has.
+// StragglersSince is the time from which a seen agent may still need the old root: the switch, and
+// for a drop with Force before the earliest date as far back as a leaf and the Reauth grace reach.
 func StragglersSince(r1 *ent.CAKey, now time.Time, o DropOptions) time.Time {
 	since := *r1.RotatedAt
-	if o.Force {
+	// --force past the earliest date is a plain drop: only before it does the window reach back further.
+	if o.Force && now.Before(DropAfter(r1, o.Overlap)) {
 		window := o.Overlap
 		if r1.DropAfter != nil && r1.DropAfter.Sub(*r1.RotatedAt) > window {
 			window = r1.DropAfter.Sub(*r1.RotatedAt)

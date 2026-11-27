@@ -38,6 +38,8 @@ const (
 	FieldRotatedAt = "rotated_at"
 	// FieldDropAfter holds the string denoting the drop_after field in the database.
 	FieldDropAfter = "drop_after"
+	// FieldWasOffline holds the string denoting the was_offline field in the database.
+	FieldWasOffline = "was_offline"
 	// Table holds the table name of the cakey in the database.
 	Table = "ca_keys"
 )
@@ -57,6 +59,7 @@ var Columns = []string{
 	FieldCrossCertificate,
 	FieldRotatedAt,
 	FieldDropAfter,
+	FieldWasOffline,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -179,4 +182,9 @@ func ByRotatedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByDropAfter orders the results by the drop_after field.
 func ByDropAfter(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDropAfter, opts...).ToFunc()
+}
+
+// ByWasOffline orders the results by the was_offline field.
+func ByWasOffline(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWasOffline, opts...).ToFunc()
 }

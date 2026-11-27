@@ -225,7 +225,7 @@ var caKinds = map[rpmgrv1.CAKeyKind]string{rpmgrv1.CAKeyKind_CA_KEY_KIND_ROOT: "
 	rpmgrv1.CAKeyKind_CA_KEY_KIND_CONFIG_SIGNING: "config-signing", rpmgrv1.CAKeyKind_CA_KEY_KIND_AUDIT_CHECKPOINT: "audit-checkpoint"}
 
 var caStates = map[rpmgrv1.CAKeyState]string{rpmgrv1.CAKeyState_CA_KEY_STATE_ACTIVE: "active", rpmgrv1.CAKeyState_CA_KEY_STATE_NEXT: "next",
-	rpmgrv1.CAKeyState_CA_KEY_STATE_RETIRED: "retired"}
+	rpmgrv1.CAKeyState_CA_KEY_STATE_RETIRED: "retired", rpmgrv1.CAKeyState_CA_KEY_STATE_OVERLAP: "overlap"}
 
 func writeCAKeys(env *cli.Env, keys []*rpmgrv1.CAKey) error {
 	day := func(t interface{ AsTime() time.Time }) string { return t.AsTime().UTC().Format("2006-01-02") }

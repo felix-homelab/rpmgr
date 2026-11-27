@@ -393,6 +393,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			cakey.FieldCrossCertificate: {Type: field.TypeBytes, Column: cakey.FieldCrossCertificate},
 			cakey.FieldRotatedAt:        {Type: field.TypeTime, Column: cakey.FieldRotatedAt},
 			cakey.FieldDropAfter:        {Type: field.TypeTime, Column: cakey.FieldDropAfter},
+			cakey.FieldWasOffline:       {Type: field.TypeBool, Column: cakey.FieldWasOffline},
 		},
 	}
 	graph.Nodes[14] = &sqlgraph.Node{
@@ -3509,6 +3510,11 @@ func (f *CAKeyFilter) WhereRotatedAt(p entql.TimeP) {
 // WhereDropAfter applies the entql time.Time predicate on the drop_after field.
 func (f *CAKeyFilter) WhereDropAfter(p entql.TimeP) {
 	f.Where(p.Field(cakey.FieldDropAfter))
+}
+
+// WhereWasOffline applies the entql bool predicate on the was_offline field.
+func (f *CAKeyFilter) WhereWasOffline(p entql.BoolP) {
+	f.Where(p.Field(cakey.FieldWasOffline))
 }
 
 // addPredicate implements the predicateAdder interface.

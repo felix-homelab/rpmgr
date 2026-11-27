@@ -10941,6 +10941,7 @@ type CAKeyMutation struct {
 	cross_certificate *[]byte
 	rotated_at        *time.Time
 	drop_after        *time.Time
+	was_offline       *bool
 	clearedFields     map[string]struct{}
 	done              bool
 	oldValue          func(context.Context) (*CAKey, error)
@@ -11561,6 +11562,55 @@ func (m *CAKeyMutation) ResetDropAfter() {
 	delete(m.clearedFields, cakey.FieldDropAfter)
 }
 
+// SetWasOffline sets the "was_offline" field.
+func (m *CAKeyMutation) SetWasOffline(b bool) {
+	m.was_offline = &b
+}
+
+// WasOffline returns the value of the "was_offline" field in the mutation.
+func (m *CAKeyMutation) WasOffline() (r bool, exists bool) {
+	v := m.was_offline
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWasOffline returns the old "was_offline" field's value of the CAKey entity.
+// If the CAKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CAKeyMutation) OldWasOffline(ctx context.Context) (v *bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWasOffline is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWasOffline requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWasOffline: %w", err)
+	}
+	return oldValue.WasOffline, nil
+}
+
+// ClearWasOffline clears the value of the "was_offline" field.
+func (m *CAKeyMutation) ClearWasOffline() {
+	m.was_offline = nil
+	m.clearedFields[cakey.FieldWasOffline] = struct{}{}
+}
+
+// WasOfflineCleared returns if the "was_offline" field was cleared in this mutation.
+func (m *CAKeyMutation) WasOfflineCleared() bool {
+	_, ok := m.clearedFields[cakey.FieldWasOffline]
+	return ok
+}
+
+// ResetWasOffline resets all changes to the "was_offline" field.
+func (m *CAKeyMutation) ResetWasOffline() {
+	m.was_offline = nil
+	delete(m.clearedFields, cakey.FieldWasOffline)
+}
+
 // Where appends a list predicates to the CAKeyMutation builder.
 func (m *CAKeyMutation) Where(ps ...predicate.CAKey) {
 	m.predicates = append(m.predicates, ps...)
@@ -11595,7 +11645,7 @@ func (m *CAKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CAKeyMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.kind != nil {
 		fields = append(fields, cakey.FieldKind)
 	}
@@ -11632,6 +11682,9 @@ func (m *CAKeyMutation) Fields() []string {
 	if m.drop_after != nil {
 		fields = append(fields, cakey.FieldDropAfter)
 	}
+	if m.was_offline != nil {
+		fields = append(fields, cakey.FieldWasOffline)
+	}
 	return fields
 }
 
@@ -11664,6 +11717,8 @@ func (m *CAKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.RotatedAt()
 	case cakey.FieldDropAfter:
 		return m.DropAfter()
+	case cakey.FieldWasOffline:
+		return m.WasOffline()
 	}
 	return nil, false
 }
@@ -11697,6 +11752,8 @@ func (m *CAKeyMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldRotatedAt(ctx)
 	case cakey.FieldDropAfter:
 		return m.OldDropAfter(ctx)
+	case cakey.FieldWasOffline:
+		return m.OldWasOffline(ctx)
 	}
 	return nil, fmt.Errorf("unknown CAKey field %s", name)
 }
@@ -11790,6 +11847,13 @@ func (m *CAKeyMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetDropAfter(v)
 		return nil
+	case cakey.FieldWasOffline:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWasOffline(v)
+		return nil
 	}
 	return fmt.Errorf("unknown CAKey field %s", name)
 }
@@ -11838,6 +11902,9 @@ func (m *CAKeyMutation) ClearedFields() []string {
 	if m.FieldCleared(cakey.FieldDropAfter) {
 		fields = append(fields, cakey.FieldDropAfter)
 	}
+	if m.FieldCleared(cakey.FieldWasOffline) {
+		fields = append(fields, cakey.FieldWasOffline)
+	}
 	return fields
 }
 
@@ -11869,6 +11936,9 @@ func (m *CAKeyMutation) ClearField(name string) error {
 		return nil
 	case cakey.FieldDropAfter:
 		m.ClearDropAfter()
+		return nil
+	case cakey.FieldWasOffline:
+		m.ClearWasOffline()
 		return nil
 	}
 	return fmt.Errorf("unknown CAKey nullable field %s", name)
@@ -11913,6 +11983,9 @@ func (m *CAKeyMutation) ResetField(name string) error {
 		return nil
 	case cakey.FieldDropAfter:
 		m.ResetDropAfter()
+		return nil
+	case cakey.FieldWasOffline:
+		m.ResetWasOffline()
 		return nil
 	}
 	return fmt.Errorf("unknown CAKey field %s", name)

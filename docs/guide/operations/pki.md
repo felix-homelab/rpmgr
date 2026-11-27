@@ -239,7 +239,8 @@ sudo rpmgr ca new-root          # on the controller host
 With the root online this makes the new root and its intermediate, lets the old root sign both, and
 moves issuing to the new root at once. It prints the **new pin**, which you use once the old root is
 dropped; until then the install commands and `rpmgr ca status` keep the old pin, so that an agent
-you enroll meanwhile holds both roots. Running controllers load the change within a minute. Certificates that were issued before keep working, agents that know only the old
+you enroll meanwhile holds both roots. Running controllers load the change within a minute.
+Certificates that were issued before keep working, agents that know only the old
 root keep verifying the new certificates, and gateways and the controller accept both roots with
 no restart.
 
@@ -284,7 +285,8 @@ Before the date it refuses and names the date; `--force` is accepted before it o
 enabled agent seen within the overlap lacks the new root, one that was offline across the switch
 included. After the overlap, `--strand-stragglers` drops the old root although some agents lack the
 new one, after asking (`--yes` skips the question): they have to be enrolled again, and the drop
-lists them. Disabled agents that lack the new root are named in `ca status` and in the drop output. After the drop the bundle is the new root
+lists them. Disabled agents that lack the new root are named in `ca status` and in the drop output.
+After the drop the bundle is the new root
 alone, and agents that were online learn it from their next snapshot. An agent drops a root only
 on a snapshot that is newer than the one it runs and that it can verify without that root, so a
 replayed old snapshot changes nothing.
@@ -294,4 +296,5 @@ replayed old snapshot changes nothing.
 If the root's key is compromised, every certificate is untrusted: set up a new controller, which
 creates a new root and pin, and enroll every agent again with the new pin
 ([Root compromise](../../10-operations.md#root-compromise)). Keep the controller's database and its
-KEK, which protects the CA's keys, apart and backed up ([Backup and restore](backup-and-restore.md)).
+KEK, which protects the CA's keys, apart and backed up ([Backup and
+restore](backup-and-restore.md)).

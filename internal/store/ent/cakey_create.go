@@ -108,6 +108,20 @@ func (_c *CAKeyCreate) SetNillableDropAfter(v *time.Time) *CAKeyCreate {
 	return _c
 }
 
+// SetWasOffline sets the "was_offline" field.
+func (_c *CAKeyCreate) SetWasOffline(v bool) *CAKeyCreate {
+	_c.mutation.SetWasOffline(v)
+	return _c
+}
+
+// SetNillableWasOffline sets the "was_offline" field if the given value is not nil.
+func (_c *CAKeyCreate) SetNillableWasOffline(v *bool) *CAKeyCreate {
+	if v != nil {
+		_c.SetWasOffline(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *CAKeyCreate) SetID(v string) *CAKeyCreate {
 	_c.mutation.SetID(v)
@@ -296,6 +310,10 @@ func (_c *CAKeyCreate) createSpec() (*CAKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DropAfter(); ok {
 		_spec.SetField(cakey.FieldDropAfter, field.TypeTime, value)
 		_node.DropAfter = &value
+	}
+	if value, ok := _c.mutation.WasOffline(); ok {
+		_spec.SetField(cakey.FieldWasOffline, field.TypeBool, value)
+		_node.WasOffline = &value
 	}
 	return _node, _spec
 }
