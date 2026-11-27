@@ -14,6 +14,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/store"
+	"github.com/felix-homelab/rpmgr/internal/store/migrations"
 )
 
 // ErrNotControllerHost is returned on PostgreSQL when this host's state directory lacks the
@@ -50,6 +51,23 @@ func requireHostState(cfg config.Controller) error {
 var ErrHostReplaced = errors.New("controller: this host was replaced as the controller host by `rpmgr controller adopt-state` on another host; " +
 	"do not start the controller here, or run `adopt-state --old-host-lost` here after moving that host's revocations.log")
 
+// refuseReplacedHost refuses, from the database as it is (raw SQL, no migration), a host whose node
+// ID is not the one the database names as the controller's.
+func refuseReplacedHost(ctx context.Context, cfg config.Controller, db *store.DB) error {
+	local, err := nodeIdentity(filepath.Join(cfg.State(), nodeIDFile), false)
+	if err != nil {
+		return err
+	}
+	active, err := store.RawActiveNode(ctx, db)
+	if err != nil {
+		return err
+	}
+	if active != "" && active != local {
+		return ErrHostReplaced
+	}
+	return nil
+}
+
 // claimHost records this host as the controller's if the database names none, and refuses a host
 // that is not the one it names.
 func claimHost(ctx context.Context, db *store.DB, nodeID string) error {
@@ -64,6 +82,30 @@ func claimHost(ctx context.Context, db *store.DB, nodeID string) error {
 		return store.SetActiveNode(ctx, db, nodeID)
 	}
 	return ErrHostReplaced
+}
+
+// ErrStaleLog is returned by adopt-state when this host has a revocation log and the database names
+// another host as the controller's: that log lacks what the active host appended since.
+var ErrStaleLog = errors.New("controller: this host's revocation log is not the active host's")
+
+// refuseStaleLog refuses adopt-state on a host that holds a revocation log while the database names
+// another host: the log is stale, and a controller that started with it would miss every
+// revocation the active host recorded since. There is no override: the operator replaces it with
+// the active host's log, or moves it aside, and adopt-state then starts a new one.
+func refuseStaleLog(ctx context.Context, cfg config.Controller, db *store.DB) error {
+	log := filepath.Join(cfg.State(), revocationLogFile)
+	if _, err := os.Lstat(log); err != nil {
+		return nil // none, or unreadable, which createHostState reports
+	}
+	active, err := store.RawActiveNode(ctx, db)
+	if err != nil || active == "" {
+		return err
+	}
+	if local, err := nodeIdentity(filepath.Join(cfg.State(), nodeIDFile), false); err == nil && local == active {
+		return nil
+	}
+	return fmt.Errorf("%w: %s may lack revocations that host %s recorded since; replace it with that host's revocations.log, "+
+		"or move it aside (adopt-state then starts an empty one)", ErrStaleLog, log, active)
 }
 
 // createHostState creates the files that requireHostState looks for, those that are missing, and
@@ -125,7 +167,19 @@ func AdoptState(ctx context.Context, path string, oldHostLost bool) ([]string, e
 	if err := settleLock(ctx, db); err != nil {
 		return nil, err
 	}
+	dir, err := migrations.Dir(db.Dialect)
+	if err != nil {
+		return nil, err
+	}
+	if pending, err := store.Pending(ctx, db, dir); err != nil {
+		return nil, err
+	} else if len(pending) > 0 {
+		return nil, fmt.Errorf("%w: it is behind this binary by %d migrations; start the controller once, or run `rpmgr migrate`, before adopt-state", store.ErrSchemaMismatch, len(pending))
+	}
 	if err := store.ClaimFence(ctx, db); err != nil {
+		return nil, err
+	}
+	if err := refuseStaleLog(ctx, cfg, db); err != nil {
 		return nil, err
 	}
 	made, id, err := createHostState(cfg)
