@@ -158,6 +158,26 @@ func (_u *CAKeyUpdate) ClearDropAfter() *CAKeyUpdate {
 	return _u
 }
 
+// SetWasOffline sets the "was_offline" field.
+func (_u *CAKeyUpdate) SetWasOffline(v bool) *CAKeyUpdate {
+	_u.mutation.SetWasOffline(v)
+	return _u
+}
+
+// SetNillableWasOffline sets the "was_offline" field if the given value is not nil.
+func (_u *CAKeyUpdate) SetNillableWasOffline(v *bool) *CAKeyUpdate {
+	if v != nil {
+		_u.SetWasOffline(*v)
+	}
+	return _u
+}
+
+// ClearWasOffline clears the value of the "was_offline" field.
+func (_u *CAKeyUpdate) ClearWasOffline() *CAKeyUpdate {
+	_u.mutation.ClearWasOffline()
+	return _u
+}
+
 // Mutation returns the CAKeyMutation object of the builder.
 func (_u *CAKeyUpdate) Mutation() *CAKeyMutation {
 	return _u.mutation
@@ -256,6 +276,12 @@ func (_u *CAKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.DropAfterCleared() {
 		_spec.ClearField(cakey.FieldDropAfter, field.TypeTime)
+	}
+	if value, ok := _u.mutation.WasOffline(); ok {
+		_spec.SetField(cakey.FieldWasOffline, field.TypeBool, value)
+	}
+	if _u.mutation.WasOfflineCleared() {
+		_spec.ClearField(cakey.FieldWasOffline, field.TypeBool)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -407,6 +433,26 @@ func (_u *CAKeyUpdateOne) ClearDropAfter() *CAKeyUpdateOne {
 	return _u
 }
 
+// SetWasOffline sets the "was_offline" field.
+func (_u *CAKeyUpdateOne) SetWasOffline(v bool) *CAKeyUpdateOne {
+	_u.mutation.SetWasOffline(v)
+	return _u
+}
+
+// SetNillableWasOffline sets the "was_offline" field if the given value is not nil.
+func (_u *CAKeyUpdateOne) SetNillableWasOffline(v *bool) *CAKeyUpdateOne {
+	if v != nil {
+		_u.SetWasOffline(*v)
+	}
+	return _u
+}
+
+// ClearWasOffline clears the value of the "was_offline" field.
+func (_u *CAKeyUpdateOne) ClearWasOffline() *CAKeyUpdateOne {
+	_u.mutation.ClearWasOffline()
+	return _u
+}
+
 // Mutation returns the CAKeyMutation object of the builder.
 func (_u *CAKeyUpdateOne) Mutation() *CAKeyMutation {
 	return _u.mutation
@@ -535,6 +581,12 @@ func (_u *CAKeyUpdateOne) sqlSave(ctx context.Context) (_node *CAKey, err error)
 	}
 	if _u.mutation.DropAfterCleared() {
 		_spec.ClearField(cakey.FieldDropAfter, field.TypeTime)
+	}
+	if value, ok := _u.mutation.WasOffline(); ok {
+		_spec.SetField(cakey.FieldWasOffline, field.TypeBool, value)
+	}
+	if _u.mutation.WasOfflineCleared() {
+		_spec.ClearField(cakey.FieldWasOffline, field.TypeBool)
 	}
 	_node = &CAKey{config: _u.config}
 	_spec.Assign = _node.assignValues

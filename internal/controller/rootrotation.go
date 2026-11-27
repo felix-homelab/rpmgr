@@ -486,7 +486,7 @@ func rotationStatus(sys context.Context, db *store.DB, now time.Time) (RotationS
 }
 
 // issuingRootOnline sets IssuingRootOnline: the active root has its key in the database while an old root of
-// a rotation, in the overlap or retired, had none, that is was offline.
+// a rotation, in the overlap or retired, was offline when issuing moved (was_offline).
 func (st *RotationStatus) issuingRootOnline(sys context.Context, c *ent.Client) error {
 	roots, err := c.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusIn(cakey.StatusActive, cakey.StatusOverlap, cakey.StatusRetired)).All(sys)
 	if err != nil {
@@ -498,7 +498,7 @@ func (st *RotationStatus) issuingRootOnline(sys context.Context, c *ent.Client) 
 		switch {
 		case r.Status == cakey.StatusActive:
 			online = hasKey
-		case !hasKey:
+		case r.WasOffline != nil && *r.WasOffline:
 			hadOffline = true
 		}
 	}

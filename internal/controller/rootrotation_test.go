@@ -247,6 +247,10 @@ func TestCARotationRootRotation(t *testing.T) {
 	if n := e.db.Client().AuditEntry.Query().Where(auditentry.Action("ca.drop_root"), auditentry.ActorID("ca-rotation")).CountX(e.sys); n != 1 {
 		t.Fatalf("%d audit records of the drop", n)
 	}
+	// The old root was offline, and the new one still is online after the drop wiped the old root's row.
+	if rs, err := controller.RotationStatusOf(e.sys, db, at); err != nil || !rs.IssuingRootOnline {
+		t.Fatalf("status after the drop: %+v, %v; want the issuing root online", rs, err)
+	}
 }
 
 // TestRootRotationCommands: `ca new-root` and `ca drop-root` on a host with a controller database. The
@@ -520,7 +524,7 @@ func TestDropRootAuditsWhatItOverrode(t *testing.T) {
 			t.Fatalf("audit of a forced drop: %v", got)
 		}
 		// Nothing signs under the old root any more: the keys of the retired intermediate and signing keys
-		// are gone from the database (the old root's row keeps what it has), and the active ones are not.
+		// are gone from the database (the old root's too), and the active ones are not.
 		db, err := store.OpenSQLite(ctx, h.db, store.SQLiteOptions{})
 		if err != nil {
 			t.Fatal(err)
@@ -529,7 +533,7 @@ func TestDropRootAuditsWhatItOverrode(t *testing.T) {
 		retired, active := 0, 0
 		for _, r := range db.Client().CAKey.Query().AllX(storetest.SystemCtx(t)) {
 			switch {
-			case r.Status == cakey.StatusRetired && r.Kind != cakey.KindRoot && r.KeyEnc != nil && len(*r.KeyEnc) != 0:
+			case r.Status == cakey.StatusRetired && r.KeyEnc != nil && len(*r.KeyEnc) != 0:
 				t.Errorf("the key of the retired %s %s is still in the database", r.Kind, r.ID)
 			case r.Status == cakey.StatusRetired:
 				retired++

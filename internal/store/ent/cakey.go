@@ -40,7 +40,9 @@ type CAKey struct {
 	// RotatedAt holds the value of the "rotated_at" field.
 	RotatedAt *time.Time `json:"rotated_at,omitempty"`
 	// DropAfter holds the value of the "drop_after" field.
-	DropAfter    *time.Time `json:"drop_after,omitempty"`
+	DropAfter *time.Time `json:"drop_after,omitempty"`
+	// WasOffline holds the value of the "was_offline" field.
+	WasOffline   *bool `json:"was_offline,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -51,6 +53,8 @@ func (*CAKey) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case cakey.FieldPublicKey, cakey.FieldCertificate, cakey.FieldCsr, cakey.FieldKeyEnc, cakey.FieldCrossCertificate:
 			values[i] = new([]byte)
+		case cakey.FieldWasOffline:
+			values[i] = new(sql.NullBool)
 		case cakey.FieldID, cakey.FieldKind, cakey.FieldAlgorithm, cakey.FieldStatus:
 			values[i] = new(sql.NullString)
 		case cakey.FieldNotBefore, cakey.FieldNotAfter, cakey.FieldRotatedAt, cakey.FieldDropAfter:
@@ -150,6 +154,13 @@ func (_m *CAKey) assignValues(columns []string, values []any) error {
 				_m.DropAfter = new(time.Time)
 				*_m.DropAfter = value.Time
 			}
+		case cakey.FieldWasOffline:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field was_offline", values[i])
+			} else if value.Valid {
+				_m.WasOffline = new(bool)
+				*_m.WasOffline = value.Bool
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -223,6 +234,11 @@ func (_m *CAKey) String() string {
 	if v := _m.DropAfter; v != nil {
 		builder.WriteString("drop_after=")
 		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.WasOffline; v != nil {
+		builder.WriteString("was_offline=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteByte(')')
 	return builder.String()

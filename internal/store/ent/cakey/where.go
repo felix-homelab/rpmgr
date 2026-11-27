@@ -114,6 +114,11 @@ func DropAfter(v time.Time) predicate.CAKey {
 	return predicate.CAKey(sql.FieldEQ(FieldDropAfter, v))
 }
 
+// WasOffline applies equality check predicate on the "was_offline" field. It's identical to WasOfflineEQ.
+func WasOffline(v bool) predicate.CAKey {
+	return predicate.CAKey(sql.FieldEQ(FieldWasOffline, v))
+}
+
 // KindEQ applies the EQ predicate on the "kind" field.
 func KindEQ(v Kind) predicate.CAKey {
 	return predicate.CAKey(sql.FieldEQ(FieldKind, v))
@@ -637,6 +642,26 @@ func DropAfterIsNil() predicate.CAKey {
 // DropAfterNotNil applies the NotNil predicate on the "drop_after" field.
 func DropAfterNotNil() predicate.CAKey {
 	return predicate.CAKey(sql.FieldNotNull(FieldDropAfter))
+}
+
+// WasOfflineEQ applies the EQ predicate on the "was_offline" field.
+func WasOfflineEQ(v bool) predicate.CAKey {
+	return predicate.CAKey(sql.FieldEQ(FieldWasOffline, v))
+}
+
+// WasOfflineNEQ applies the NEQ predicate on the "was_offline" field.
+func WasOfflineNEQ(v bool) predicate.CAKey {
+	return predicate.CAKey(sql.FieldNEQ(FieldWasOffline, v))
+}
+
+// WasOfflineIsNil applies the IsNil predicate on the "was_offline" field.
+func WasOfflineIsNil() predicate.CAKey {
+	return predicate.CAKey(sql.FieldIsNull(FieldWasOffline))
+}
+
+// WasOfflineNotNil applies the NotNil predicate on the "was_offline" field.
+func WasOfflineNotNil() predicate.CAKey {
+	return predicate.CAKey(sql.FieldNotNull(FieldWasOffline))
 }
 
 // And groups predicates with the AND operator between them.

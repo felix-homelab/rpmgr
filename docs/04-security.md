@@ -549,7 +549,7 @@ same trust domain as R1 (the URI SAN `spiffe://<td>`).
    holds nothing back, but `rpmgr ca status` and the drop name it, as it must re-enroll before it
    can connect again. A drop re-checks the date and the stragglers in its own transaction. The bundle becomes {R2}, R1 is
    `retired`, and I1 and Y no longer chain to a root of the bundle, so neither is loaded or sent;
-   the keys of I1 and of the signing keys that chained to R1 are wiped from the database. The
+   the keys of R1, I1 and of every signing key that chained to R1 are wiped from the database. The
    audit entry of the drop records a drop before the date (`--force`) and the enabled agents
    that `--strand-stragglers` left without R2, by identifier.
    The drop is refused when an active signing key chains to R1 and no next key under I2 can replace

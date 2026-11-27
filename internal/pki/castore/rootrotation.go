@@ -490,17 +490,15 @@ func (p *DropPlan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
 			return nil, ErrRotated
 		}
 	}
-	// Nothing signs under the old root any more: the key of the intermediate it signed and those of the
-	// signing keys that chained to it are wiped, so that a copy of the database no longer holds them. The
-	// old root's own row keeps what it has: with no key it was offline, which `ca status` tells from.
-	var wipe []string
-	for _, sw := range p.swaps {
-		wipe = append(wipe, sw.old)
-	}
+	// Nothing signs under the old root any more: its key, those of the intermediates it signed and those
+	// of every signing key that chained to one of them are wiped, so that a copy of the database no longer
+	// holds them. That the root was offline is recorded in was_offline, which the key's absence no longer says.
 	r1cert, err := x509.ParseCertificate(r1.Certificate)
 	if err != nil {
 		return nil, err
 	}
+	wipe := []string{r1.ID}
+	var inters []*x509.Certificate
 	olds, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusRetired)).All(ctx)
 	if err != nil {
 		return nil, err
@@ -508,10 +506,27 @@ func (p *DropPlan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
 	for _, o := range olds {
 		if c, err := x509.ParseCertificate(o.Certificate); err == nil && c.CheckSignatureFrom(r1cert) == nil {
 			wipe = append(wipe, o.ID)
+			inters = append(inters, c)
 		}
 	}
-	if len(wipe) == 0 {
-		return []string{"old root dropped from the trust bundle"}, nil
+	for _, sw := range p.swaps {
+		wipe = append(wipe, sw.old)
+	}
+	signers, err := tx.CAKey.Query().Where(cakey.KindIn(cakey.KindConfigSigning, cakey.KindAuditCheckpoint), cakey.StatusEQ(cakey.StatusRetired)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range signers {
+		c, err := x509.ParseCertificate(s.Certificate)
+		if err != nil {
+			continue
+		}
+		for _, in := range inters {
+			if c.CheckSignatureFrom(in) == nil {
+				wipe = append(wipe, s.ID)
+				break
+			}
+		}
 	}
 	if err := tx.CAKey.Update().Where(cakey.IDIn(wipe...), cakey.KeyEncNotNil()).ClearKeyEnc().Exec(ctx); err != nil {
 		return nil, err
