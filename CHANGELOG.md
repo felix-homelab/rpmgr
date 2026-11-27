@@ -37,6 +37,15 @@ Changes to the design documents are not recorded here: see the git history and t
   latest version of a Transit key after you rotated it there, and `rpmgr kek rotate
   --previous-config <boot file>` moves the KEK between a file or credential and Transit, in either
   direction ([Rotate the KEK](docs/10-operations.md#rotate-the-kek)).
+- The revocation log can be shipped to an S3-compatible bucket instead of a directory:
+  `revocation_log.sink: s3://<bucket>/<prefix>` with the new `revocation_log.s3` section
+  (`endpoint`, `region` and `credentials_file`) in the boot file
+  ([Backup and restore](docs/guide/operations/backup-and-restore.md#an-s3-compatible-sink)). Every
+  entry is created only when its key is free (`If-None-Match: *`), so replicas leave no gap, and at
+  start the controller writes a probe object twice and refuses to start on a store that does not
+  refuse the second write. `rpmgr restore --revocation-log s3://<bucket>/<prefix>` reads such a
+  sink. The credentials file holds `access_key_id` and `secret_access_key`, mode 0600 or 0400, and
+  its content is in no log or error. (#701)
 - The root CA's key can leave the controller. `rpmgr ca offline-root --out <file>` moves it into a
   file that a passphrase protects and removes it from the database; `rpmgr ca sign-intermediate`
   signs the next issuing intermediate on the offline host, and `rpmgr ca import-intermediate`

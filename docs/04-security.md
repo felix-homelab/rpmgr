@@ -2419,16 +2419,26 @@ Checkpoints prove tampering but cannot restore content, so revocations get their
   the controllers' alone.
 - **S3-compatible sink** (Phase 2, slice 9.1). The boot file names it as `revocation_log.sink:
   s3://<bucket>/<prefix>` with `revocation_log.s3.endpoint`, `region` and `credentials_file`, a
-  file of two lines, the access key ID and the secret key, of mode 0600 or 0400
-  ([10](10-operations.md#boot-files)). It uses the object-store client of the audit sink
-  ([08](08-software-stack.md#data)) with the same SigV4 signing. The credentials need to put, get
-  and list under the prefix, and **no delete or overwrite**. At start the controller **probes the
-  store**: it creates an object under `_probe/` twice with `If-None-Match: *`, and a store that
-  does not refuse the second with 412 would overwrite and leave gaps, so the controller **refuses
-  to start** and names the store ([VB-24](13-roadmap.md#verification-backlog)). Probe objects stay,
-  because a delete may be forbidden. A 412 on a log key is the lost race above, not an error; a
-  503, a timeout or a connection error is retried at the next tick and raises the backlog alert;
-  a 403 raises an alert of its own. The credentials appear in no log or error.
+  YAML file with the keys `access_key_id` and `secret_access_key` and nothing else, of mode 0600 or
+  0400, the file of the external audit sink ([10](10-operations.md#boot-files)). It uses the
+  object-store client of the audit sink ([08](08-software-stack.md#data)) with the same SigV4
+  signing; an object is the key `<prefix>/<seq>`, and the limits are those of
+  [03](03-connections.md#timeouts-keepalive-and-backoff). The credentials need to put, get and list
+  under the prefix, and **no delete or overwrite**. At start the controller **probes the store**:
+  it creates an object under `<prefix>/_probe/` twice with `If-None-Match: *`, and a store that
+  does not refuse the second with 412, or answers 400 or 501 to the header, would overwrite and
+  leave gaps, so the controller **refuses to start** and names the store
+  ([VB-24](13-roadmap.md#verification-backlog)). Probe objects stay, because a delete may be
+  forbidden, and the sink's own listing skips them. A store that cannot be asked at start (503, a
+  timeout, a connection error, 403) does not keep the controller from starting, because a
+  revocation never waits for the sink: the shipper probes again before it writes the first entry,
+  and never writes to a store that failed the probe. A 412 on a log key is the lost race above,
+  not an error; a 503, a timeout, a connection error or a 403 is retried at the next tick, is
+  logged once, and leaves the entries in the backlog, which raises the alert "revocation log not
+  yet off-host" after 5 min as for any sink. A 403 has no alert of its own: the log line names the
+  answer. `rpmgr restore` reads an `s3://` sink given with `--revocation-log` with the store and
+  the credentials file of the boot file's `revocation_log.s3`. The credentials appear in no log or
+  error.
 - **Local format.** One line of JSON per entry: sequence number from 1, time, kind, org, subject,
   detail, the covered certificate's `NotAfter` where there is one, actor, the previous entry's hash
   and its own: the SHA-256 of the entry encoded with an empty hash. Text fields hold at most
