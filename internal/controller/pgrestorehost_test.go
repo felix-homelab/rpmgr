@@ -256,7 +256,7 @@ func TestBackupPostgres_OnlyTheControllerHost(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if err := os.WriteFile(filepath.Join(state, f), b, 0o600); err != nil {
+				if err := os.WriteFile(filepath.Join(state, f), b, 0o600); err != nil { //nolint:gosec // G703: the names are fixed, the directory is the test's own
 					t.Fatal(err)
 				}
 			}
