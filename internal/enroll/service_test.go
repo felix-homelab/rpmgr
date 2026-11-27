@@ -31,8 +31,10 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/enroll"
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/settings"
+	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
@@ -464,6 +466,73 @@ func TestTrustBundleHandler(t *testing.T) {
 		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusMethodNotAllowed {
 			t.Errorf("POST: %d", resp.StatusCode)
+		}
+	})
+}
+
+// TestEnroll_OverlapOfARootRotation: while the old root is in the bundle, Enroll returns the whole
+// bundle {R1, R2, X}, so that an agent that pins either root learns the other, and a chain that carries
+// Y beside the new intermediate, so that the agent verifies it with the pinned old root alone; the
+// signing certificates verify under both roots.
+func TestEnroll_OverlapOfARootRotation(t *testing.T) {
+	setup(t, func(t *testing.T, e *env) {
+		r1 := e.ca.Root()
+		plan, err := castore.PlanNewRoot(e.sys, e.db.ReadClient().CAKey, e.sealer, e.clock)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error { _, err := plan.Apply(e.sys, tx); return err }); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.ca.Reload(e.sys, e.db, e.sealer, func() time.Time { return e.clock }); err != nil {
+			t.Fatal(err)
+		}
+		r2 := e.ca.Root()
+		addr, _ := e.server(t)
+		c, creds := e.client(t, addr)
+		resp, err := c.Enroll(callCtx(t), &agentv1.EnrollRequest{Token: e.mint(t, nil), Csr: boundCSR(t, creds),
+			Host: &agentv1.HostFacts{Hostname: "nas"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(resp.TrustBundle) != 3 || len(resp.Chain) != 3 {
+			t.Fatalf("a bundle of %d and a chain of %d certificates, want 3 and 3", len(resp.TrustBundle), len(resp.Chain))
+		}
+		roots := x509.NewCertPool()
+		roots.AddCert(r1) // an agent that pinned the old root
+		leaf, _ := x509.ParseCertificate(resp.Chain[0])
+		inters := x509.NewCertPool()
+		for _, der := range resp.Chain[1:] {
+			c, _ := x509.ParseCertificate(der)
+			inters.AddCert(c)
+		}
+		if _, err := leaf.Verify(x509.VerifyOptions{Roots: roots, Intermediates: inters, CurrentTime: e.clock,
+			KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}); err != nil {
+			t.Fatalf("the chain under the pinned old root: %v", err)
+		}
+		var sc []*x509.Certificate
+		for _, der := range resp.SigningCertificates {
+			c, _ := x509.ParseCertificate(der)
+			sc = append(sc, c)
+		}
+		// The active signing certificate chains to the old root, which the agent pinned; the next one, with
+		// the intermediates, chains to both roots.
+		if err := pki.VerifySigner(sc[0], sc[1:], r1, pki.PurposeConfigSigning, e.clock); err != nil {
+			t.Errorf("the signing certificate under the pinned old root: %v", err)
+		}
+		var next *x509.Certificate
+		for _, c := range sc[1:] {
+			if !c.IsCA {
+				next = c
+			}
+		}
+		if next == nil {
+			t.Fatal("the next signing certificate is not delivered")
+		}
+		for name, root := range map[string]*x509.Certificate{"R1": r1, "R2": r2} {
+			if err := pki.VerifySigner(next, sc, root, pki.PurposeConfigSigning, e.clock); err != nil {
+				t.Errorf("the next signing certificate under %s: %v", name, err)
+			}
 		}
 	})
 }

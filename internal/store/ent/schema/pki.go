@@ -44,7 +44,21 @@ func (CAKey) Fields() []ent.Field {
 		field.Bytes("key_enc").Optional().Nillable().Sensitive(),
 		field.Time("not_before"),
 		field.Time("not_after"),
-		field.Enum("status").Values("next", "active", "retired"),
+		// status: a root in the overlap of a rotation is "overlap": still in the trust bundle, no longer
+		// issuing (docs/04-security.md, "Root rotation"); the drop makes it retired. A key replaced as
+		// compromised is "compromised", with its key wiped ("Root compromise").
+		field.Enum("status").Values("next", "active", "retired", "overlap", "compromised"),
+		// cross_certificate is the certificate the old root signed for this key during a root rotation:
+		// the cross-certificate X on the new root's row, Y on the new intermediate's row.
+		field.Bytes("cross_certificate").Optional(),
+		// rotated_at is when a root entered the overlap, that is when issuing moved to the new root.
+		field.Time("rotated_at").Optional().Nillable(),
+		// drop_after is the earliest date the old root may be dropped, fixed when issuing moved: the overlap
+		// of that moment, so that a later change of the leaf lifetime or the grace cannot shorten it.
+		field.Time("drop_after").Optional().Nillable(),
+		// was_offline is set on the old root when it enters the overlap: its key was not in the database. The
+		// drop wipes the key, so this is what `ca status` tells an online new root from afterwards.
+		field.Bool("was_offline").Optional().Nillable(),
 	}
 }
 
@@ -139,6 +153,36 @@ func (RevokedIdentity) Interceptors() []ent.Interceptor {
 
 // Hooks scope every mutation to the scope's org.
 func (RevokedIdentity) Hooks() []ent.Hook { return []ent.Hook{orgMutationHook} }
+
+// RootCompromise records, for a root replaced as compromised and for each audit chain, the seq of the audit
+// entry that records the replacement (docs/04-security.md, "Root compromise"): a checkpoint that root vouches
+// for counts only below it. The audit entry is the audited record; this row is its copy that audit retention
+// never prunes, so the rule outlives the entry.
+type RootCompromise struct{ ent.Schema }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (RootCompromise) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "root_compromises"}}
+}
+
+// Fields of a root compromise; chain is an org ID or "instance", root_hash the SHA-256 of the root's public key.
+func (RootCompromise) Fields() []ent.Field {
+	return []ent.Field{
+		idField("rcp"),
+		field.String("chain").NotEmpty().Immutable(),
+		field.String("root_hash").NotEmpty().Immutable(),
+		field.Int64("seq").Positive().Immutable(),
+		field.Time("created_at").Immutable().Default(time.Now),
+	}
+}
+
+// Indexes: one cutoff per root and chain.
+func (RootCompromise) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("chain", "root_hash").Unique()}
+}
+
+// Policy denies every query and mutation without a scope.
+func (RootCompromise) Policy() ent.Policy { return scopePolicy() }
 
 // RevokedSerial records a certificate revoked after the backup a restore came from, which the
 // restored issued_certificates does not hold: the restore keeps it on the deny-list until it

@@ -16,6 +16,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/auditsink"
 	"github.com/felix-homelab/rpmgr/internal/objstore/objstoretest"
+	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -153,5 +154,111 @@ func TestAuditSinks_Verify(t *testing.T) {
 	n := e.db.Client().AuditEntry.Query().Where(auditentry.ActionHasPrefix("rpmgr.v1.AuditSinkService.VerifyAuditSink")).CountX(e.sys)
 	if n < 3 {
 		t.Errorf("%d audit entries of verifications", n)
+	}
+}
+
+// TestAuditSinks_VerifyAfterRootReplacement: after a root was replaced as compromised, the checkpoints a sink holds
+// from before still verify, because they are below the replacement's entry, and the new key's checkpoint
+// anchors it; a checkpoint the leaked key signed afterwards, which reached the sink, is the answer: not intact.
+func TestAuditSinks_VerifyAfterRootReplacement(t *testing.T) {
+	e, ada, org, _ := gatewayEnv(t)
+	ctx := context.Background()
+	if err := store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error {
+		return castore.InitCA(e.sys, tx, e.sealer, "rpmgr-teststor", e.clock.Add(-time.Hour))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	old, err := castore.LoadCA(e.sys, e.db, e.sealer, func() time.Time { return e.clock })
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaked := old.AuditSigner()
+	srv := objstoretest.New(t)
+	if err := ada.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	cr, err := ada.sink.CreateAuditSink(ctx, connect.NewRequest(&rpmgrv1.CreateAuditSinkRequest{AuditSink: &rpmgrv1.AuditSink{Name: "vault",
+		Kind: rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_S3, Endpoint: srv.URL, Region: objstoretest.Region, Bucket: objstoretest.Bucket,
+		AccessKeyId: objstoretest.AccessKeyID, Secret: awsKey1, Entries: true}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := cr.Msg.GetAuditSink().GetId()
+	if _, err := ada.gw.CreateGatewayGroup(ctx, connect.NewRequest(&rpmgrv1.CreateGatewayGroupRequest{OrgId: org,
+		GatewayGroup: &rpmgrv1.GatewayGroup{Name: "verify-eu"}})); err != nil {
+		t.Fatal(err)
+	}
+	checkpoint := func(signer pki.KeyPair, at time.Time) {
+		t.Helper()
+		if err := store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error {
+			_, err := audit.WriteCheckpoints(e.sys, tx, signer, at, audit.Pending)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runner := auditsink.NewRunner(auditsink.Options{DB: e.db, Sealer: e.sealer, Sender: e.sinks.Sender, Now: func() time.Time { return e.clock }, Logger: slog.New(slog.DiscardHandler)})
+	ship := func() {
+		t.Helper()
+		if err := runner.Pass(e.sys, func(*ent.Tx) error { return nil }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	verify := func() *rpmgrv1.AuditSinkVerification {
+		t.Helper()
+		r, err := ada.sink.VerifyAuditSink(ctx, connect.NewRequest(&rpmgrv1.VerifyAuditSinkRequest{AuditSinkId: id}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.Msg.GetVerification()
+	}
+	checkpoint(leaked, e.clock)
+	ship()
+	if v := verify(); !v.GetIntact() {
+		t.Fatalf("before the replacement: %v", v)
+	}
+
+	// The replacement, as the command makes it: every chain gets its entry, then a checkpoint of the new key.
+	plan, err := castore.PlanCompromisedRoot(e.sys, e.db.ReadClient().CAKey, e.sealer, e.clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error {
+		if _, err := plan.Apply(e.sys, tx); err != nil {
+			return err
+		}
+		for _, o := range []string{"", org} {
+			if _, err := audit.AnchorCompromise(e.sys, tx, o, plan.Replaced(), "test"); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	checkpoint(plan.AuditSigner(), e.clock.Add(time.Minute))
+	ship()
+	if v := verify(); !v.GetIntact() {
+		t.Fatalf("after the replacement, with the old checkpoints in the sink: %v", v)
+	}
+
+	// The leaked key signs a checkpoint of a later head, and it reaches the sink.
+	if _, err := ada.gw.CreateGatewayGroup(ctx, connect.NewRequest(&rpmgrv1.CreateGatewayGroupRequest{OrgId: org,
+		GatewayGroup: &rpmgrv1.GatewayGroup{Name: "verify-us"}})); err != nil {
+		t.Fatal(err)
+	}
+	checkpoint(leaked, e.clock.Add(2*time.Minute))
+	ship()
+	// The database does not hold it any more, as when whoever forged it only reached the sink: the check of the
+	// sink's own objects is what refuses it.
+	if err := store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error {
+		_, err := tx.ExecContext(e.sys, "DELETE FROM audit_checkpoints WHERE key_id = $1", pki.KeyID(leaked.Cert))
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	v := verify()
+	if v.GetIntact() || !strings.Contains(v.String(), "replaced as compromised") {
+		t.Fatalf("a checkpoint of the leaked key after the replacement: %v", v)
 	}
 }

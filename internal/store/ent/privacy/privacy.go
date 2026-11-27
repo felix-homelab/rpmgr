@@ -1479,6 +1479,30 @@ func (f RolloutTargetMutationRuleFunc) EvalMutation(ctx context.Context, m ent.M
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RolloutTargetMutation", m)
 }
 
+// The RootCompromiseQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type RootCompromiseQueryRuleFunc func(context.Context, *ent.RootCompromiseQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f RootCompromiseQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RootCompromiseQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.RootCompromiseQuery", q)
+}
+
+// The RootCompromiseMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type RootCompromiseMutationRuleFunc func(context.Context, *ent.RootCompromiseMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f RootCompromiseMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.RootCompromiseMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RootCompromiseMutation", m)
+}
+
 // The RouteQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type RouteQueryRuleFunc func(context.Context, *ent.RouteQuery) error
@@ -2084,6 +2108,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.RolloutTargetQuery:
 		return q.Filter(), nil
+	case *ent.RootCompromiseQuery:
+		return q.Filter(), nil
 	case *ent.RouteQuery:
 		return q.Filter(), nil
 	case *ent.RouteHTTPQuery:
@@ -2242,6 +2268,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.RolloutMutation:
 		return m.Filter(), nil
 	case *ent.RolloutTargetMutation:
+		return m.Filter(), nil
+	case *ent.RootCompromiseMutation:
 		return m.Filter(), nil
 	case *ent.RouteMutation:
 		return m.Filter(), nil

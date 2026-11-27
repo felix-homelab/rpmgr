@@ -121,9 +121,15 @@ func CAStatusWarnings(ctx context.Context, path string) ([]string, error) {
 		return nil, err
 	}
 	defer func() { _ = db.Close() }()
+	var out []string
+	if w, err := notEnrolledAgain(sys, db, time.Now()); err != nil {
+		return nil, err
+	} else if w != "" {
+		out = append(out, w)
+	}
 	log := filepath.Join(filepath.Dir(cfg.Database.DSN), "revocations.log")
 	if _, err := os.Stat(log); err != nil {
-		return nil, nil
+		return out, nil
 	}
 	entries, err := revlog.Read(log)
 	if err != nil {
@@ -133,7 +139,6 @@ func CAStatusWarnings(ctx context.Context, path string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	var out []string
 	for _, e := range entries {
 		if e.Kind != revlog.RootOffline {
 			continue

@@ -69,6 +69,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedserial"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/rollout"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/rollouttarget"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/rootcompromise"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
@@ -205,6 +206,7 @@ func checkColumn(t, c string) error {
 			revokedserial.Table:      revokedserial.ValidColumn,
 			rollout.Table:            rollout.ValidColumn,
 			rollouttarget.Table:      rollouttarget.ValidColumn,
+			rootcompromise.Table:     rootcompromise.ValidColumn,
 			route.Table:              route.ValidColumn,
 			routehttp.Table:          routehttp.ValidColumn,
 			routehostname.Table:      routehostname.ValidColumn,

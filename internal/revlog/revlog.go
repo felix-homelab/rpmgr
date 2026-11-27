@@ -40,6 +40,12 @@ const (
 	// Subject is the SHA-256 of the root's public key, hexadecimal; Detail is the KEK that sealed
 	// its key. A restore sets key_enc of that root to null again.
 	RootOffline Kind = "root_offline"
+	// The markers of a root change (docs/04-security.md, "Revocation log"). Each names a root by the
+	// SHA-256 of its public key, hexadecimal, and a restore refuses an archive in which that root
+	// is still in the state the change ended.
+	RootSwitched    Kind = "root_switched"    // Subject: the old root, which stopped issuing; Detail: the new root
+	RootDropped     Kind = "root_dropped"     // Subject: the old root, which left the trust bundle
+	RootCompromised Kind = "root_compromised" // Subject: the replaced root; Detail: its replacement
 )
 
 // What a CredentialSuperseded entry's Detail names.
@@ -51,7 +57,8 @@ const (
 
 var kinds = map[Kind]bool{CertificateRevoked: true, IdentityRevoked: true, CertificateSuperseded: true,
 	APITokenRevoked: true, SessionRevoked: true, MemberRemoved: true, RoleDowngraded: true,
-	InstanceAdminRevoked: true, CredentialSuperseded: true, GrantRemoved: true, RootOffline: true}
+	InstanceAdminRevoked: true, CredentialSuperseded: true, GrantRemoved: true, RootOffline: true,
+	RootSwitched: true, RootDropped: true, RootCompromised: true}
 
 // Valid reports whether k is one of the kinds above.
 func (k Kind) Valid() bool { return kinds[k] }

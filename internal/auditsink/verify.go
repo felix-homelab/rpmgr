@@ -116,7 +116,11 @@ func (r *Runner) verifyChain(ctx context.Context, c *objstore.Client, s *ent.Aud
 		if err != nil {
 			return err
 		}
-		local, err = audit.CheckpointsAfter(ctx, tx, org, 0, 1<<20)
+		if local, err = audit.CheckpointsAfter(ctx, tx, org, 0, 1<<20); err != nil {
+			return err
+		}
+		// A checkpoint under a root replaced as compromised counts only below the replacement's entry.
+		trust, err = trust.WithCompromises(ctx, tx)
 		return err
 	}); err != nil {
 		return out, err

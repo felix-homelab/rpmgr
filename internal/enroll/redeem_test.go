@@ -33,11 +33,12 @@ var t0 = time.Now().UTC().Truncate(time.Second)
 
 // env is an initialised database with a CA and an org.
 type env struct {
-	db    *store.DB
-	ca    *castore.CA
-	org   string
-	sys   context.Context
-	clock time.Time
+	db     *store.DB
+	ca     *castore.CA
+	sealer *secret.Sealer
+	org    string
+	sys    context.Context
+	clock  time.Time
 }
 
 func setup(t *testing.T, f func(t *testing.T, e *env)) {
@@ -54,7 +55,7 @@ func setup(t *testing.T, f func(t *testing.T, e *env)) {
 		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { return castore.InitCA(sys, tx, s, td, t0) }); err != nil {
 			t.Fatal(err)
 		}
-		e := &env{db: db, org: storetest.Org(t, db, "org-a"), sys: sys, clock: t0}
+		e := &env{db: db, sealer: s, org: storetest.Org(t, db, "org-a"), sys: sys, clock: t0}
 		if e.ca, err = castore.LoadCA(sys, db, s, func() time.Time { return e.clock }); err != nil {
 			t.Fatal(err)
 		}

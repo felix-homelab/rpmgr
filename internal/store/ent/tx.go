@@ -128,6 +128,8 @@ type Tx struct {
 	Rollout *RolloutClient
 	// RolloutTarget is the client for interacting with the RolloutTarget builders.
 	RolloutTarget *RolloutTargetClient
+	// RootCompromise is the client for interacting with the RootCompromise builders.
+	RootCompromise *RootCompromiseClient
 	// Route is the client for interacting with the Route builders.
 	Route *RouteClient
 	// RouteHTTP is the client for interacting with the RouteHTTP builders.
@@ -354,6 +356,7 @@ func (tx *Tx) init() {
 	tx.RevokedSerial = NewRevokedSerialClient(tx.config)
 	tx.Rollout = NewRolloutClient(tx.config)
 	tx.RolloutTarget = NewRolloutTargetClient(tx.config)
+	tx.RootCompromise = NewRootCompromiseClient(tx.config)
 	tx.Route = NewRouteClient(tx.config)
 	tx.RouteHTTP = NewRouteHTTPClient(tx.config)
 	tx.RouteHostname = NewRouteHostnameClient(tx.config)

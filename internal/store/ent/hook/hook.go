@@ -693,6 +693,18 @@ func (f RolloutTargetFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Valu
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RolloutTargetMutation", m)
 }
 
+// The RootCompromiseFunc type is an adapter to allow the use of ordinary
+// function as RootCompromise mutator.
+type RootCompromiseFunc func(context.Context, *ent.RootCompromiseMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RootCompromiseFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RootCompromiseMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RootCompromiseMutation", m)
+}
+
 // The RouteFunc type is an adapter to allow the use of ordinary
 // function as Route mutator.
 type RouteFunc func(context.Context, *ent.RouteMutation) (ent.Value, error)

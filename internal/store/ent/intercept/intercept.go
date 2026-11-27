@@ -66,6 +66,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedserial"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/rollout"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/rollouttarget"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/rootcompromise"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
@@ -1682,6 +1683,33 @@ func (f TraverseRolloutTarget) Traverse(ctx context.Context, q ent.Query) error 
 	return fmt.Errorf("unexpected query type %T. expect *ent.RolloutTargetQuery", q)
 }
 
+// The RootCompromiseFunc type is an adapter to allow the use of ordinary function as a Querier.
+type RootCompromiseFunc func(context.Context, *ent.RootCompromiseQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f RootCompromiseFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.RootCompromiseQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.RootCompromiseQuery", q)
+}
+
+// The TraverseRootCompromise type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseRootCompromise func(context.Context, *ent.RootCompromiseQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseRootCompromise) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseRootCompromise) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RootCompromiseQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.RootCompromiseQuery", q)
+}
+
 // The RouteFunc type is an adapter to allow the use of ordinary function as a Querier.
 type RouteFunc func(context.Context, *ent.RouteQuery) (ent.Value, error)
 
@@ -2312,6 +2340,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.RolloutQuery, predicate.Rollout, rollout.OrderOption]{typ: ent.TypeRollout, tq: q}, nil
 	case *ent.RolloutTargetQuery:
 		return &query[*ent.RolloutTargetQuery, predicate.RolloutTarget, rollouttarget.OrderOption]{typ: ent.TypeRolloutTarget, tq: q}, nil
+	case *ent.RootCompromiseQuery:
+		return &query[*ent.RootCompromiseQuery, predicate.RootCompromise, rootcompromise.OrderOption]{typ: ent.TypeRootCompromise, tq: q}, nil
 	case *ent.RouteQuery:
 		return &query[*ent.RouteQuery, predicate.Route, route.OrderOption]{typ: ent.TypeRoute, tq: q}, nil
 	case *ent.RouteHTTPQuery:

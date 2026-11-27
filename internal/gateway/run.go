@@ -258,6 +258,9 @@ func Run(ctx context.Context, o RunOptions) error {
 		c := ctl.Certificate()
 		return &c, nil
 	}
+	// The client CAs follow the roots the gateway learns, so that connectors whose chains end at a new
+	// root connect before the old root is dropped, with no restart (docs/04-security.md, "Root rotation").
+	pki.FollowRoots(tunnelTLS, ctl.Roots)
 	h2TLS := tunnelTLS.Clone()
 	h2TLS.NextProtos = []string{tunnel.ALPNH2}
 	budget := tunnel.NewBudget(tunnel.DefaultWindowBudget)

@@ -47,8 +47,10 @@ type Compiler struct {
 	Offer func(ctx context.Context, tx *ent.Tx, a Agent) (*agentv1.ReleaseOffer, error)
 	// Roots, if set, returns the controller's trust roots as DER (Snapshot.trust_roots). They go
 	// into the snapshot of every agent with the capability "trust.roots", so a change of the bundle
-	// changes every snapshot's hash.
-	Roots func() ([][]byte, error)
+	// changes every snapshot's hash. It reads through tx, the transaction of the revision, so that a
+	// snapshot holds the bundle of its revision: an agent orders bundles by revision
+	// (docs/04-security.md, "Root rotation").
+	Roots func(ctx context.Context, tx *ent.Tx) ([][]byte, error)
 	// Log, if set, gets the error of a failed Roots: the snapshot is then compiled without the
 	// roots, as Welcome is sent without them, so that the agent only learns no new root.
 	Log *slog.Logger
@@ -86,7 +88,7 @@ func (c *Compiler) compile(ctx context.Context, tx *ent.Tx, rev store.Revision, 
 		snap.ReleaseOffer = offer
 	}
 	if c.Roots != nil && a.Has(agentproto.CapTrustRoots) {
-		if roots, err := c.Roots(); err != nil {
+		if roots, err := c.Roots(ctx, tx); err != nil {
 			if c.Log != nil {
 				c.Log.Error("cannot send the trust roots; compiling without them", "agent", a.Identity.String(), "error", err)
 			}

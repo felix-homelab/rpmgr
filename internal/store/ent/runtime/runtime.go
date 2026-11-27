@@ -63,6 +63,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedserial"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/rollout"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/rollouttarget"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/rootcompromise"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
@@ -3570,6 +3571,53 @@ func init() {
 	// rollouttarget.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	rollouttarget.IDValidator = func() func(string) error {
 		validators := rollouttargetDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	rootcompromise.Policy = privacy.NewPolicies(schema.RootCompromise{})
+	rootcompromise.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := rootcompromise.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	rootcompromiseFields := schema.RootCompromise{}.Fields()
+	_ = rootcompromiseFields
+	// rootcompromiseDescChain is the schema descriptor for chain field.
+	rootcompromiseDescChain := rootcompromiseFields[1].Descriptor()
+	// rootcompromise.ChainValidator is a validator for the "chain" field. It is called by the builders before save.
+	rootcompromise.ChainValidator = rootcompromiseDescChain.Validators[0].(func(string) error)
+	// rootcompromiseDescRootHash is the schema descriptor for root_hash field.
+	rootcompromiseDescRootHash := rootcompromiseFields[2].Descriptor()
+	// rootcompromise.RootHashValidator is a validator for the "root_hash" field. It is called by the builders before save.
+	rootcompromise.RootHashValidator = rootcompromiseDescRootHash.Validators[0].(func(string) error)
+	// rootcompromiseDescSeq is the schema descriptor for seq field.
+	rootcompromiseDescSeq := rootcompromiseFields[3].Descriptor()
+	// rootcompromise.SeqValidator is a validator for the "seq" field. It is called by the builders before save.
+	rootcompromise.SeqValidator = rootcompromiseDescSeq.Validators[0].(func(int64) error)
+	// rootcompromiseDescCreatedAt is the schema descriptor for created_at field.
+	rootcompromiseDescCreatedAt := rootcompromiseFields[4].Descriptor()
+	// rootcompromise.DefaultCreatedAt holds the default value on creation for the created_at field.
+	rootcompromise.DefaultCreatedAt = rootcompromiseDescCreatedAt.Default.(func() time.Time)
+	// rootcompromiseDescID is the schema descriptor for id field.
+	rootcompromiseDescID := rootcompromiseFields[0].Descriptor()
+	// rootcompromise.DefaultID holds the default value on creation for the id field.
+	rootcompromise.DefaultID = rootcompromiseDescID.Default.(func() string)
+	// rootcompromise.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	rootcompromise.IDValidator = func() func(string) error {
+		validators := rootcompromiseDescID.Validators
 		fns := [...]func(string) error{
 			validators[0].(func(string) error),
 			validators[1].(func(string) error),

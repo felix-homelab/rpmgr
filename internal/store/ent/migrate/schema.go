@@ -392,7 +392,11 @@ var (
 		{Name: "key_enc", Type: field.TypeBytes, Nullable: true},
 		{Name: "not_before", Type: field.TypeTime},
 		{Name: "not_after", Type: field.TypeTime},
-		{Name: "status", Type: field.TypeEnum, Enums: []string{"next", "active", "retired"}},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"next", "active", "retired", "overlap", "compromised"}},
+		{Name: "cross_certificate", Type: field.TypeBytes, Nullable: true},
+		{Name: "rotated_at", Type: field.TypeTime, Nullable: true},
+		{Name: "drop_after", Type: field.TypeTime, Nullable: true},
+		{Name: "was_offline", Type: field.TypeBool, Nullable: true},
 	}
 	// CaKeysTable holds the schema information for the "ca_keys" table.
 	CaKeysTable = &schema.Table{
@@ -1831,6 +1835,27 @@ var (
 			},
 		},
 	}
+	// RootCompromisesColumns holds the columns for the "root_compromises" table.
+	RootCompromisesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "chain", Type: field.TypeString},
+		{Name: "root_hash", Type: field.TypeString},
+		{Name: "seq", Type: field.TypeInt64},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// RootCompromisesTable holds the schema information for the "root_compromises" table.
+	RootCompromisesTable = &schema.Table{
+		Name:       "root_compromises",
+		Columns:    RootCompromisesColumns,
+		PrimaryKey: []*schema.Column{RootCompromisesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "rootcompromise_chain_root_hash",
+				Unique:  true,
+				Columns: []*schema.Column{RootCompromisesColumns[1], RootCompromisesColumns[2]},
+			},
+		},
+	}
 	// RoutesColumns holds the columns for the "routes" table.
 	RoutesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -2634,6 +2659,7 @@ var (
 		RevokedSerialsTable,
 		RolloutsTable,
 		RolloutTargetsTable,
+		RootCompromisesTable,
 		RoutesTable,
 		RouteHTTPTable,
 		RouteHostnamesTable,
@@ -2822,6 +2848,9 @@ func init() {
 	RolloutTargetsTable.ForeignKeys[0].RefTable = RolloutsTable
 	RolloutTargetsTable.Annotation = &entsql.Annotation{
 		Table: "rollout_targets",
+	}
+	RootCompromisesTable.Annotation = &entsql.Annotation{
+		Table: "root_compromises",
 	}
 	RoutesTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	RoutesTable.Annotation = &entsql.Annotation{

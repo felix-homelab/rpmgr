@@ -1,4 +1,4 @@
-h1:cWUTyS5eo+cVD2tpmkXZpFthaAqTlAO3y5w9xm4Z0mg=
+h1:+f0OhgFFxuS9KLF7XMjKzEI5xQZhftvIL4G9AkwHCH4=
 20261009220802_baseline.sql h1:P98oQ4RhN7c+aa0SgKZ9ZRM8/T6XYO+Yd4dzlDOBvr4=
 20261013061720_agent_names_active.sql h1:pSxlk4IT2yuwmcSmLQ4GrPs6B7VaQUX7L1NcrOHzvqg=
 20261014071548_target_tls_verification.sql h1:6F+dOuC0QwNWsAQhvW7rRkPRrB/RC/OgLAL0vWfs0oY=
@@ -42,3 +42,7 @@ h1:cWUTyS5eo+cVD2tpmkXZpFthaAqTlAO3y5w9xm4Z0mg=
 20261124083511_agent_sessions_roots_digest.sql h1:VGEu1hxkQSuxfglamt9QeuOxH6IRFZ14Z5Wk5Po4n1A=
 20261125101630_instance_retired.sql h1:uymzes8UqFqVhFTdEpzhZouo4hnAiTD0okSu6hksk3c=
 20261125123350_ca_keys_offline_root.sql h1:00NBD+4MpdBo2puiL8ya4JVV/v8B6CjgQnQAm/Z2nfg=
+20261126131130_ca_keys_root_rotation.sql h1:7vbTZnHwutuQ74GDAspVI5gBy0eF3et+iv8wCuWMfgs=
+20261126150726_ca_keys_drop_after.sql h1:VKQ7kuLXPIYG3nwjE1+i2wKeEtV0FlKFqEXUuzaqXEU=
+20261127074228_ca_keys_was_offline.sql h1:9fVI4nGfwZPW0fdjg+prRfwT7bFX1ZA0tHTol8rPMMU=
+20261127133228_root_compromises.sql h1:GaRRSsRR7/3yWDSRF6rDq2jVrpEGbXzNz3xvmv7Fq6g=

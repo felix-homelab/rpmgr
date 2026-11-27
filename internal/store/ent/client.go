@@ -72,6 +72,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedserial"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/rollout"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/rollouttarget"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/rootcompromise"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
@@ -214,6 +215,8 @@ type Client struct {
 	Rollout *RolloutClient
 	// RolloutTarget is the client for interacting with the RolloutTarget builders.
 	RolloutTarget *RolloutTargetClient
+	// RootCompromise is the client for interacting with the RootCompromise builders.
+	RootCompromise *RootCompromiseClient
 	// Route is the client for interacting with the Route builders.
 	Route *RouteClient
 	// RouteHTTP is the client for interacting with the RouteHTTP builders.
@@ -320,6 +323,7 @@ func (c *Client) init() {
 	c.RevokedSerial = NewRevokedSerialClient(c.config)
 	c.Rollout = NewRolloutClient(c.config)
 	c.RolloutTarget = NewRolloutTargetClient(c.config)
+	c.RootCompromise = NewRootCompromiseClient(c.config)
 	c.Route = NewRouteClient(c.config)
 	c.RouteHTTP = NewRouteHTTPClient(c.config)
 	c.RouteHostname = NewRouteHostnameClient(c.config)
@@ -488,6 +492,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		RevokedSerial:      NewRevokedSerialClient(cfg),
 		Rollout:            NewRolloutClient(cfg),
 		RolloutTarget:      NewRolloutTargetClient(cfg),
+		RootCompromise:     NewRootCompromiseClient(cfg),
 		Route:              NewRouteClient(cfg),
 		RouteHTTP:          NewRouteHTTPClient(cfg),
 		RouteHostname:      NewRouteHostnameClient(cfg),
@@ -583,6 +588,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		RevokedSerial:      NewRevokedSerialClient(cfg),
 		Rollout:            NewRolloutClient(cfg),
 		RolloutTarget:      NewRolloutTargetClient(cfg),
+		RootCompromise:     NewRootCompromiseClient(cfg),
 		Route:              NewRouteClient(cfg),
 		RouteHTTP:          NewRouteHTTPClient(cfg),
 		RouteHostname:      NewRouteHostnameClient(cfg),
@@ -642,11 +648,11 @@ func (c *Client) Use(hooks ...Hook) {
 		c.IssuedCertificate, c.Lease, c.MailJob, c.Membership, c.Org, c.OrgSetting,
 		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
 		c.RecoveryCode, c.Release, c.ResourceStatus, c.RevokedIdentity,
-		c.RevokedSerial, c.Rollout, c.RolloutTarget, c.Route, c.RouteHTTP,
-		c.RouteHostname, c.RouteLimit, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
-		c.RouteTrafficDaily, c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session,
-		c.StatusMark, c.TOTPCredential, c.TrafficBaseline, c.User, c.Webhook,
-		c.WebhookDelivery, c.WebhookMessage,
+		c.RevokedSerial, c.Rollout, c.RolloutTarget, c.RootCompromise, c.Route,
+		c.RouteHTTP, c.RouteHostname, c.RouteLimit, c.RoutePolicy, c.RouteTCP,
+		c.RouteTarget, c.RouteTrafficDaily, c.RouteTrafficHourly, c.RouteUDP,
+		c.SecretMeta, c.Session, c.StatusMark, c.TOTPCredential, c.TrafficBaseline,
+		c.User, c.Webhook, c.WebhookDelivery, c.WebhookMessage,
 	} {
 		n.Use(hooks...)
 	}
@@ -667,11 +673,11 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.IssuedCertificate, c.Lease, c.MailJob, c.Membership, c.Org, c.OrgSetting,
 		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
 		c.RecoveryCode, c.Release, c.ResourceStatus, c.RevokedIdentity,
-		c.RevokedSerial, c.Rollout, c.RolloutTarget, c.Route, c.RouteHTTP,
-		c.RouteHostname, c.RouteLimit, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
-		c.RouteTrafficDaily, c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session,
-		c.StatusMark, c.TOTPCredential, c.TrafficBaseline, c.User, c.Webhook,
-		c.WebhookDelivery, c.WebhookMessage,
+		c.RevokedSerial, c.Rollout, c.RolloutTarget, c.RootCompromise, c.Route,
+		c.RouteHTTP, c.RouteHostname, c.RouteLimit, c.RoutePolicy, c.RouteTCP,
+		c.RouteTarget, c.RouteTrafficDaily, c.RouteTrafficHourly, c.RouteUDP,
+		c.SecretMeta, c.Session, c.StatusMark, c.TOTPCredential, c.TrafficBaseline,
+		c.User, c.Webhook, c.WebhookDelivery, c.WebhookMessage,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -794,6 +800,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Rollout.mutate(ctx, m)
 	case *RolloutTargetMutation:
 		return c.RolloutTarget.mutate(ctx, m)
+	case *RootCompromiseMutation:
+		return c.RootCompromise.mutate(ctx, m)
 	case *RouteMutation:
 		return c.Route.mutate(ctx, m)
 	case *RouteHTTPMutation:
@@ -9008,6 +9016,140 @@ func (c *RolloutTargetClient) mutate(ctx context.Context, m *RolloutTargetMutati
 	}
 }
 
+// RootCompromiseClient is a client for the RootCompromise schema.
+type RootCompromiseClient struct {
+	config
+}
+
+// NewRootCompromiseClient returns a client for the RootCompromise from the given config.
+func NewRootCompromiseClient(c config) *RootCompromiseClient {
+	return &RootCompromiseClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `rootcompromise.Hooks(f(g(h())))`.
+func (c *RootCompromiseClient) Use(hooks ...Hook) {
+	c.hooks.RootCompromise = append(c.hooks.RootCompromise, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `rootcompromise.Intercept(f(g(h())))`.
+func (c *RootCompromiseClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RootCompromise = append(c.inters.RootCompromise, interceptors...)
+}
+
+// Create returns a builder for creating a RootCompromise entity.
+func (c *RootCompromiseClient) Create() *RootCompromiseCreate {
+	mutation := newRootCompromiseMutation(c.config, OpCreate)
+	return &RootCompromiseCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RootCompromise entities.
+func (c *RootCompromiseClient) CreateBulk(builders ...*RootCompromiseCreate) *RootCompromiseCreateBulk {
+	return &RootCompromiseCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RootCompromiseClient) MapCreateBulk(slice any, setFunc func(*RootCompromiseCreate, int)) *RootCompromiseCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RootCompromiseCreateBulk{err: fmt.Errorf("calling to RootCompromiseClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RootCompromiseCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RootCompromiseCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RootCompromise.
+func (c *RootCompromiseClient) Update() *RootCompromiseUpdate {
+	mutation := newRootCompromiseMutation(c.config, OpUpdate)
+	return &RootCompromiseUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RootCompromiseClient) UpdateOne(_m *RootCompromise) *RootCompromiseUpdateOne {
+	mutation := newRootCompromiseMutation(c.config, OpUpdateOne, withRootCompromise(_m))
+	return &RootCompromiseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RootCompromiseClient) UpdateOneID(id string) *RootCompromiseUpdateOne {
+	mutation := newRootCompromiseMutation(c.config, OpUpdateOne, withRootCompromiseID(id))
+	return &RootCompromiseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RootCompromise.
+func (c *RootCompromiseClient) Delete() *RootCompromiseDelete {
+	mutation := newRootCompromiseMutation(c.config, OpDelete)
+	return &RootCompromiseDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RootCompromiseClient) DeleteOne(_m *RootCompromise) *RootCompromiseDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RootCompromiseClient) DeleteOneID(id string) *RootCompromiseDeleteOne {
+	builder := c.Delete().Where(rootcompromise.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RootCompromiseDeleteOne{builder}
+}
+
+// Query returns a query builder for RootCompromise.
+func (c *RootCompromiseClient) Query() *RootCompromiseQuery {
+	return &RootCompromiseQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRootCompromise},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RootCompromise entity by its id.
+func (c *RootCompromiseClient) Get(ctx context.Context, id string) (*RootCompromise, error) {
+	return c.Query().Where(rootcompromise.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RootCompromiseClient) GetX(ctx context.Context, id string) *RootCompromise {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *RootCompromiseClient) Hooks() []Hook {
+	hooks := c.hooks.RootCompromise
+	return append(hooks[:len(hooks):len(hooks)], rootcompromise.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *RootCompromiseClient) Interceptors() []Interceptor {
+	return c.inters.RootCompromise
+}
+
+func (c *RootCompromiseClient) mutate(ctx context.Context, m *RootCompromiseMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RootCompromiseCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RootCompromiseUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RootCompromiseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RootCompromiseDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RootCompromise mutation op: %q", m.Op())
+	}
+}
+
 // RouteClient is a client for the Route schema.
 type RouteClient struct {
 	config
@@ -11888,8 +12030,8 @@ type (
 		Instance, InstanceSecret, InstanceSetting, Invitation, IssuedCertificate,
 		Lease, MailJob, Membership, Org, OrgSetting, PasswordReset, PolicyRule,
 		PortAllocation, PortPool, PortQuota, RecoveryCode, Release, ResourceStatus,
-		RevokedIdentity, RevokedSerial, Rollout, RolloutTarget, Route, RouteHTTP,
-		RouteHostname, RouteLimit, RoutePolicy, RouteTCP, RouteTarget,
+		RevokedIdentity, RevokedSerial, Rollout, RolloutTarget, RootCompromise, Route,
+		RouteHTTP, RouteHostname, RouteLimit, RoutePolicy, RouteTCP, RouteTarget,
 		RouteTrafficDaily, RouteTrafficHourly, RouteUDP, SecretMeta, Session,
 		StatusMark, TOTPCredential, TrafficBaseline, User, Webhook, WebhookDelivery,
 		WebhookMessage []ent.Hook
@@ -11904,8 +12046,8 @@ type (
 		Instance, InstanceSecret, InstanceSetting, Invitation, IssuedCertificate,
 		Lease, MailJob, Membership, Org, OrgSetting, PasswordReset, PolicyRule,
 		PortAllocation, PortPool, PortQuota, RecoveryCode, Release, ResourceStatus,
-		RevokedIdentity, RevokedSerial, Rollout, RolloutTarget, Route, RouteHTTP,
-		RouteHostname, RouteLimit, RoutePolicy, RouteTCP, RouteTarget,
+		RevokedIdentity, RevokedSerial, Rollout, RolloutTarget, RootCompromise, Route,
+		RouteHTTP, RouteHostname, RouteLimit, RoutePolicy, RouteTCP, RouteTarget,
 		RouteTrafficDaily, RouteTrafficHourly, RouteUDP, SecretMeta, Session,
 		StatusMark, TOTPCredential, TrafficBaseline, User, Webhook, WebhookDelivery,
 		WebhookMessage []ent.Interceptor

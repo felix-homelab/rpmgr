@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -25,6 +26,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apitoken"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/invitation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
@@ -209,7 +211,13 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 		return RestoreResult{}, err
 	}
 	res := RestoreResult{TrustDomain: a.info.TrustDomain, Backup: a.info.Created, OldEpoch: a.info.DBEpoch, Review: review}
-	if err := prepare(ctx, staged(live[0]), staged(BackupRevocations), a.info, newer, o.Now, o.DNSDisabled, &res); err != nil {
+	// This host's own log counts for the markers of a root change whichever sources were given: a marker not
+	// shipped to a sink yet is in it, and an archive older than it must be refused all the same.
+	markers, err := localRootMarkers(staged(localLog))
+	if err != nil {
+		res.Review = append(res.Review, "this host's revocations.log cannot be read for the markers of a root change: "+err.Error())
+	}
+	if err := prepare(ctx, staged(live[0]), staged(BackupRevocations), a.info, newer, markers, o.Now, o.DNSDisabled, &res); err != nil {
 		return RestoreResult{}, err
 	}
 
@@ -448,7 +456,7 @@ func readSource(path string) ([]revlog.Entry, error) {
 // prepare brings the staged database up to date and secures it: migrations, a new epoch, the
 // invalidations and the revocations since the backup, which also go into the staged log, and the
 // restore review when res.Review says why they may be incomplete.
-func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer []revlog.Entry, now func() time.Time, dnsDisabled bool, res *RestoreResult) error {
+func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer, markers []revlog.Entry, now func() time.Time, dnsDisabled bool, res *RestoreResult) error {
 	db, err := store.OpenSQLite(ctx, dbPath, store.SQLiteOptions{})
 	if err != nil {
 		return err
@@ -472,6 +480,16 @@ func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer
 	if err != nil {
 		return err
 	}
+	// The archive's own log may hold a marker its database does not show: a backup's snapshot of the
+	// database can precede the commit that nulled the key, while its copy of the log, taken after, holds
+	// the marker. Applying a marker again is harmless.
+	own, err := revlog.Read(logPath)
+	if err != nil {
+		return err
+	}
+	if err := refuseOlderArchive(sys, db, slices.Concat(own, newer, markers)); err != nil {
+		return err
+	}
 	err = store.WriteTx(sys, db, func(tx *ent.Tx) error {
 		if err := invalidate(sys, tx, now().UTC()); err != nil {
 			return err
@@ -483,13 +501,6 @@ func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer
 			return err
 		}
 		res.DNSZones = n
-		// The archive's own log may hold a marker its database does not show: a backup's snapshot of
-		// the database can precede the commit that nulled the key, while its copy of the log, taken
-		// after, holds the marker. Applying a marker again is harmless.
-		own, err := revlog.Read(logPath)
-		if err != nil {
-			return err
-		}
 		for _, e := range own {
 			if e.Kind != revlog.RootOffline {
 				continue
@@ -626,6 +637,8 @@ func reapply(ctx context.Context, tx *ent.Tx, td string, e revlog.Entry) (bool, 
 		return supersede(ctx, tx, e.Subject, e.Detail)
 	case revlog.SessionRevoked, revlog.GrantRemoved:
 		return true, nil // every session ends anyway; grants come with Phase 3
+	case revlog.RootSwitched, revlog.RootDropped, revlog.RootCompromised:
+		return true, nil // refuseOlderArchive has checked that the archive is not older than the change
 	case revlog.RootOffline:
 		held, found, err := castore.ApplyRootOffline(ctx, tx, e.Subject)
 		if err != nil || !found {
@@ -794,4 +807,57 @@ func supersede(ctx context.Context, tx *ent.Tx, userID, what string) (bool, erro
 		}
 	}
 	return true, nil
+}
+
+// ErrOlderThanRootChange is returned by Restore for an archive made before a change of the root that the
+// revocation log records: a switch of issuing to a new root, the drop of the old one, or the replacement
+// of a compromised one. Nothing is restored then.
+var ErrOlderThanRootChange = errors.New("controller: the archive is older than a change of the root")
+
+// rootChangeStatus is, for each marker of a root change, the statuses of that root in which an archive
+// shows it older than the change: a root that still issues, or still sits in the bundle.
+var rootChangeStatus = map[revlog.Kind][]cakey.Status{
+	revlog.RootSwitched:    {cakey.StatusActive},
+	revlog.RootDropped:     {cakey.StatusActive, cakey.StatusOverlap},
+	revlog.RootCompromised: {cakey.StatusActive, cakey.StatusOverlap, cakey.StatusNext},
+}
+
+// refuseOlderArchive refuses the staged database when one of the markers says that a root changed and the
+// database still holds that root as before the change (docs/04-security.md, "Revocation log"): such an
+// archive would issue under a root agents dropped, or under a compromised one, and re-applying the change
+// needs keys the archive does not hold. The restore fails and changes nothing; a later backup restores.
+func refuseOlderArchive(ctx context.Context, db *store.DB, markers []revlog.Entry) error {
+	what := map[revlog.Kind]string{
+		revlog.RootSwitched:    "issuing moved to a new root",
+		revlog.RootDropped:     "the old root was dropped from the trust bundle",
+		revlog.RootCompromised: "the root was replaced as compromised",
+	}
+	for _, e := range markers {
+		statuses, ok := rootChangeStatus[e.Kind]
+		if !ok {
+			continue
+		}
+		held, err := castore.RootHeldAs(ctx, db.ReadClient().CAKey, e.Subject, statuses...)
+		if err != nil {
+			return err
+		}
+		if held {
+			return fmt.Errorf("%w: the revocation log records that %s at %s (root %s), and this archive still holds that root as before; "+
+				"restore a later backup, one taken after it", ErrOlderThanRootChange, what[e.Kind], e.Time.UTC().Format(time.RFC3339), e.Subject)
+		}
+	}
+	return nil
+}
+
+// localRootMarkers reads the markers of a root change from the host's own revocation log, staged at path; a host
+// with no log has none.
+func localRootMarkers(path string) ([]revlog.Entry, error) {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	all, err := revlog.Read(path)
+	if err != nil {
+		return nil, err
+	}
+	return slices.DeleteFunc(all, func(e revlog.Entry) bool { _, ok := rootChangeStatus[e.Kind]; return !ok }), nil
 }

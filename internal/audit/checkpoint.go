@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sync"
 	"time"
 
@@ -118,6 +119,9 @@ func WriteCheckpoints(ctx context.Context, tx *ent.Tx, signer pki.KeyPair, now t
 	return out, nil
 }
 
+// OrgOf returns the org of a chain: empty for the instance chain.
+func OrgOf(chain string) string { return orgOf(chain) }
+
 func orgOf(chain string) string {
 	if chain == InstanceChain {
 		return ""
@@ -157,17 +161,44 @@ func checkpoints(ctx context.Context, tx *ent.Tx, orgID, tail string) ([]Checkpo
 }
 
 // Trust verifies checkpoint signatures: the root, and every intermediate and audit-checkpoint
-// certificate the CA has had (castore.SignerCertificates).
+// certificate the CA has had (castore.SignerCertificates). Roots are every root the CA has had: a
+// checkpoint signed under an old root of a rotation verifies against it after the switch and the
+// drop. Root is the one root of a trust that has no rotation; Roots, when set, replaces it.
 type Trust struct {
 	Root          *x509.Certificate
+	Roots         []*x509.Certificate
 	Intermediates []*x509.Certificate
 	Signers       []*x509.Certificate
+	// Compromised are the roots replaced as compromised, with the seq below which each chain's checkpoints
+	// still count (LoadCompromises).
+	Compromised []Compromise
 }
+
+// ErrCompromisedRoot is returned for a checkpoint that a root replaced as compromised vouches for and that
+// is not anchored before the replacement.
+var ErrCompromisedRoot = errors.New("audit: the checkpoint is signed under a root replaced as compromised and is not anchored before the replacement")
 
 // VerifySignature checks that a key the trust certifies for audit checkpoints at c's time signed
 // c. The key's certificate is one of the trust's signers, or c's own.
 func (t Trust) VerifySignature(c Checkpoint) error {
-	var cert *x509.Certificate
+	cert, used, err := t.signerRoot(c)
+	if err != nil {
+		return err
+	}
+	if err := t.checkAnchored(used, c); err != nil {
+		return err
+	}
+	pub, ok := cert.PublicKey.(*ecdsa.PublicKey)
+	digest := sha256.Sum256(c.signed())
+	if !ok || !ecdsa.VerifyASN1(pub, digest[:], c.Signature) {
+		return errors.New("audit: the checkpoint's signature does not verify")
+	}
+	return nil
+}
+
+// signerRoot finds the certificate of the key that signed c and the root that certifies it for audit
+// checkpoints at c's time, without checking the signature itself.
+func (t Trust) signerRoot(c Checkpoint) (cert, root *x509.Certificate, err error) {
 	for _, s := range t.Signers {
 		if pki.KeyID(s) == c.KeyID {
 			cert = s
@@ -179,15 +210,39 @@ func (t Trust) VerifySignature(c Checkpoint) error {
 		}
 	}
 	if cert == nil {
-		return fmt.Errorf("audit: no certificate for key %s", c.KeyID)
+		return nil, nil, fmt.Errorf("audit: no certificate for key %s", c.KeyID)
 	}
-	if err := pki.VerifySigner(cert, t.Intermediates, t.Root, pki.PurposeAuditCheckpoint, c.Time); err != nil {
-		return err
+	roots := t.Roots
+	if len(roots) == 0 {
+		roots = []*x509.Certificate{t.Root}
 	}
-	pub, ok := cert.PublicKey.(*ecdsa.PublicKey)
-	digest := sha256.Sum256(c.signed())
-	if !ok || !ecdsa.VerifyASN1(pub, digest[:], c.Signature) {
-		return errors.New("audit: the checkpoint's signature does not verify")
+	var verr error
+	for _, r := range roots {
+		if verr = pki.VerifySigner(cert, t.Intermediates, r, pki.PurposeAuditCheckpoint, c.Time); verr == nil {
+			return cert, r, nil
+		}
+	}
+	return nil, nil, verr
+}
+
+// underReplaced reports whether a root replaced as compromised certifies the key that signed c.
+func (t Trust) underReplaced(c Checkpoint) bool {
+	_, root, err := t.signerRoot(c)
+	return err == nil && slices.ContainsFunc(t.Compromised, func(k Compromise) bool { return k.Root.Equal(root) })
+}
+
+// checkAnchored refuses a checkpoint that the root replaced as compromised vouches for unless it is of a
+// seq below that of the entry that records the replacement in its chain. The signer chooses the time of a
+// checkpoint, so a time bound would not help; the seq is held by the hash chain, so that whoever holds the
+// leaked key cannot sign a checkpoint for a later head than the replacement saw.
+func (t Trust) checkAnchored(used *x509.Certificate, c Checkpoint) error {
+	for _, k := range t.Compromised {
+		if !k.Root.Equal(used) {
+			continue
+		}
+		if cut, ok := k.Cutoff[c.Chain()]; !ok || c.Seq >= cut {
+			return ErrCompromisedRoot
+		}
 	}
 	return nil
 }
@@ -210,6 +265,9 @@ func VerifyChain(ctx context.Context, db *store.DB, orgID string, trust Trust) (
 	err := store.ReadTx(ctx, db, func(tx *ent.Tx, _ store.Revision) error {
 		cps, err := checkpoints(ctx, tx, orgID, "ORDER BY seq")
 		if err != nil {
+			return err
+		}
+		if trust, err = trust.WithCompromises(ctx, tx); err != nil {
 			return err
 		}
 		q, args := "SELECT min(seq) FROM audit_log WHERE org_id IS NULL", []any(nil)

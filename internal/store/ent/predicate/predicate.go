@@ -177,6 +177,9 @@ type Rollout func(*sql.Selector)
 // RolloutTarget is the predicate function for rollouttarget builders.
 type RolloutTarget func(*sql.Selector)
 
+// RootCompromise is the predicate function for rootcompromise builders.
+type RootCompromise func(*sql.Selector)
+
 // Route is the predicate function for route builders.
 type Route func(*sql.Selector)
 
