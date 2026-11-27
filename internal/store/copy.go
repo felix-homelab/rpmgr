@@ -284,7 +284,13 @@ func BeginSource(ctx context.Context, db *DB) (*SourceTx, error) {
 			return nil, fmt.Errorf("store: begin source: %w", err)
 		}
 	}
-	if _, err := t.ExecContext(ctx, "UPDATE instance SET retired_at = retired_at"); err != nil {
+	// On PostgreSQL the retirement also bumps the fence epoch, so a write transaction of a controller
+	// that queued before the lock and commits after it finds another epoch and fails.
+	touch := "UPDATE instance SET retired_at = retired_at"
+	if db.Dialect == Postgres {
+		touch = "UPDATE instance SET retired_at = retired_at, fence_epoch = coalesce(fence_epoch, 0) + 1"
+	}
+	if _, err := t.ExecContext(ctx, touch); err != nil {
 		_ = t.done(false)
 		return nil, fmt.Errorf("store: begin source: the database cannot be written: %w", err)
 	}

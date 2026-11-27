@@ -188,11 +188,22 @@ func Run(ctx context.Context, o RunOptions) error {
 		case <-ctx.Done():
 		}
 	}()
+	// A host that adopt-state replaced is refused before anything is written: no migration, no
+	// epoch, no audit entry of its own.
+	if cfg.Database.Driver == "postgres" {
+		if err := refuseReplacedHost(ctx, cfg, db); err != nil {
+			return err
+		}
+	}
 	if err := settleLock(ctx, db); err != nil {
 		return err
 	}
 	dir, err := migrations.Dir(db.Dialect)
 	if err != nil {
+		return err
+	}
+	// A schema that has the fence column is claimed before the migrations, one that has not after.
+	if err := store.ClaimFence(ctx, db); err != nil {
 		return err
 	}
 	if n, err := store.Migrate(ctx, db, dir); err != nil {
@@ -202,7 +213,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	// From here the server accepts only this controller's write transactions: a transaction of the
 	// controller before it fails, however late it arrives.
-	if err := store.ClaimFence(ctx, db); err != nil {
+	if err := store.ClaimFence(ctx, db); err != nil { // a no-op when it was claimed above
 		return err
 	}
 	sys, err := authz.System(ctx, "controller", "rpmgr controller", audit.SystemScopes(db))

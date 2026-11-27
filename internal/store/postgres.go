@@ -485,19 +485,27 @@ func randomHex() string {
 	return hex.EncodeToString(b)
 }
 
+// sessionEndWait is how long the new holder waits for each session of the previous controller to
+// be gone (docs/03-connections.md, "Timeouts, keepalive and backoff").
+const sessionEndWait = 5 * time.Second
+
 // endPreviousSessions ends every other session of a controller in this database, as the new
 // exclusive holder of the lock: a transaction of the controller before it that is still on the
 // wire, held back by a stalled socket or a frozen process, then fails instead of committing after
-// the new holder has started to write. Only sessions of the same role are visible and may be
-// ended, unless the role is a member of pg_signal_backend and pg_read_all_stats; a refusal stops
-// the start.
+// the new holder has started to write. It waits for each to be gone. Only the sessions of the same
+// role may be ended, unless the role is a member of pg_signal_backend (and, on servers that hide
+// other roles' application_name, pg_read_all_stats); a refusal or a session that stays stops the
+// start.
 func endPreviousSessions(ctx context.Context, conn *pgx.Conn, own string) error {
-	var n int
-	err := conn.QueryRow(ctx, `SELECT count(pg_terminate_backend(pid)) FROM pg_stat_activity
+	var seen, ended int
+	err := conn.QueryRow(ctx, `SELECT count(*), count(*) FILTER (WHERE pg_terminate_backend(pid, $3)) FROM pg_stat_activity
  WHERE datname = current_database() AND application_name LIKE $1 AND application_name <> $2`,
-		controllerApp+"%", own).Scan(&n)
+		controllerApp+"%", own, sessionEndWait.Milliseconds()).Scan(&seen, &ended)
 	if err != nil {
-		return fmt.Errorf("store: cannot end the sessions of the previous controller (the role needs pg_signal_backend and pg_read_all_stats for sessions of another role): %w", err)
+		return fmt.Errorf("store: cannot end the sessions of the previous controller (a session of another role needs pg_signal_backend): %w", err)
+	}
+	if ended < seen {
+		return fmt.Errorf("store: %d session(s) of the previous controller did not end within %s", seen-ended, sessionEndWait)
 	}
 	return nil
 }
