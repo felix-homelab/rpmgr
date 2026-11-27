@@ -35,7 +35,10 @@ Changes to the design documents are not recorded here: see the git history and t
   ([Topologies](docs/guide/install/topologies.md#a-controller-on-postgresql)). One controller runs
   on a database: a second one is refused by the database's controller lock, and a controller that
   loses the lock stops. The controller does not start when the server does not answer in time. The
-  Settings page shows the driver, the server and the password's source, never the password. For now
+  Settings page shows the driver, the server and the password's source, never the password. A
+  controller that loses the lock stops writing at once and exits. The node ID and the revocation
+  log stay in `/var/lib/rpmgr` on the controller host; the controller and the commands that use
+  them refuse a host without them (`rpmgr controller adopt-state` makes them on purpose). For now
   `rpmgr backup`, `rpmgr restore`, `rpmgr migrate` and `rpmgr kek rotate` refuse a PostgreSQL
   controller, and an all-in-one stays on SQLite. (#689)
 - The controller can keep its key-encryption key in a key of Vault or OpenBao Transit:

@@ -184,6 +184,13 @@ database:
   in `password_credential`, a systemd credential that the unit loads
   ([Hardened systemd units](../../10-operations.md#hardened-systemd-units)). A server that
   authenticates by a client certificate or a socket peer needs neither.
+- **From a shell.** A systemd credential is loaded only in the service. A command you run in a
+  shell, such as `rpmgr user reset-password`, with `password_credential` stops and prints the
+  `systemd-run --pipe --wait --property=LoadCredentialEncrypted=<name>:<file>` form that loads it,
+  as for the KEK. With `password_file` the command just works. `password_file` is an absolute path.
+- **Connection poolers.** The controller runs on direct connections or behind a session pool.
+  PgBouncer in transaction mode is not supported, because the controller's lock and its
+  notifications need one session ([06](../../06-data-model.md#connecting-to-postgresql-phase-2)).
 - **TLS.** A server that is not on the controller's host needs `sslmode=verify-full`; rpmgr checks the
   certificate itself and does not trust the other modes
   ([06](../../06-data-model.md#connecting-to-postgresql-phase-2)).
@@ -193,6 +200,14 @@ database:
   lock.
 - **Where the files go.** The revocation log, the audit checkpoints, the node identity and the
   `/dl/` mirror are in `/var/lib/rpmgr`, since there is no database file to name a directory.
+  They belong to this host: the controller, `rpmgr ca offline-root`, `rpmgr ca status` and `rpmgr
+  release import` refuse a host whose `/var/lib/rpmgr` lacks `controller-node.id` and
+  `revocations.log` ("run this on the controller host"), and create nothing. `rpmgr controller
+  init` makes both. On a new host, move them from the old one; only when they are gone for good,
+  `rpmgr controller adopt-state` makes new ones, with a revocation log that misses everything
+  revoked before.
+- **A lost lock.** A controller that loses its database lock stops writing at once, closes its
+  connections without draining and exits; the service manager starts it again.
 - **All-in-one** does not accept PostgreSQL yet.
 
 ## Gateway

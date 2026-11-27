@@ -529,14 +529,25 @@ method, list filter or search returns or modifies the other org's data
   The lock's connection is made with `idle_session_timeout` set to 0 and TCP keepalives, so
   neither the server nor a middlebox ends it for being idle. It is checked on the interval in the
   table of [03](03-connections.md#timeouts-keepalive-and-backoff); **a detected loss stops the
-  controller at once**. The server releases the lock only when it notices that the connection has
-  gone, so a controller that has just taken the lock **waits the stop bound of that table before
-  its first write**, which keeps the controller that lost it from writing at the same time as the
-  one that took it over. Administration commands that run beside a controller, such as
+  controller at once**: its database then **fences every write**, since every statement and every
+  commit fails with `ErrLockLost`, one in flight included, and the controller closes its listeners
+  and connections without draining or writing a final checkpoint. The server releases the lock
+  only when it notices that the connection has gone, so a controller that has just taken the lock
+  **waits the stop bound of that table plus a margin before its first write**, which keeps the
+  controller that lost it, and has not yet noticed, from writing at the same time as the one that
+  took it over. Administration commands that run beside a controller, such as
   `rpmgr user reset-password`, open the database without the lock, as on SQLite.
 - **Poolers.** The controller runs on direct connections or behind a session pool. PgBouncer in
   transaction mode is unsupported: `LISTEN` and session locks do not work there
   ([10](10-operations.md#high-availability), [D112](14-open-decisions.md#engineering)).
+- **The host's files belong to the host.** A PostgreSQL database is reachable from any host, but
+  the controller's node ID (`controller-node.id`) and revocation log (`revocations.log`) are files
+  of the state directory ([10](10-operations.md#filesystem-layout)), which `rpmgr controller init`
+  makes. The controller, `rpmgr ca offline-root`, the warnings of `rpmgr ca status` and `rpmgr
+  release import` refuse a host whose state directory lacks them, and create nothing: started
+  elsewhere, a controller would begin with a log that misses every earlier revocation. Moving the
+  controller to another host means moving the two files (and the mirror in `dl/`); `rpmgr
+  controller adopt-state` makes new ones when the old are gone for good.
 - **The database's clock** decides lease expiry ([`leases`](#system)).
 
 ### Copying a database

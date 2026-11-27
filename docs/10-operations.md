@@ -685,9 +685,12 @@ Rules for every boot file:
     ([Filesystem layout](#filesystem-layout)) in `/var/lib/rpmgr`, the service's
     `StateDirectory`. The controller takes the controller lock exclusively, so a second controller
     on the database is refused until replicas exist ([High availability](#high-availability));
-    it then waits the stop bound of [03](03-connections.md#timeouts-keepalive-and-backoff) before
-    its first write, gives up on a server that does not answer within the time listed there, and
-    stops when the lock is lost. All-in-one does not accept PostgreSQL yet, and never
+    it then waits the stop bound of [03](03-connections.md#timeouts-keepalive-and-backoff) and a
+    margin before its first write, gives up on a server that does not answer within the time
+    listed there, and stops without draining when the lock is lost. The node ID and the revocation
+    log in that directory belong to the host: the controller and the local commands that use them
+    refuse a host that lacks them, and `rpmgr controller adopt-state` makes them on purpose
+    ([06](06-data-model.md#connecting-to-postgresql-phase-2)). All-in-one does not accept PostgreSQL yet, and never
     `listen.internal`; `rpmgr backup`, `rpmgr restore`, `rpmgr migrate` and `rpmgr kek rotate`
     refuse a PostgreSQL controller until their slices of P2-M08 and P2-M09 land (the controller
     itself migrates when it starts).
