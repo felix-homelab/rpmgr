@@ -47,15 +47,19 @@ type BackupInfo struct {
 // checkpoints, which live outside the database. Secrets in the database stay envelope-encrypted;
 // the KEK is not in it. It is local administration, audited as local-cli.
 func Backup(ctx context.Context, path, out, version string, now func() time.Time) (BackupInfo, error) {
-	d, err := bootDatabase(path)
+	cfg, err := bootConfig(path)
 	if err != nil {
+		return BackupInfo{}, err
+	}
+	// Only the controller host backs up its host files (the node ID and the revocation log).
+	if err := requireHostState(cfg); err != nil {
 		return BackupInfo{}, err
 	}
 	f, err := os.OpenFile(out, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // G304: the operator's path
 	if err != nil {
 		return BackupInfo{}, err
 	}
-	info, err := backup(ctx, d, f, version, now)
+	info, err := backup(ctx, cfg, f, version, now)
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
@@ -69,15 +73,19 @@ func Backup(ctx context.Context, path, out, version string, now func() time.Time
 // BackupTo is `rpmgr backup --out -`: the same archive, written to w, which the root updater reads
 // from a backup run as the service user, so that root opens nothing in the state directory.
 func BackupTo(ctx context.Context, path string, w io.Writer, version string, now func() time.Time) (BackupInfo, error) {
-	d, err := bootDatabase(path)
+	cfg, err := bootConfig(path)
 	if err != nil {
 		return BackupInfo{}, err
 	}
-	return backup(ctx, d, w, version, now)
+	if err := requireHostState(cfg); err != nil {
+		return BackupInfo{}, err
+	}
+	return backup(ctx, cfg, w, version, now)
 }
 
-func backup(ctx context.Context, d config.Database, w io.Writer, version string, now func() time.Time) (BackupInfo, error) {
-	state := stateDir(d)
+func backup(ctx context.Context, cfg config.Controller, w io.Writer, version string, now func() time.Time) (BackupInfo, error) {
+	d := cfg.Database
+	state := cfg.State()
 	if d.Driver != "postgres" {
 		if root, err := os.OpenRoot(state); err == nil {
 			// Run by root, SQLite would follow a link the service user planted for a journal name.

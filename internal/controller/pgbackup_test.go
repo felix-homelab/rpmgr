@@ -17,6 +17,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/controller"
+	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -40,7 +41,9 @@ func newPGController(t *testing.T) pgController {
 		t.Fatal(err)
 	}
 	state := filepath.Dir(src.db)
-	controller.SetPostgresStateDir(t, state)
+	controller.SetStateDir(t, state)
+	controller.SetLockSettle(t, 0)
+	hostNodeID(t, state)
 	// A revocation log and audit checkpoints, so that a test of what a restore leaves alone has
 	// files to compare.
 	writeLog(t, state, 2)
@@ -48,6 +51,18 @@ func newPGController(t *testing.T) pgController {
 		t.Fatal(err)
 	}
 	return pgController{migrateHost: src, boot: boot, dsn: dsn, state: state}
+}
+
+// hostNodeID gives state a node ID if it has none: the file that makes a host the controller host,
+// which a PostgreSQL backup needs.
+func hostNodeID(t *testing.T, state string) {
+	t.Helper()
+	path := filepath.Join(state, "controller-node.id")
+	if _, err := os.Stat(path); err != nil {
+		if err := os.WriteFile(path, []byte(ids.New("ctn")+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func (c pgController) revlog() string { return filepath.Join(c.state, "revocations.log") }
@@ -220,7 +235,9 @@ func TestBackupPostgres_Retired(t *testing.T) {
 	if _, err := migrateDB(boot, sqliteBoot(t, filepath.Join(t.TempDir(), "back.db")), false); err != nil {
 		t.Fatal(err)
 	}
-	controller.SetPostgresStateDir(t, filepath.Dir(src.db))
+	controller.SetStateDir(t, filepath.Dir(src.db))
+	hostNodeID(t, filepath.Dir(src.db))
+	writeLog(t, filepath.Dir(src.db), 1)
 	out := filepath.Join(t.TempDir(), "rpmgr.backup")
 	if _, err := controller.Backup(context.Background(), boot, out, "2.0.0", time.Now); !errors.Is(err, controller.ErrRetired) {
 		t.Errorf("a retired database: %v", err)

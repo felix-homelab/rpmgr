@@ -64,6 +64,9 @@ func OfflineRoot(ctx context.Context, o OfflineRootOptions) (OfflineRootResult, 
 	if err != nil {
 		return res, err
 	}
+	if err := requireHostState(cfg); err != nil { // the marker goes into this host's revocation log
+		return res, err
+	}
 	kek, err := localWrapper(ctx, cfg, o.Getenv)
 	if err != nil {
 		return res, err
@@ -87,7 +90,7 @@ func OfflineRoot(ctx context.Context, o OfflineRootOptions) (OfflineRootResult, 
 		return OfflineRootResult{}, err
 	}
 	defer func() { _ = db.Close() }()
-	rl, err := revlog.Open(filepath.Join(filepath.Dir(cfg.Database.DSN), "revocations.log"), o.Now)
+	rl, err := revlog.Open(filepath.Join(cfg.State(), "revocations.log"), o.Now)
 	if err != nil {
 		return OfflineRootResult{}, err
 	}

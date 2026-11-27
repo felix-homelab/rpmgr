@@ -890,6 +890,8 @@ var schemaGraph = func() *sqlgraph.Schema {
 			instance.FieldRestoreReviewSince: {Type: field.TypeTime, Column: instance.FieldRestoreReviewSince},
 			instance.FieldRetiredAt:          {Type: field.TypeTime, Column: instance.FieldRetiredAt},
 			instance.FieldRetiredTo:          {Type: field.TypeString, Column: instance.FieldRetiredTo},
+			instance.FieldActiveNode:         {Type: field.TypeString, Column: instance.FieldActiveNode},
+			instance.FieldFenceEpoch:         {Type: field.TypeInt64, Column: instance.FieldFenceEpoch},
 		},
 	}
 	graph.Nodes[36] = &sqlgraph.Node{
@@ -5693,6 +5695,16 @@ func (f *InstanceFilter) WhereRetiredAt(p entql.TimeP) {
 // WhereRetiredTo applies the entql string predicate on the retired_to field.
 func (f *InstanceFilter) WhereRetiredTo(p entql.StringP) {
 	f.Where(p.Field(instance.FieldRetiredTo))
+}
+
+// WhereActiveNode applies the entql string predicate on the active_node field.
+func (f *InstanceFilter) WhereActiveNode(p entql.StringP) {
+	f.Where(p.Field(instance.FieldActiveNode))
+}
+
+// WhereFenceEpoch applies the entql int64 predicate on the fence_epoch field.
+func (f *InstanceFilter) WhereFenceEpoch(p entql.Int64P) {
+	f.Where(p.Field(instance.FieldFenceEpoch))
 }
 
 // addPredicate implements the predicateAdder interface.

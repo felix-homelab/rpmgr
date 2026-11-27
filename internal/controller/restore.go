@@ -20,6 +20,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/dns/apply"
+	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
@@ -164,12 +165,13 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 	if o.Getenv == nil {
 		o.Getenv = os.Getenv
 	}
-	d, err := bootDatabase(o.ConfigPath)
+	cfg, err := bootConfig(o.ConfigPath)
 	if err != nil {
 		return RestoreResult{}, err
 	}
+	d := cfg.Database
 	dsn := d.DSN
-	state := stateDir(d)
+	state := cfg.State()
 	if o.Replaces != "" && d.Driver != "postgres" {
 		return RestoreResult{}, ErrReplacesNeedsPostgres
 	}
@@ -202,6 +204,11 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 			if old != nil {
 				locked = append(locked, old)
 			}
+		}
+		// As a starting controller does, wait out the lock of a controller that was lost: the server
+		// releases it only when it notices (the opener has ended that controller's sessions already).
+		if err := settleLock(ctx, locked...); err != nil {
+			return RestoreResult{}, err
 		}
 	} else {
 		unlock, err := store.HoldLockNoFollow(dsn)
@@ -253,6 +260,9 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 		for _, s := range suffixes(i) {
 			names = append(names, n+s)
 		}
+	}
+	if d.Driver == "postgres" {
+		names = append(names, nodeIDFile)
 	}
 	if err := refuseLinks(root, names...); err != nil {
 		return RestoreResult{}, err
@@ -326,10 +336,19 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 			aside = append(aside, [2]string{n + s, n + s + res.Previous})
 		}
 	}
+	nodeID, haveNodeID := "", false
 	if pg != nil {
+		nodeID, haveNodeID, err = hostNodeID(root)
+		if err != nil {
+			putBack()
+			return RestoreResult{}, err
+		}
+		if !haveNodeID {
+			nodeID = ids.New("ctn")
+		}
 		// Everything is ready and the live files are out of the way: the copier fills the empty
 		// database in one transaction, or leaves it as it was, and then the files go back.
-		if err := restorePostgres(ctx, locked, pg, staged(staged0)); err != nil {
+		if err := restorePostgres(ctx, locked, pg, staged(staged0), nodeID); err != nil {
 			putBack()
 			return RestoreResult{}, err
 		}
@@ -352,6 +371,13 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 		}
 	}
 	moves = nil
+	if pg != nil && !haveNodeID {
+		// This host is the controller's now, so it needs the node ID that the database names.
+		if err := writeNodeID(root, nodeID); err != nil {
+			return RestoreResult{}, fmt.Errorf("controller: the PostgreSQL database holds the restore (epoch %s) and names this host's node ID %s, "+
+				"but writing %s in %s failed: %w; write that ID and a newline there by hand, mode 0600", res.NewEpoch, nodeID, nodeIDFile, state, err)
+		}
+	}
 	return res, ownLike(state, state)
 }
 
@@ -443,7 +469,7 @@ func lockReplaced(ctx context.Context, o RestoreOptions, target config.Database)
 // database pg, which the caller holds the controller lock of, in one transaction. A target that
 // holds a row is refused (store.ErrTargetNotEmpty) and one at another schema version is refused
 // (store.ErrSchemaMismatch); either way the target is left as it was.
-func restorePostgres(ctx context.Context, locked []*store.DB, pg *store.DB, path string) error {
+func restorePostgres(ctx context.Context, locked []*store.DB, pg *store.DB, path, nodeID string) error {
 	if err := migrateEmptyTarget(ctx, pg); err != nil {
 		return fmt.Errorf("controller: the target database: %w", err)
 	}
@@ -458,7 +484,49 @@ func restorePostgres(ctx context.Context, locked []*store.DB, pg *store.DB, path
 	if _, err := store.CopyDatabase(copyCtx, src, pg, store.CopyOptions{}); err != nil {
 		return errors.Join(fmt.Errorf("controller: restoring into PostgreSQL: %w", err), context.Cause(copyCtx))
 	}
-	return nil
+	// The copy brought the instance row, with the fence epoch and the host of the backup. This host
+	// takes both over: the epoch is claimed, which fences every write of an earlier controller, and
+	// the database names this host's node ID, so that the host of the backup, should it come back
+	// with its old files, is refused (ErrHostReplaced) and this one starts (docs/10-operations.md,
+	// "Backup and restore").
+	if err := store.ClaimFence(ctx, pg); err != nil {
+		return err
+	}
+	sys, err := authz.System(ctx, "local-cli", "rpmgr restore", audit.SystemScopes(pg))
+	if err != nil {
+		return err
+	}
+	return store.SetActiveNode(sys, pg, nodeID)
+}
+
+// hostNodeID returns the controller node ID in the state directory root, and whether the file is
+// there. A file that holds no node ID is refused.
+func hostNodeID(root *os.Root) (string, bool, error) {
+	b, err := root.ReadFile(nodeIDFile)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	id := strings.TrimSpace(string(b))
+	if !ids.Valid("ctn", id) {
+		return "", false, fmt.Errorf("controller: %s in the state directory does not hold a node ID", nodeIDFile)
+	}
+	return id, true, nil
+}
+
+// writeNodeID creates the node ID file in root, which must not exist.
+func writeNodeID(root *os.Root, id string) error {
+	f, err := root.OpenFile(nodeIDFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	_, err = f.WriteString(id + "\n")
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
 }
 
 // localLog is the name, in the staging directory, of the state directory's revocation log as it was

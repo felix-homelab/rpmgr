@@ -4,39 +4,30 @@ package controller
 
 import (
 	"errors"
-	"path/filepath"
 
 	"github.com/felix-homelab/rpmgr/internal/config"
 )
 
-// postgresStateDir is the state directory of a controller on PostgreSQL, where its revocation log
-// and audit checkpoints are: the database's DSN names no directory then
-// (docs/10-operations.md, "Filesystem layout").
-var postgresStateDir = "/var/lib/rpmgr"
-
-// bootDatabase reads the database a backup or restore works on from a controller's or all-in-one's
-// boot file. A PostgreSQL database is read from the `database` section alone, as `migrate-db` does,
-// because the boot file's other sections are not this command's business.
-func bootDatabase(path string) (config.Database, error) {
+// bootConfig reads what a backup or restore works on from a controller's or all-in-one's boot file.
+// A PostgreSQL file is read from the `database` section alone, as `migrate-db` does, when the rest
+// of it does not load, because the boot file's other sections are not this command's business; its
+// state directory is then the default one (Controller.State).
+func bootConfig(path string) (config.Controller, error) {
 	d, derr := config.LoadDatabase(path)
-	if derr == nil && d.Driver == "postgres" {
-		return d, nil
-	}
 	cfg, err := loadController(path)
-	if err != nil {
-		// Of a PostgreSQL file only the database section is read, so its fault is named too.
-		return config.Database{}, errors.Join(err, derr)
+	if err == nil {
+		if derr != nil && cfg.Database.Driver == "postgres" {
+			return config.Controller{}, derr // not a file of a SQLite controller: say what is wrong with its section
+		}
+		return cfg, nil
 	}
-	if derr != nil && cfg.Database.Driver == "postgres" {
-		return config.Database{}, derr // not a file of a SQLite controller: say what is wrong with its section
+	if derr == nil && d.Driver == "postgres" {
+		cfg = config.Controller{Database: d}
+		if stateDirOverride != "" {
+			cfg.StateDir = stateDirOverride
+		}
+		return cfg, nil
 	}
-	return config.Database{Driver: cfg.Database.Driver, DSN: cfg.Database.DSN}, nil
-}
-
-// stateDir is the directory of the controller's local state, which holds its logs.
-func stateDir(d config.Database) string {
-	if d.Driver == "postgres" {
-		return postgresStateDir
-	}
-	return filepath.Dir(d.DSN)
+	// Of a PostgreSQL file only the database section is read, so its fault is named too.
+	return config.Controller{}, errors.Join(err, derr)
 }

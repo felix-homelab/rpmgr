@@ -476,7 +476,10 @@ func ImportRelease(ctx context.Context, path, dir, version string, roots []relea
 	if !release.Releasable(version) {
 		return nil, release.ErrDevelopment
 	}
-	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{RefuseRetired: true})
+	if err := requireHostState(cfg); err != nil { // the mirror is this host's /dl/
+		return nil, err
+	}
+	db, err := openDatabase(ctx, cfg, nil, dbOptions{RefuseRetired: true, Local: true})
 	if err != nil {
 		return nil, err
 	}
@@ -488,7 +491,7 @@ func ImportRelease(ctx context.Context, path, dir, version string, roots []relea
 	if err != nil {
 		return nil, err
 	}
-	state := filepath.Dir(cfg.Database.DSN)
+	state := cfg.State()
 	m := &release.Mirror{Dir: filepath.Join(state, "dl"), Version: version, Roots: roots, Now: now}
 	s, err := m.SyncVersion(ctx, version, release.Dir(dir))
 	if err != nil {

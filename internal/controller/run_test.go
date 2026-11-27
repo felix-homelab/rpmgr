@@ -17,6 +17,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -121,6 +122,29 @@ type runSetup struct {
 	logger      *slog.Logger     // RunOptions.Logger
 	release     release.Source   // RunOptions.ReleaseSource
 	dnsDial     providers.Dialer // RunOptions.DNSDial
+	// pg runs the controller on a PostgreSQL database of its own (RPMGR_TEST_PG), with its
+	// password in a file, instead of SQLite.
+	pg bool
+}
+
+// pgBoot makes a PostgreSQL database for a test and returns its `database` section of a boot file:
+// the DSN without a password, and the password, if the admin DSN has one, in a file.
+func pgBoot(t *testing.T, dir string) string {
+	t.Helper()
+	u, err := url.Parse(storetest.NewPostgresDatabase(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pw, _ := u.User.Password()
+	if pw == "" {
+		pw = "unused" // a server that trusts the test needs none, but the file must hold a line
+	}
+	u.User = url.User(u.User.Username())
+	file := filepath.Join(dir, "db-password")
+	if err := os.WriteFile(file, []byte(pw+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return "database: {driver: postgres, dsn: '" + u.String() + "', password_file: " + file + "}\n"
 }
 
 // startRun initialises a controller in a temporary directory and runs it.
@@ -152,7 +176,13 @@ func startRunWith(t *testing.T, o runSetup) *running {
 	if err := os.MkdirAll(filepath.Dir(h.db), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	boot := "version: 1\npublic_url: " + r.url + "\ndatabase: {dsn: " + h.db + "}\n" + h.fileKEK() +
+	database := "database: {dsn: " + h.db + "}\n"
+	if o.pg {
+		database = pgBoot(t, h.dir)
+		h.state, r.h.state = filepath.Dir(h.db), filepath.Dir(h.db)
+		controller.SetStateDir(t, h.state)
+	}
+	boot := "version: 1\npublic_url: " + r.url + "\n" + database + h.fileKEK() +
 		"listen: {https: \"" + r.https + "\", http: \"" + r.http + "\", admin: \"" + r.admin + "\"}\n" + files
 	if err := os.WriteFile(h.cfg, []byte(boot), 0o644); err != nil {
 		t.Fatal(err)
@@ -164,6 +194,9 @@ func startRunWith(t *testing.T, o runSetup) *running {
 	r.pin, r.trustDomain, r.firstUserLink = res.RootPin, res.TrustDomain, res.FirstUserLink
 	if err := config.Load(h.cfg, &r.cfg); err != nil {
 		t.Fatal(err)
+	}
+	if o.pg {
+		r.cfg.StateDir = filepath.Dir(h.db) // a controller on PostgreSQL keeps /var/lib/rpmgr, which a test cannot
 	}
 	r.client = &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{
 		TLSClientConfig: &tls.Config{RootCAs: r.ca.pool, MinVersion: tls.VersionTLS13}}}

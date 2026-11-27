@@ -128,6 +128,11 @@ func MigrateDB(ctx context.Context, o MigrateDBOptions) (res MigrateDBResult, er
 	}
 	opened = true
 	defer func() { _ = dst.Close() }()
+	// The copy writes to the target's pool directly, so neither the fence nor the epoch covers it:
+	// opening ended the sessions of a controller before it, and this waits for the rest.
+	if err := settleLock(ctx, src, dst); err != nil {
+		return MigrateDBResult{}, err
+	}
 	if err := migrateEmptyTarget(ctx, dst); err != nil {
 		return MigrateDBResult{}, fmt.Errorf("target: %w", err)
 	}
@@ -174,10 +179,6 @@ func MigrateDB(ctx context.Context, o MigrateDBOptions) (res MigrateDBResult, er
 	}
 	return res, nil
 }
-
-// ErrLockLost is returned when the PostgreSQL session that holds a database's controller lock ends
-// while the command works on it.
-var ErrLockLost = errors.New("controller: the PostgreSQL controller lock was lost")
 
 // untilLost derives a context that ends when either database loses its controller lock.
 func untilLost(ctx context.Context, dbs ...*store.DB) (context.Context, context.CancelCauseFunc) {
