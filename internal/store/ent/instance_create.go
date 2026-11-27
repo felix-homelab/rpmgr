@@ -88,6 +88,34 @@ func (_c *InstanceCreate) SetNillableRetiredTo(v *string) *InstanceCreate {
 	return _c
 }
 
+// SetActiveNode sets the "active_node" field.
+func (_c *InstanceCreate) SetActiveNode(v string) *InstanceCreate {
+	_c.mutation.SetActiveNode(v)
+	return _c
+}
+
+// SetNillableActiveNode sets the "active_node" field if the given value is not nil.
+func (_c *InstanceCreate) SetNillableActiveNode(v *string) *InstanceCreate {
+	if v != nil {
+		_c.SetActiveNode(*v)
+	}
+	return _c
+}
+
+// SetFenceEpoch sets the "fence_epoch" field.
+func (_c *InstanceCreate) SetFenceEpoch(v int64) *InstanceCreate {
+	_c.mutation.SetFenceEpoch(v)
+	return _c
+}
+
+// SetNillableFenceEpoch sets the "fence_epoch" field if the given value is not nil.
+func (_c *InstanceCreate) SetNillableFenceEpoch(v *int64) *InstanceCreate {
+	if v != nil {
+		_c.SetFenceEpoch(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *InstanceCreate) SetID(v int) *InstanceCreate {
 	_c.mutation.SetID(v)
@@ -222,6 +250,14 @@ func (_c *InstanceCreate) createSpec() (*Instance, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RetiredTo(); ok {
 		_spec.SetField(instance.FieldRetiredTo, field.TypeString, value)
 		_node.RetiredTo = &value
+	}
+	if value, ok := _c.mutation.ActiveNode(); ok {
+		_spec.SetField(instance.FieldActiveNode, field.TypeString, value)
+		_node.ActiveNode = &value
+	}
+	if value, ok := _c.mutation.FenceEpoch(); ok {
+		_spec.SetField(instance.FieldFenceEpoch, field.TypeInt64, value)
+		_node.FenceEpoch = &value
 	}
 	return _node, _spec
 }

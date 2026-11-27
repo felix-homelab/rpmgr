@@ -32080,6 +32080,9 @@ type InstanceMutation struct {
 	restore_review_since *time.Time
 	retired_at           *time.Time
 	retired_to           *string
+	active_node          *string
+	fence_epoch          *int64
+	addfence_epoch       *int64
 	clearedFields        map[string]struct{}
 	done                 bool
 	oldValue             func(context.Context) (*Instance, error)
@@ -32445,6 +32448,125 @@ func (m *InstanceMutation) ResetRetiredTo() {
 	delete(m.clearedFields, instance.FieldRetiredTo)
 }
 
+// SetActiveNode sets the "active_node" field.
+func (m *InstanceMutation) SetActiveNode(s string) {
+	m.active_node = &s
+}
+
+// ActiveNode returns the value of the "active_node" field in the mutation.
+func (m *InstanceMutation) ActiveNode() (r string, exists bool) {
+	v := m.active_node
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActiveNode returns the old "active_node" field's value of the Instance entity.
+// If the Instance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *InstanceMutation) OldActiveNode(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActiveNode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActiveNode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActiveNode: %w", err)
+	}
+	return oldValue.ActiveNode, nil
+}
+
+// ClearActiveNode clears the value of the "active_node" field.
+func (m *InstanceMutation) ClearActiveNode() {
+	m.active_node = nil
+	m.clearedFields[instance.FieldActiveNode] = struct{}{}
+}
+
+// ActiveNodeCleared returns if the "active_node" field was cleared in this mutation.
+func (m *InstanceMutation) ActiveNodeCleared() bool {
+	_, ok := m.clearedFields[instance.FieldActiveNode]
+	return ok
+}
+
+// ResetActiveNode resets all changes to the "active_node" field.
+func (m *InstanceMutation) ResetActiveNode() {
+	m.active_node = nil
+	delete(m.clearedFields, instance.FieldActiveNode)
+}
+
+// SetFenceEpoch sets the "fence_epoch" field.
+func (m *InstanceMutation) SetFenceEpoch(i int64) {
+	m.fence_epoch = &i
+	m.addfence_epoch = nil
+}
+
+// FenceEpoch returns the value of the "fence_epoch" field in the mutation.
+func (m *InstanceMutation) FenceEpoch() (r int64, exists bool) {
+	v := m.fence_epoch
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFenceEpoch returns the old "fence_epoch" field's value of the Instance entity.
+// If the Instance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *InstanceMutation) OldFenceEpoch(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFenceEpoch is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFenceEpoch requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFenceEpoch: %w", err)
+	}
+	return oldValue.FenceEpoch, nil
+}
+
+// AddFenceEpoch adds i to the "fence_epoch" field.
+func (m *InstanceMutation) AddFenceEpoch(i int64) {
+	if m.addfence_epoch != nil {
+		*m.addfence_epoch += i
+	} else {
+		m.addfence_epoch = &i
+	}
+}
+
+// AddedFenceEpoch returns the value that was added to the "fence_epoch" field in this mutation.
+func (m *InstanceMutation) AddedFenceEpoch() (r int64, exists bool) {
+	v := m.addfence_epoch
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearFenceEpoch clears the value of the "fence_epoch" field.
+func (m *InstanceMutation) ClearFenceEpoch() {
+	m.fence_epoch = nil
+	m.addfence_epoch = nil
+	m.clearedFields[instance.FieldFenceEpoch] = struct{}{}
+}
+
+// FenceEpochCleared returns if the "fence_epoch" field was cleared in this mutation.
+func (m *InstanceMutation) FenceEpochCleared() bool {
+	_, ok := m.clearedFields[instance.FieldFenceEpoch]
+	return ok
+}
+
+// ResetFenceEpoch resets all changes to the "fence_epoch" field.
+func (m *InstanceMutation) ResetFenceEpoch() {
+	m.fence_epoch = nil
+	m.addfence_epoch = nil
+	delete(m.clearedFields, instance.FieldFenceEpoch)
+}
+
 // Where appends a list predicates to the InstanceMutation builder.
 func (m *InstanceMutation) Where(ps ...predicate.Instance) {
 	m.predicates = append(m.predicates, ps...)
@@ -32479,7 +32601,7 @@ func (m *InstanceMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *InstanceMutation) Fields() []string {
-	fields := make([]string, 0, 6)
+	fields := make([]string, 0, 8)
 	if m.trust_domain != nil {
 		fields = append(fields, instance.FieldTrustDomain)
 	}
@@ -32497,6 +32619,12 @@ func (m *InstanceMutation) Fields() []string {
 	}
 	if m.retired_to != nil {
 		fields = append(fields, instance.FieldRetiredTo)
+	}
+	if m.active_node != nil {
+		fields = append(fields, instance.FieldActiveNode)
+	}
+	if m.fence_epoch != nil {
+		fields = append(fields, instance.FieldFenceEpoch)
 	}
 	return fields
 }
@@ -32518,6 +32646,10 @@ func (m *InstanceMutation) Field(name string) (ent.Value, bool) {
 		return m.RetiredAt()
 	case instance.FieldRetiredTo:
 		return m.RetiredTo()
+	case instance.FieldActiveNode:
+		return m.ActiveNode()
+	case instance.FieldFenceEpoch:
+		return m.FenceEpoch()
 	}
 	return nil, false
 }
@@ -32539,6 +32671,10 @@ func (m *InstanceMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldRetiredAt(ctx)
 	case instance.FieldRetiredTo:
 		return m.OldRetiredTo(ctx)
+	case instance.FieldActiveNode:
+		return m.OldActiveNode(ctx)
+	case instance.FieldFenceEpoch:
+		return m.OldFenceEpoch(ctx)
 	}
 	return nil, fmt.Errorf("unknown Instance field %s", name)
 }
@@ -32590,6 +32726,20 @@ func (m *InstanceMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRetiredTo(v)
 		return nil
+	case instance.FieldActiveNode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActiveNode(v)
+		return nil
+	case instance.FieldFenceEpoch:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFenceEpoch(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Instance field %s", name)
 }
@@ -32597,13 +32747,21 @@ func (m *InstanceMutation) SetField(name string, value ent.Value) error {
 // AddedFields returns all numeric fields that were incremented/decremented during
 // this mutation.
 func (m *InstanceMutation) AddedFields() []string {
-	return nil
+	var fields []string
+	if m.addfence_epoch != nil {
+		fields = append(fields, instance.FieldFenceEpoch)
+	}
+	return fields
 }
 
 // AddedField returns the numeric value that was incremented/decremented on a field
 // with the given name. The second boolean return value indicates that this field
 // was not set, or was not defined in the schema.
 func (m *InstanceMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case instance.FieldFenceEpoch:
+		return m.AddedFenceEpoch()
+	}
 	return nil, false
 }
 
@@ -32612,6 +32770,13 @@ func (m *InstanceMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *InstanceMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case instance.FieldFenceEpoch:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFenceEpoch(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Instance numeric field %s", name)
 }
@@ -32628,6 +32793,12 @@ func (m *InstanceMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(instance.FieldRetiredTo) {
 		fields = append(fields, instance.FieldRetiredTo)
+	}
+	if m.FieldCleared(instance.FieldActiveNode) {
+		fields = append(fields, instance.FieldActiveNode)
+	}
+	if m.FieldCleared(instance.FieldFenceEpoch) {
+		fields = append(fields, instance.FieldFenceEpoch)
 	}
 	return fields
 }
@@ -32651,6 +32822,12 @@ func (m *InstanceMutation) ClearField(name string) error {
 		return nil
 	case instance.FieldRetiredTo:
 		m.ClearRetiredTo()
+		return nil
+	case instance.FieldActiveNode:
+		m.ClearActiveNode()
+		return nil
+	case instance.FieldFenceEpoch:
+		m.ClearFenceEpoch()
 		return nil
 	}
 	return fmt.Errorf("unknown Instance nullable field %s", name)
@@ -32677,6 +32854,12 @@ func (m *InstanceMutation) ResetField(name string) error {
 		return nil
 	case instance.FieldRetiredTo:
 		m.ResetRetiredTo()
+		return nil
+	case instance.FieldActiveNode:
+		m.ResetActiveNode()
+		return nil
+	case instance.FieldFenceEpoch:
+		m.ResetFenceEpoch()
 		return nil
 	}
 	return fmt.Errorf("unknown Instance field %s", name)

@@ -37,7 +37,7 @@ func commands() *cli.Command {
 		},
 		Sub: append([]*cli.Command{
 			agentcmd.Role("controller", "run the controller: web UI, API, CA and configuration", runController,
-				controllerInit()),
+				controllerInit(), controllerAdoptState()),
 			agentcmd.Role("gateway", "run a gateway: public listeners and data sessions from connectors", runGateway),
 			agentcmd.Connector(),
 			agentcmd.Role("all-in-one", "run a controller, a gateway and a connector in one process", runAllInOne, allInOneInit()),
@@ -240,6 +240,34 @@ func controllerInit() *cli.Command {
 			_, err = fmt.Fprintf(env.Stdout, "Initialised the controller.\n  trust domain: %s\n  CA pin:       %s\n"+
 				"  KEK:          %s\nBack up the KEK separately: without it the database cannot be read.\n"+agentcmd.FirstUserText,
 				r.TrustDomain, r.RootPin, r.KEK, r.FirstUserLink)
+			return err
+		},
+	}
+}
+
+// controllerAdoptState is `rpmgr controller adopt-state`: it gives a new host of a PostgreSQL
+// controller the node ID and the empty revocation log that a controller needs there.
+func controllerAdoptState() *cli.Command {
+	var configPath string
+	var lost bool
+	return &cli.Command{
+		Name:    "adopt-state",
+		Summary: "make this host the PostgreSQL controller's: its node ID and revocation log",
+		Flags: func(fs *flag.FlagSet) {
+			fs.StringVar(&configPath, "config", "", bootFlagHelp)
+			fs.BoolVar(&lost, "old-host-lost", false, "confirm that the old controller host will not run the controller again (required); the database then refuses it")
+		},
+		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
+			made, err := controller.AdoptState(ctx, controllerBoot(configPath, env.Getenv), lost)
+			if err != nil {
+				return err
+			}
+			if len(made) == 0 {
+				_, err = fmt.Fprintln(env.Stdout, "The state directory already holds both files; nothing changed.")
+				return err
+			}
+			_, err = fmt.Fprintf(env.Stdout, "Created %s. A revocation log that starts empty misses every revocation made on the old host: "+
+				"move that host's revocations.log here instead when it still exists.\n", strings.Join(made, " and "))
 			return err
 		},
 	}

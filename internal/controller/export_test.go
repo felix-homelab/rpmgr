@@ -21,12 +21,30 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/rollouttarget"
 )
 
+func init() { lockSettle = func() time.Duration { return 0 } } // tests that look at it set it
+
 // SetRunTimers shortens the drain wait and the certificate reload interval of Run for one test,
 // which must not run in parallel with others.
 func SetRunTimers(t testing.TB, drain, reload time.Duration) {
-	oldDrain, oldReload := drainWait, webCertReload
-	drainWait, webCertReload = drain, reload
-	t.Cleanup(func() { drainWait, webCertReload = oldDrain, oldReload })
+	oldDrain, oldReload, oldSettle := drainWait, webCertReload, lockSettle
+	drainWait, webCertReload, lockSettle = drain, reload, func() time.Duration { return 0 }
+	t.Cleanup(func() { drainWait, webCertReload, lockSettle = oldDrain, oldReload, oldSettle })
+}
+
+// SetStateDir makes the commands that read a boot file use dir as the state directory of a
+// controller on PostgreSQL, for one test, which must not run in parallel with others.
+func SetStateDir(t testing.TB, dir string) {
+	old := stateDirOverride
+	stateDirOverride = dir
+	t.Cleanup(func() { stateDirOverride = old })
+}
+
+// SetLockSettle sets how long Run waits after it took the PostgreSQL controller lock, for one
+// test, which must not run in parallel with others.
+func SetLockSettle(t testing.TB, d time.Duration) {
+	old := lockSettle
+	lockSettle = func() time.Duration { return d }
+	t.Cleanup(func() { lockSettle = old })
 }
 
 // NoJobs keeps Run from starting its background jobs (alerts, webhooks, DNS, mail, ...) for one

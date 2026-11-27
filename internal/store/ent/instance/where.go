@@ -84,6 +84,16 @@ func RetiredTo(v string) predicate.Instance {
 	return predicate.Instance(sql.FieldEQ(FieldRetiredTo, v))
 }
 
+// ActiveNode applies equality check predicate on the "active_node" field. It's identical to ActiveNodeEQ.
+func ActiveNode(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldEQ(FieldActiveNode, v))
+}
+
+// FenceEpoch applies equality check predicate on the "fence_epoch" field. It's identical to FenceEpochEQ.
+func FenceEpoch(v int64) predicate.Instance {
+	return predicate.Instance(sql.FieldEQ(FieldFenceEpoch, v))
+}
+
 // TrustDomainEQ applies the EQ predicate on the "trust_domain" field.
 func TrustDomainEQ(v string) predicate.Instance {
 	return predicate.Instance(sql.FieldEQ(FieldTrustDomain, v))
@@ -427,6 +437,131 @@ func RetiredToEqualFold(v string) predicate.Instance {
 // RetiredToContainsFold applies the ContainsFold predicate on the "retired_to" field.
 func RetiredToContainsFold(v string) predicate.Instance {
 	return predicate.Instance(sql.FieldContainsFold(FieldRetiredTo, v))
+}
+
+// ActiveNodeEQ applies the EQ predicate on the "active_node" field.
+func ActiveNodeEQ(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldEQ(FieldActiveNode, v))
+}
+
+// ActiveNodeNEQ applies the NEQ predicate on the "active_node" field.
+func ActiveNodeNEQ(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldNEQ(FieldActiveNode, v))
+}
+
+// ActiveNodeIn applies the In predicate on the "active_node" field.
+func ActiveNodeIn(vs ...string) predicate.Instance {
+	return predicate.Instance(sql.FieldIn(FieldActiveNode, vs...))
+}
+
+// ActiveNodeNotIn applies the NotIn predicate on the "active_node" field.
+func ActiveNodeNotIn(vs ...string) predicate.Instance {
+	return predicate.Instance(sql.FieldNotIn(FieldActiveNode, vs...))
+}
+
+// ActiveNodeGT applies the GT predicate on the "active_node" field.
+func ActiveNodeGT(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldGT(FieldActiveNode, v))
+}
+
+// ActiveNodeGTE applies the GTE predicate on the "active_node" field.
+func ActiveNodeGTE(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldGTE(FieldActiveNode, v))
+}
+
+// ActiveNodeLT applies the LT predicate on the "active_node" field.
+func ActiveNodeLT(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldLT(FieldActiveNode, v))
+}
+
+// ActiveNodeLTE applies the LTE predicate on the "active_node" field.
+func ActiveNodeLTE(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldLTE(FieldActiveNode, v))
+}
+
+// ActiveNodeContains applies the Contains predicate on the "active_node" field.
+func ActiveNodeContains(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldContains(FieldActiveNode, v))
+}
+
+// ActiveNodeHasPrefix applies the HasPrefix predicate on the "active_node" field.
+func ActiveNodeHasPrefix(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldHasPrefix(FieldActiveNode, v))
+}
+
+// ActiveNodeHasSuffix applies the HasSuffix predicate on the "active_node" field.
+func ActiveNodeHasSuffix(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldHasSuffix(FieldActiveNode, v))
+}
+
+// ActiveNodeIsNil applies the IsNil predicate on the "active_node" field.
+func ActiveNodeIsNil() predicate.Instance {
+	return predicate.Instance(sql.FieldIsNull(FieldActiveNode))
+}
+
+// ActiveNodeNotNil applies the NotNil predicate on the "active_node" field.
+func ActiveNodeNotNil() predicate.Instance {
+	return predicate.Instance(sql.FieldNotNull(FieldActiveNode))
+}
+
+// ActiveNodeEqualFold applies the EqualFold predicate on the "active_node" field.
+func ActiveNodeEqualFold(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldEqualFold(FieldActiveNode, v))
+}
+
+// ActiveNodeContainsFold applies the ContainsFold predicate on the "active_node" field.
+func ActiveNodeContainsFold(v string) predicate.Instance {
+	return predicate.Instance(sql.FieldContainsFold(FieldActiveNode, v))
+}
+
+// FenceEpochEQ applies the EQ predicate on the "fence_epoch" field.
+func FenceEpochEQ(v int64) predicate.Instance {
+	return predicate.Instance(sql.FieldEQ(FieldFenceEpoch, v))
+}
+
+// FenceEpochNEQ applies the NEQ predicate on the "fence_epoch" field.
+func FenceEpochNEQ(v int64) predicate.Instance {
+	return predicate.Instance(sql.FieldNEQ(FieldFenceEpoch, v))
+}
+
+// FenceEpochIn applies the In predicate on the "fence_epoch" field.
+func FenceEpochIn(vs ...int64) predicate.Instance {
+	return predicate.Instance(sql.FieldIn(FieldFenceEpoch, vs...))
+}
+
+// FenceEpochNotIn applies the NotIn predicate on the "fence_epoch" field.
+func FenceEpochNotIn(vs ...int64) predicate.Instance {
+	return predicate.Instance(sql.FieldNotIn(FieldFenceEpoch, vs...))
+}
+
+// FenceEpochGT applies the GT predicate on the "fence_epoch" field.
+func FenceEpochGT(v int64) predicate.Instance {
+	return predicate.Instance(sql.FieldGT(FieldFenceEpoch, v))
+}
+
+// FenceEpochGTE applies the GTE predicate on the "fence_epoch" field.
+func FenceEpochGTE(v int64) predicate.Instance {
+	return predicate.Instance(sql.FieldGTE(FieldFenceEpoch, v))
+}
+
+// FenceEpochLT applies the LT predicate on the "fence_epoch" field.
+func FenceEpochLT(v int64) predicate.Instance {
+	return predicate.Instance(sql.FieldLT(FieldFenceEpoch, v))
+}
+
+// FenceEpochLTE applies the LTE predicate on the "fence_epoch" field.
+func FenceEpochLTE(v int64) predicate.Instance {
+	return predicate.Instance(sql.FieldLTE(FieldFenceEpoch, v))
+}
+
+// FenceEpochIsNil applies the IsNil predicate on the "fence_epoch" field.
+func FenceEpochIsNil() predicate.Instance {
+	return predicate.Instance(sql.FieldIsNull(FieldFenceEpoch))
+}
+
+// FenceEpochNotNil applies the NotNil predicate on the "fence_epoch" field.
+func FenceEpochNotNil() predicate.Instance {
+	return predicate.Instance(sql.FieldNotNull(FieldFenceEpoch))
 }
 
 // And groups predicates with the AND operator between them.

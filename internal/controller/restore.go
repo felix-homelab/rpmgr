@@ -152,6 +152,9 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 	if err != nil {
 		return RestoreResult{}, err
 	}
+	if err := requireSQLite(cfg, "rpmgr restore"); err != nil {
+		return RestoreResult{}, err
+	}
 	dsn := cfg.Database.DSN
 	state := filepath.Dir(dsn)
 	unlock, err := store.HoldLockNoFollow(dsn)

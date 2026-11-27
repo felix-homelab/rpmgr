@@ -28,7 +28,11 @@ type Instance struct {
 	// RetiredAt holds the value of the "retired_at" field.
 	RetiredAt *time.Time `json:"retired_at,omitempty"`
 	// RetiredTo holds the value of the "retired_to" field.
-	RetiredTo    *string `json:"retired_to,omitempty"`
+	RetiredTo *string `json:"retired_to,omitempty"`
+	// ActiveNode holds the value of the "active_node" field.
+	ActiveNode *string `json:"active_node,omitempty"`
+	// FenceEpoch holds the value of the "fence_epoch" field.
+	FenceEpoch   *int64 `json:"fence_epoch,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -37,9 +41,9 @@ func (*Instance) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case instance.FieldID:
+		case instance.FieldID, instance.FieldFenceEpoch:
 			values[i] = new(sql.NullInt64)
-		case instance.FieldTrustDomain, instance.FieldDbEpoch, instance.FieldRetiredTo:
+		case instance.FieldTrustDomain, instance.FieldDbEpoch, instance.FieldRetiredTo, instance.FieldActiveNode:
 			values[i] = new(sql.NullString)
 		case instance.FieldCreatedAt, instance.FieldRestoreReviewSince, instance.FieldRetiredAt:
 			values[i] = new(sql.NullTime)
@@ -103,6 +107,20 @@ func (_m *Instance) assignValues(columns []string, values []any) error {
 				_m.RetiredTo = new(string)
 				*_m.RetiredTo = value.String
 			}
+		case instance.FieldActiveNode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field active_node", values[i])
+			} else if value.Valid {
+				_m.ActiveNode = new(string)
+				*_m.ActiveNode = value.String
+			}
+		case instance.FieldFenceEpoch:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field fence_epoch", values[i])
+			} else if value.Valid {
+				_m.FenceEpoch = new(int64)
+				*_m.FenceEpoch = value.Int64
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -161,6 +179,16 @@ func (_m *Instance) String() string {
 	if v := _m.RetiredTo; v != nil {
 		builder.WriteString("retired_to=")
 		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.ActiveNode; v != nil {
+		builder.WriteString("active_node=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.FenceEpoch; v != nil {
+		builder.WriteString("fence_epoch=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteByte(')')
 	return builder.String()

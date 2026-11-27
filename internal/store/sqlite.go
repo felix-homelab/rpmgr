@@ -54,6 +54,8 @@ type DB struct {
 	refuseRetired bool
 	// lockLost is closed when the PostgreSQL session that holds the controller lock ends.
 	lockLost <-chan struct{}
+	// fence is what the Ent driver of a PostgreSQL database checks before every statement.
+	fence fence
 
 	client, readClient *ent.Client
 }
