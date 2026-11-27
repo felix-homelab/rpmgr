@@ -32,6 +32,14 @@ const (
 	FieldNotAfter = "not_after"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldCrossCertificate holds the string denoting the cross_certificate field in the database.
+	FieldCrossCertificate = "cross_certificate"
+	// FieldRotatedAt holds the string denoting the rotated_at field in the database.
+	FieldRotatedAt = "rotated_at"
+	// FieldDropAfter holds the string denoting the drop_after field in the database.
+	FieldDropAfter = "drop_after"
+	// FieldWasOffline holds the string denoting the was_offline field in the database.
+	FieldWasOffline = "was_offline"
 	// Table holds the table name of the cakey in the database.
 	Table = "ca_keys"
 )
@@ -48,6 +56,10 @@ var Columns = []string{
 	FieldNotBefore,
 	FieldNotAfter,
 	FieldStatus,
+	FieldCrossCertificate,
+	FieldRotatedAt,
+	FieldDropAfter,
+	FieldWasOffline,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -112,6 +124,7 @@ const (
 	StatusNext    Status = "next"
 	StatusActive  Status = "active"
 	StatusRetired Status = "retired"
+	StatusOverlap Status = "overlap"
 )
 
 func (s Status) String() string {
@@ -121,7 +134,7 @@ func (s Status) String() string {
 // StatusValidator is a validator for the "status" field enum values. It is called by the builders before save.
 func StatusValidator(s Status) error {
 	switch s {
-	case StatusNext, StatusActive, StatusRetired:
+	case StatusNext, StatusActive, StatusRetired, StatusOverlap:
 		return nil
 	default:
 		return fmt.Errorf("cakey: invalid enum value for status field: %q", s)
@@ -159,4 +172,19 @@ func ByNotAfter(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByRotatedAt orders the results by the rotated_at field.
+func ByRotatedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRotatedAt, opts...).ToFunc()
+}
+
+// ByDropAfter orders the results by the drop_after field.
+func ByDropAfter(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDropAfter, opts...).ToFunc()
+}
+
+// ByWasOffline orders the results by the was_offline field.
+func ByWasOffline(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWasOffline, opts...).ToFunc()
 }

@@ -111,6 +111,17 @@ type Reauth struct {
 // so a ticket from controller.<td> would otherwise resume there and skip the verifier. Every
 // handshake presents own's current certificate, so a renewed node certificate takes effect at once.
 func AgentEndpointConfig(own *Holder, roots *x509.CertPool, e Expect, now func() time.Time, r Reauth) *tls.Config {
+	return agentEndpointConfig(own, roots, func() *x509.CertPool { return roots }, e, now, r)
+}
+
+// AgentEndpointConfigFollowing is AgentEndpointConfig for a controller whose roots change in a
+// root rotation: the client CAs and the Reauth verifier take the pool roots returns at each
+// handshake, so that a new root is trusted without a restart.
+func AgentEndpointConfigFollowing(own *Holder, roots func() *x509.CertPool, e Expect, now func() time.Time, r Reauth) *tls.Config {
+	return FollowRoots(agentEndpointConfig(own, roots(), roots, e, now, r), roots)
+}
+
+func agentEndpointConfig(own *Holder, roots *x509.CertPool, pool func() *x509.CertPool, e Expect, now func() time.Time, r Reauth) *tls.Config {
 	if now == nil {
 		now = time.Now
 	}
@@ -129,7 +140,7 @@ func AgentEndpointConfig(own *Holder, roots *x509.CertPool, e Expect, now func()
 	reauth.ClientAuth = tls.RequireAnyClientCert
 	reauth.ClientCAs = nil
 	reauth.SessionTicketsDisabled = true
-	reauth.VerifyConnection = func(cs tls.ConnectionState) error { return r.verify(cs, roots, e, now()) }
+	reauth.VerifyConnection = func(cs tls.ConnectionState) error { return r.verify(cs, pool(), e, now()) }
 	name := "reauth.controller." + e.TrustDomain
 	base.GetConfigForClient = func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
 		if strings.EqualFold(hello.ServerName, name) {
@@ -138,6 +149,47 @@ func AgentEndpointConfig(own *Holder, roots *x509.CertPool, e Expect, now func()
 		return nil, nil // the base configuration
 	}
 	return base
+}
+
+// FollowRoots makes the server configuration cfg verify client certificates against the pool roots
+// returns at each handshake, so that a root added in a rotation is trusted at once and one dropped is
+// refused, with no restart of the listener (docs/04-security.md, "Root rotation"). crypto/tls
+// verifies a chain against a fixed pool, so the configuration asks for the certificate and the chain
+// is verified in VerifyConnection, which runs on full and resumed handshakes alike; every
+// configuration cloned from cfg afterwards follows too. cfg keeps its other settings, and its own
+// VerifyConnection still runs after the chain is verified.
+func FollowRoots(cfg *tls.Config, roots func() *x509.CertPool) *tls.Config {
+	required := cfg.ClientAuth == tls.RequireAndVerifyClientCert || cfg.ClientAuth == tls.RequireAnyClientCert
+	if required {
+		cfg.ClientAuth = tls.RequireAnyClientCert
+	} else {
+		cfg.ClientAuth = tls.RequestClientCert
+	}
+	cfg.ClientCAs = nil // the names of the pool at one moment would be a stale hint
+	inner, now := cfg.VerifyConnection, cfg.Time
+	cfg.VerifyConnection = func(cs tls.ConnectionState) error {
+		if len(cs.PeerCertificates) > 0 {
+			at := time.Now()
+			if now != nil {
+				at = now()
+			}
+			inters := x509.NewCertPool()
+			for _, c := range cs.PeerCertificates[1:] {
+				inters.AddCert(c)
+			}
+			if _, err := cs.PeerCertificates[0].Verify(x509.VerifyOptions{Roots: roots(), Intermediates: inters, CurrentTime: at,
+				KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}); err != nil {
+				return fmt.Errorf("pki: client certificate: %w", err)
+			}
+		} else if required {
+			return ErrNoPeerCert
+		}
+		if inner != nil {
+			return inner(cs)
+		}
+		return nil
+	}
+	return cfg
 }
 
 func (r Reauth) verify(cs tls.ConnectionState, roots *x509.CertPool, e Expect, now time.Time) error {

@@ -32,6 +32,11 @@ type Enrollment struct {
 	Now func() time.Time
 	// PublicURL and RootPin go into install commands.
 	PublicURL, RootPin string
+	// CurrentPin, if set, gives the pin an agent enrols with now and replaces RootPin: the enrollment root
+	// (castore.CA.EnrollmentRoot), which is the oldest root of the bundle, so during the overlap of a
+	// root rotation it is the old root's and not the one that issues. A rotation changes it while the
+	// controller runs.
+	CurrentPin func() string
 }
 
 // CreateEnrollmentToken implements EnrollmentService.
@@ -178,12 +183,12 @@ func (e *Enrollment) GetInstallCommand(_ context.Context, req *connect.Request[r
 	*connect.Response[rpmgrv1.GetInstallCommandResponse], error) {
 	m := req.Msg
 	base := strings.TrimSuffix(e.PublicURL, "/")
-	cmd, err := installsh.Command(base, e.RootPin, m.GetRole() == rpmgrv1.AgentRole_AGENT_ROLE_GATEWAY, m.GetAllowTargets(),
+	cmd, err := installsh.Command(base, e.pin(), m.GetRole() == rpmgrv1.AgentRole_AGENT_ROLE_GATEWAY, m.GetAllowTargets(),
 		m.GetDenyTargets())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	return connect.NewResponse(&rpmgrv1.GetInstallCommandResponse{Command: cmd, ControllerUrl: base, CaPin: e.RootPin}), nil
+	return connect.NewResponse(&rpmgrv1.GetInstallCommandResponse{Command: cmd, ControllerUrl: base, CaPin: e.pin()}), nil
 }
 
 func (e *Enrollment) now() time.Time {
@@ -214,4 +219,12 @@ func enrollmentTokenOf(r *ent.EnrollmentToken) *rpmgrv1.EnrollmentToken {
 		}
 	}
 	return out
+}
+
+// pin is the root pin that install commands carry.
+func (e *Enrollment) pin() string {
+	if e.CurrentPin != nil {
+		return e.CurrentPin()
+	}
+	return e.RootPin
 }

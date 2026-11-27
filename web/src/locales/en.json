@@ -1694,7 +1694,8 @@
       "unspecified": "Unknown",
       "next": "Next",
       "active": "Active",
-      "retired": "Retired"
+      "retired": "Retired",
+      "overlap": "Old root, still trusted"
     },
     "validity": "{{from}} to {{to}}",
     "rotate": "Rotate the intermediate now…",
