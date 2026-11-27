@@ -72,6 +72,15 @@ Changes to the design documents are not recorded here: see the git history and t
   a pass that began in that gap failed as if it were an error. It now reads under the job's
   context, so the stop ends it as a shutdown.
 
+### Security
+
+- `rpmgr backup` stages its copy of the database in a private temporary directory, no longer in
+  the controller's state directory, and removes only the files it created. Run as root, as the
+  guide shows, an earlier release let the account that owns the state directory make the backup
+  create and remove a file named `controller.db` in another directory. Severity low; affects
+  0.1.0 to 0.4.1. On those releases, run the backup as the service user (`sudo -u rpmgr rpmgr
+  backup …`). (#688)
+
 ## [0.4.1] - 2026-11-23
 
 **Upgrade notes** ([Upgrades](docs/guide/install/upgrades.md)):
