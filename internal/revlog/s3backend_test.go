@@ -3,8 +3,13 @@
 package revlog_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,7 +25,7 @@ const testPrefix = "revocations/"
 
 func s3Sink(t *testing.T, g objstoretest.Target, timeout time.Duration) *revlog.Sink {
 	t.Helper()
-	return revlog.NewSink(revlog.NewS3Backend(g.Client(t, timeout), testPrefix))
+	return revlog.NewSink(revlog.NewS3Backend(context.Background(), g.Client(t, timeout), testPrefix))
 }
 
 // checkSink verifies the sink from entry 1 and that it holds exactly the entries of each replica's
@@ -52,6 +57,27 @@ func checkSink(t *testing.T, g objstoretest.Target, want map[string][]string) {
 	}
 }
 
+// countingProxy puts a proxy in front of g that counts the answers 412, the lost races.
+func countingProxy(t *testing.T, g objstoretest.Target) (objstoretest.Target, *atomic.Int32) {
+	t.Helper()
+	u, err := url.Parse(g.Endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lost atomic.Int32
+	rp := httputil.NewSingleHostReverseProxy(u) // keeps the Host header, which the signature covers
+	rp.ModifyResponse = func(r *http.Response) error {
+		if r.StatusCode == http.StatusPreconditionFailed {
+			lost.Add(1)
+		}
+		return nil
+	}
+	srv := httptest.NewServer(rp)
+	t.Cleanup(srv.Close)
+	g.Endpoint = srv.URL
+	return g, &lost
+}
+
 func subjectsOf(prefix string, n int) []string {
 	var out []string
 	for i := 1; i <= n; i++ {
@@ -67,23 +93,29 @@ func subjectsOf(prefix string, n int) []string {
 // build tag objstoreit the race runs against SILO in a container.
 func TestRevlogS3_NoOverwriteNoGap(t *testing.T) {
 	t.Run("race", func(t *testing.T) {
-		g := objstoretest.NewTarget(t)
-		const n = 25
+		g, lost := countingProxy(t, objstoretest.NewTarget(t))
+		const n = 40
 		pathA, _ := logWith(t, subjectsOf("a", n)...)
 		pathB, _ := logWith(t, subjectsOf("b", n)...)
 		var wg sync.WaitGroup
+		start := make(chan struct{})
 		for replica, path := range map[string]string{"node-a": pathA, "node-b": pathB} {
 			sink := s3Sink(t, g, 0)
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
+				<-start
 				// A lost race (412) is not an error: the round ends with nothing left.
 				if left, err := sink.Ship(path, replica); err != nil || len(left) != 0 {
 					t.Errorf("%s: ship: %d left, %v", replica, len(left), err)
 				}
 			}()
 		}
+		close(start)
 		wg.Wait()
+		if lost.Load() == 0 {
+			t.Error("no create answered 412: the shippers did not race")
+		}
 		checkSink(t, g, map[string][]string{"node-a": subjectsOf("a", n), "node-b": subjectsOf("b", n)})
 		// A third round ships nothing and breaks nothing.
 		if left, err := s3Sink(t, g, 0).Ship(pathA, "node-a"); err != nil || len(left) != 0 {
@@ -94,7 +126,7 @@ func TestRevlogS3_NoOverwriteNoGap(t *testing.T) {
 
 	t.Run("a taken key is never overwritten", func(t *testing.T) {
 		g := objstoretest.NewTarget(t)
-		b := revlog.NewS3Backend(g.Client(t, 0), testPrefix)
+		b := revlog.NewS3Backend(context.Background(), g.Client(t, 0), testPrefix)
 		key := revlog.Key(1)
 		if err := b.CreateIfAbsent(key, []byte("first\n")); err != nil {
 			t.Fatal(err)
@@ -111,7 +143,7 @@ func TestRevlogS3_NoOverwriteNoGap(t *testing.T) {
 		s := objstoretest.New(t)
 		s.NoConditional = true
 		g := s.Target()
-		b := revlog.NewS3Backend(g.Client(t, 0), testPrefix)
+		b := revlog.NewS3Backend(context.Background(), g.Client(t, 0), testPrefix)
 		if err := b.Probe(t.Context()); !errors.Is(err, revlog.ErrNoConditionalCreate) {
 			t.Fatalf("the probe: %v, want ErrNoConditionalCreate", err)
 		}
@@ -195,7 +227,7 @@ func appendEntries(t *testing.T, path string, subjects ...string) {
 // pages than one; probe objects are not part of the sink.
 func TestS3Backend_List(t *testing.T) {
 	g := objstoretest.NewTarget(t)
-	b := revlog.NewS3Backend(g.Client(t, 0), "sink") // a prefix without its slash gets one
+	b := revlog.NewS3Backend(context.Background(), g.Client(t, 0), "sink") // a prefix without its slash gets one
 	if err := b.Probe(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +249,7 @@ func TestS3Backend_List(t *testing.T) {
 		t.Errorf("list after the last: %v, %v", none, err)
 	}
 	// A sibling prefix is another sink.
-	other := revlog.NewS3Backend(g.Client(t, 0), "sink2")
+	other := revlog.NewS3Backend(context.Background(), g.Client(t, 0), "sink2")
 	if keys, err := other.List(""); err != nil || len(keys) != 0 {
 		t.Errorf("another prefix: %v, %v", keys, err)
 	}
@@ -241,7 +273,7 @@ func TestS3Backend_ProbeAnswers(t *testing.T) {
 				}
 				return 0, 0
 			}
-			b := revlog.NewS3Backend(s.Target().Client(t, 0), "")
+			b := revlog.NewS3Backend(context.Background(), s.Target().Client(t, 0), "")
 			err := b.Probe(t.Context())
 			if err == nil || errors.Is(err, revlog.ErrNoConditionalCreate) != c.final {
 				t.Fatalf("probe: %v, final %v", err, c.final)
@@ -255,11 +287,126 @@ func TestS3Backend_ProbeAnswers(t *testing.T) {
 	}
 }
 
+// TestS3Backend_ProbeFirstCreateAnswers (security review S1): a store that rejects the header on the
+// first create is refused as well, and so is one with a switch for it; a 412 on the first create
+// is proof, since an earlier start made the object.
+func TestS3Backend_ProbeFirstCreateAnswers(t *testing.T) {
+	for _, status := range []int{400, 501} {
+		s := objstoretest.New(t)
+		s.Fault = func(method, key string) (int, time.Duration) {
+			if method == "PUT" {
+				return status, 0
+			}
+			return 0, 0
+		}
+		b := revlog.NewS3Backend(context.Background(), s.Target().Client(t, 0), "p")
+		if err := b.Probe(t.Context()); !errors.Is(err, revlog.ErrNoConditionalCreate) {
+			t.Errorf("a first create answered %d: %v", status, err)
+		}
+	}
+	s := objstoretest.New(t)
+	s.RejectConditional = true
+	b := revlog.NewS3Backend(context.Background(), s.Target().Client(t, 0), "p")
+	if err := b.Probe(t.Context()); !errors.Is(err, revlog.ErrNoConditionalCreate) {
+		t.Errorf("a store that rejects the header: %v", err)
+	}
+	// A second start finds the object: the first create answers 412, and that is enough.
+	s = objstoretest.New(t)
+	for i := 0; i < 3; i++ {
+		if err := revlog.NewS3Backend(context.Background(), s.Target().Client(t, 0), "p").Probe(t.Context()); err != nil {
+			t.Fatalf("start %d: %v", i+1, err)
+		}
+	}
+	if keys := s.Keys(); len(keys) != 1 {
+		t.Errorf("three starts left %v", keys)
+	}
+}
+
+// TestS3Backend_IdleTickAfterStarts (security review S3): probes do not pile up, so a tick with
+// nothing to ship costs one request however often the controller started.
+func TestS3Backend_IdleTickAfterStarts(t *testing.T) {
+	s := objstoretest.New(t)
+	var b *revlog.S3Backend
+	for i := 0; i < 5; i++ {
+		b = revlog.NewS3Backend(context.Background(), s.Target().Client(t, 0), "revocations")
+		if err := b.Probe(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := b.CreateIfAbsent(revlog.Key(1), []byte("x\n")); err != nil {
+		t.Fatal(err)
+	}
+	before := s.Count("GET")
+	keys, err := b.List(revlog.Key(1))
+	if err != nil || len(keys) != 0 || s.Count("GET")-before != 1 {
+		t.Errorf("an idle tick: %v, %v, %d requests", keys, err, s.Count("GET")-before)
+	}
+}
+
+// TestS3Backend_ListingBounds (security review S2): a listing that never ends, repeats a token or
+// runs out of order is an error, and a cancelled context ends the requests.
+func TestS3Backend_ListingBounds(t *testing.T) {
+	for name, set := range map[string]func(*objstoretest.Server){
+		"endless":         func(s *objstoretest.Server) { s.EndlessListing = true },
+		"a repeated page": func(s *objstoretest.Server) { s.RepeatListing = true },
+	} {
+		t.Run(name, func(t *testing.T) {
+			revlog.SetMaxListPages(t, 20)
+			s := objstoretest.New(t)
+			set(s)
+			b := revlog.NewS3Backend(context.Background(), s.Target().Client(t, 0), "p")
+			if _, err := b.List(""); !errors.Is(err, revlog.ErrListing) {
+				t.Fatalf("list: %v", err)
+			}
+			if n := s.Count("GET"); n > 21 {
+				t.Errorf("%d requests for a limit of 20 pages", n)
+			}
+		})
+	}
+	s := objstoretest.New(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	b := revlog.NewS3Backend(ctx, s.Target().Client(t, 0), "p")
+	cancel()
+	if _, err := b.List(""); !errors.Is(err, context.Canceled) {
+		t.Errorf("a cancelled context: %v", err)
+	}
+	if err := b.CreateIfAbsent(revlog.Key(1), []byte("x\n")); !errors.Is(err, context.Canceled) {
+		t.Errorf("a create with a cancelled context: %v", err)
+	}
+}
+
+// TestS3Backend_ObjectLock (security review S6): with LockDays each entry is written locked in
+// compliance mode; without it, no lock header is sent.
+func TestS3Backend_ObjectLock(t *testing.T) {
+	s := objstoretest.New(t)
+	now := time.Date(2026, 11, 27, 12, 0, 0, 0, time.UTC)
+	b := revlog.NewS3Backend(context.Background(), s.Target().Client(t, 0), "p")
+	if err := b.CreateIfAbsent(revlog.Key(1), []byte("x\n")); err != nil {
+		t.Fatal(err)
+	}
+	if mode, _ := s.Lock("p/" + revlog.Key(1)); mode != "" {
+		t.Errorf("a lock without LockDays: %s", mode)
+	}
+	b.LockDays, b.Now = 90, func() time.Time { return now }
+	if err := b.CreateIfAbsent(revlog.Key(2), []byte("x\n")); err != nil {
+		t.Fatal(err)
+	}
+	mode, retain := s.Lock("p/" + revlog.Key(2))
+	if mode != "COMPLIANCE" || !strings.HasPrefix(retain, "2027-02-25T12:00:00") {
+		t.Errorf("lock %s until %s, want COMPLIANCE until 2027-02-25", mode, retain)
+	}
+	// A bucket without Object Lock refuses the write; it is no lost race and no break.
+	s.NoLock = true
+	if err := b.CreateIfAbsent(revlog.Key(3), []byte("x\n")); err == nil || errors.Is(err, revlog.ErrExists) || !objstore.Refused(err) {
+		t.Errorf("a bucket without Object Lock: %v", err)
+	}
+}
+
 // TestS3Backend_ProbeUnreachableFirstCreate: a first create that fails is no verdict either.
 func TestS3Backend_ProbeUnreachableFirstCreate(t *testing.T) {
 	s := objstoretest.New(t)
 	s.Fault = func(method, key string) (int, time.Duration) { return 503, 0 }
-	b := revlog.NewS3Backend(s.Target().Client(t, 0), "")
+	b := revlog.NewS3Backend(context.Background(), s.Target().Client(t, 0), "")
 	if err := b.CreateIfAbsent(revlog.Key(1), []byte("x\n")); err == nil || errors.Is(err, revlog.ErrNoConditionalCreate) {
 		t.Fatalf("create while the store is down: %v", err)
 	}

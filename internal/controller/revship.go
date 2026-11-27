@@ -4,6 +4,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -33,6 +34,7 @@ type RevocationShipper struct {
 	sink    *revlog.Sink // made at the first round; keeps the verified prefix between rounds
 	status  revlog.Status
 	lastErr string
+	reason  string
 }
 
 func (r *RevocationShipper) now() time.Time {
@@ -64,6 +66,7 @@ func (r *RevocationShipper) Ship() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.status = revlog.StatusOf(true, left)
+	r.reason = revlog.ReasonOf(err)
 	if err == nil {
 		r.lastOK = r.now()
 	}
@@ -72,8 +75,11 @@ func (r *RevocationShipper) Ship() error {
 		msg = err.Error()
 	}
 	switch {
+	case msg != "" && msg != r.lastErr && errors.Is(err, revlog.ErrNoConditionalCreate):
+		r.Logger.Error("revocation log: the sink's store does not refuse a second create, so nothing is shipped to it; use another store",
+			"sink", r.Sink, "unshipped", len(left), "reason", r.reason, "error", err)
 	case msg != "" && msg != r.lastErr:
-		r.Logger.Warn("revocation log: the sink takes no entries; revocations are still enforced", "sink", r.Sink, "unshipped", len(left), "error", err)
+		r.Logger.Warn("revocation log: the sink takes no entries; revocations are still enforced", "sink", r.Sink, "unshipped", len(left), "reason", r.reason, "error", err)
 	case msg == "" && r.lastErr != "":
 		r.Logger.Info("revocation log: the sink takes entries again", "sink", r.Sink)
 	}
@@ -99,6 +105,7 @@ func (r *RevocationShipper) Status() revlog.Status {
 	defer r.mu.Unlock()
 	st := r.status
 	st.Sink = r.Sink != ""
+	st.Reason = r.reason
 	if st.LastOK = r.lastOK; st.LastOK.IsZero() {
 		st.LastOK = r.started // zero before the first round
 	}

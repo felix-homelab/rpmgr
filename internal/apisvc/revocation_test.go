@@ -61,8 +61,8 @@ func TestRevocation_EnforcedWhileSinkDown(t *testing.T) {
 			t.Cleanup(proxy.Close)
 			gp := g
 			gp.Endpoint = proxy.URL
-			b := revlog.NewS3Backend(gp.Client(t, 0), "revocations")
-			direct := revlog.NewS3Backend(g.Client(t, 0), "revocations")
+			b := revlog.NewS3Backend(context.Background(), gp.Client(t, 0), "revocations")
+			direct := revlog.NewS3Backend(context.Background(), g.Client(t, 0), "revocations")
 			return sinkUnderTest{
 				shipper: &controller.RevocationShipper{Path: e.log, Sink: "s3://" + g.Bucket + "/revocations", Backend: b, Replica: "ctn_a",
 					Now: func() time.Time { return e.clock }, Logger: quietLogger()},

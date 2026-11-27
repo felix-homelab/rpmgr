@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -91,7 +92,11 @@ func TestOpenRevocationSink_RefusesStoreWithoutConditionalCreate(t *testing.T) {
 // starting, since revocations are enforced without the sink; the shipper probes before it writes,
 // and ships once the store answers.
 func TestOpenRevocationSink_StoreDown(t *testing.T) {
-	for name, status := range map[string]int{"503": 503, "403": 403} {
+	for name, tc := range map[string]struct {
+		status int
+		reason string
+	}{"503": {503, revlog.ReasonUnreachable}, "403": {403, revlog.ReasonRefused}} {
+		status := tc.status
 		t.Run(name, func(t *testing.T) {
 			s := objstoretest.New(t)
 			down := true
@@ -119,12 +124,18 @@ func TestOpenRevocationSink_StoreDown(t *testing.T) {
 			if err := r.Ship(); err == nil || r.Status().Unshipped != 1 {
 				t.Fatalf("a round while the store is down: %v, %+v", err, r.Status())
 			}
+			if got := r.Status().Reason; got != tc.reason {
+				t.Errorf("the reason is %q, want %q", got, tc.reason)
+			}
 			if len(s.Keys()) != 0 {
 				t.Errorf("the store holds %v", s.Keys())
 			}
 			down = false
 			if err := r.Ship(); err != nil || r.Status().Unshipped != 0 {
 				t.Fatalf("a round after it recovered: %v, %+v", err, r.Status())
+			}
+			if got := r.Status().Reason; got != "" {
+				t.Errorf("the reason after a success is %q", got)
 			}
 			if strings.Contains(logs.String(), s.Target().SecretKey) {
 				t.Errorf("the log holds the secret key: %s", logs.String())
@@ -202,7 +213,7 @@ func TestRestore_ReadsS3Sink(t *testing.T) {
 	if _, err := revlog.NewSink(b).Ship(logPath, "ctn_a"); err != nil {
 		t.Fatal(err)
 	}
-	got, err := controller.ReadSource(rl.Sink, rl)
+	got, err := controller.ReadSource(t.Context(), rl.Sink, rl)
 	if err != nil || len(got) != 3 || got[2].Subject != "ses_3" {
 		t.Fatalf("read: %v, %v", got, err)
 	}
@@ -210,11 +221,57 @@ func TestRestore_ReadsS3Sink(t *testing.T) {
 	if err := b.CreateIfAbsent(revlog.Key(5), []byte("{}\n")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := controller.ReadSource(rl.Sink, rl); !errors.Is(err, revlog.ErrBroken) {
+	if _, err := controller.ReadSource(t.Context(), rl.Sink, rl); !errors.Is(err, revlog.ErrBroken) {
 		t.Errorf("a sink with a gap: %v", err)
 	}
 	// Without the store in the boot file there is nothing to read it with.
-	if _, err := controller.ReadSource(rl.Sink, config.RevocationLog{}); err == nil || !strings.Contains(err.Error(), "revocation_log.s3") {
+	if _, err := controller.ReadSource(t.Context(), rl.Sink, config.RevocationLog{}); err == nil || !strings.Contains(err.Error(), "revocation_log.s3") {
 		t.Errorf("no store configured: %v", err)
+	}
+}
+
+// TestRevocationShipper_StoreUnfitAtRuntime (security review): a store that could not be probed at
+// start and then turns out to overwrite is logged at Error level with its reason, and nothing is
+// written to it.
+func TestRevocationShipper_StoreUnfitAtRuntime(t *testing.T) {
+	s := objstoretest.New(t)
+	s.NoConditional = true
+	var down atomic.Bool
+	down.Store(true)
+	s.Fault = func(method, key string) (int, time.Duration) {
+		if down.Load() {
+			return 503, 0
+		}
+		return 0, 0
+	}
+	rl := s3Boot(t, s.Target())
+	var logs bytes.Buffer
+	b, err := controller.OpenRevocationSink(t.Context(), rl, logTo(&logs))
+	if err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(t.TempDir(), "revocations.log")
+	l, err := revlog.Open(logPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.Append(revlog.Entry{Kind: revlog.SessionRevoked, Subject: "ses_1"}); err != nil {
+		t.Fatal(err)
+	}
+	down.Store(false)
+	r := &controller.RevocationShipper{Path: logPath, Sink: rl.Sink, Backend: b, Replica: "ctn_a", Logger: logTo(&logs)}
+	if err := r.Ship(); !errors.Is(err, revlog.ErrNoConditionalCreate) {
+		t.Fatalf("ship: %v", err)
+	}
+	if got := r.Status().Reason; got != revlog.ReasonNoConditional || r.Status().Unshipped != 1 {
+		t.Errorf("status %+v", r.Status())
+	}
+	if out := logs.String(); !strings.Contains(out, "level=ERROR") || !strings.Contains(out, "no_conditional_create") {
+		t.Errorf("the log: %s", out)
+	}
+	for _, k := range s.Keys() {
+		if !strings.Contains(k, "_probe/") {
+			t.Errorf("an entry reached the unfit store: %s", k)
+		}
 	}
 }

@@ -88,9 +88,16 @@ func (e Entry) hash() (string, error) {
 }
 
 func (e Entry) check() error {
-	switch {
-	case !kinds[e.Kind]:
+	if !kinds[e.Kind] {
 		return fmt.Errorf("revlog: unknown kind %q", e.Kind)
+	}
+	return e.checkShape()
+}
+
+// checkShape is check without the kind: a sink may hold a kind that a newer replica wrote, which a
+// restore names as a problem and does not apply.
+func (e Entry) checkShape() error {
+	switch {
 	case e.Subject == "":
 		return errors.New("revlog: an entry needs a subject")
 	case len(e.Org) > MaxField || len(e.Subject) > MaxField || len(e.Detail) > MaxField || len(e.Actor) > MaxField:

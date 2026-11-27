@@ -305,9 +305,24 @@ func TestSinkLostRace(t *testing.T) {
 	mem2 := newMem()
 	mem2.objs[revlog.Key(1)] = []byte("{}")
 	mem2.hideKey = revlog.Key(1)
-	left, err := revlog.NewSink(mem2).Ship(a, "node-a")
-	if !errors.Is(err, revlog.ErrBroken) || len(left) != 1 {
-		t.Errorf("an unlisted key: %d unshipped, %v", len(left), err)
+	// A listing that lags is retried; one that stays behind is a break (security review S5).
+	sink2 := revlog.NewSink(mem2)
+	for round := 1; round <= revlog.MaxUnlistedRounds; round++ {
+		left, err := sink2.Ship(a, "node-a")
+		want := revlog.ErrListingLags
+		if round == revlog.MaxUnlistedRounds {
+			want = revlog.ErrBroken
+		}
+		if !errors.Is(err, want) || len(left) != 1 {
+			t.Fatalf("an unlisted key, round %d: %d unshipped, %v, want %v", round, len(left), err, want)
+		}
+	}
+	// A key that shows up in time is no break.
+	mem3 := newMem()
+	mem3.objs[revlog.Key(1)] = []byte("{}")
+	mem3.hideKey = revlog.Key(1)
+	if _, err := revlog.NewSink(mem3).Ship(a, "node-a"); !errors.Is(err, revlog.ErrListingLags) {
+		t.Fatalf("a lagging listing: %v", err)
 	}
 }
 
@@ -652,5 +667,42 @@ func TestSinkPlantedDuringExists(t *testing.T) {
 	}
 	if mem.count() != 1 {
 		t.Errorf("%d objects, want only the planted one", mem.count())
+	}
+}
+
+// TestSinkForgedEntryClaimsHash (security review B1): whoever can write the sink recomputes its
+// unkeyed hashes, so an entry inside that claims another entry's hash, here a root_offline marker's,
+// is a break: a restore that de-duplicates by that hash would otherwise skip the genuine marker.
+func TestSinkForgedEntryClaimsHash(t *testing.T) {
+	path, l := logWith(t, "ses_1")
+	marker, err := l.Append(revlog.Entry{Kind: revlog.RootOffline, Subject: "root"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, mutate := range map[string]func(e *revlog.SinkEntry){
+		"another entry under the marker's hash": func(e *revlog.SinkEntry) { e.Entry.Kind, e.Entry.Subject = revlog.SessionRevoked, "harmless" },
+		"a field too long":                      func(e *revlog.SinkEntry) { e.Entry.Detail = strings.Repeat("x", revlog.MaxField+1) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := newMem()
+			if _, err := revlog.NewSink(m).Ship(path, "node-a"); err != nil {
+				t.Fatal(err)
+			}
+			var e revlog.SinkEntry
+			if err := json.Unmarshal(m.objs[revlog.Key(2)], &e); err != nil || e.Entry.Hash != marker.Hash {
+				t.Fatalf("setup: %v", err)
+			}
+			mutate(&e)
+			e.Hash = ""
+			h := sha256.Sum256(mustJSON(t, e)) // the sink's own hash, recomputed
+			e.Hash = hex.EncodeToString(h[:])
+			m.objs[revlog.Key(2)] = append(mustJSON(t, e), '\n')
+			if _, err := revlog.NewSink(m).Read(); !errors.Is(err, revlog.ErrBroken) {
+				t.Errorf("read: %v, want a broken chain", err)
+			}
+			if _, err := revlog.NewSink(m).Ship(path, "node-b"); !errors.Is(err, revlog.ErrBroken) {
+				t.Errorf("ship: %v, want a broken chain", err)
+			}
+		})
 	}
 }

@@ -31,6 +31,12 @@ const (
 type Server struct {
 	// URL is the store's endpoint, http on 127.0.0.1.
 	URL string
+	// RejectConditional makes the store answer 400 to a request with If-None-Match, as one that does
+	// not know the header does.
+	RejectConditional bool
+	// EndlessListing makes every listing truncated with a new continuation token and no keys, as a
+	// store that never ends a listing does. RepeatListing makes it answer the same page and token.
+	EndlessListing, RepeatListing bool
 	// NoLock makes the bucket refuse a write that asks for Object Lock, as a bucket without it does.
 	NoLock bool
 	// NoConditional makes the store ignore If-None-Match, as one without conditional create does.
@@ -49,6 +55,8 @@ type Server struct {
 	objs map[string]*object
 	log  []string
 	seq  int
+
+	listings int
 }
 
 type object struct {
@@ -214,6 +222,10 @@ func (s *Server) put(w http.ResponseWriter, r *http.Request, key string) {
 		xmlError(w, http.StatusBadRequest, "InvalidRequest", "Bucket is missing Object Lock Configuration")
 		return
 	}
+	if s.RejectConditional && r.Header.Get("If-None-Match") != "" {
+		xmlError(w, http.StatusBadRequest, "InvalidArgument", "If-None-Match is not understood")
+		return
+	}
 	if _, taken := s.objs[key]; taken && r.Header.Get("If-None-Match") == "*" && !s.NoConditional {
 		xmlError(w, http.StatusPreconditionFailed, "PreconditionFailed", "the key exists")
 		return
@@ -237,6 +249,17 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	after := q.Get("continuation-token")
 	if after == "" {
 		after = q.Get("start-after")
+	}
+	if s.EndlessListing || s.RepeatListing {
+		s.listings++
+		if s.RepeatListing { // the same key and the same token at every page; the key is under prefix p/
+			_, _ = io.WriteString(w, "<ListBucketResult><IsTruncated>true</IsTruncated><NextContinuationToken>same</NextContinuationToken>"+
+				"<Contents><Key>p/00000000000000000001</Key><Size>1</Size></Contents></ListBucketResult>")
+			return
+		}
+		_, _ = io.WriteString(w, "<ListBucketResult><IsTruncated>true</IsTruncated><NextContinuationToken>t"+strconv.Itoa(s.listings)+
+			"</NextContinuationToken></ListBucketResult>")
+		return
 	}
 	var keys []string
 	for k := range s.objs {

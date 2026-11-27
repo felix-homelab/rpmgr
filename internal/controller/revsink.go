@@ -15,7 +15,7 @@ import (
 
 // openS3Sink returns the backend of an s3://<bucket>/<prefix> sink, with the credentials from the
 // file of the boot file. Neither the key file's content nor the secret key is in an error.
-func openS3Sink(rl config.RevocationLog, sink string) (*revlog.S3Backend, error) {
+func openS3Sink(ctx context.Context, rl config.RevocationLog, sink string) (*revlog.S3Backend, error) {
 	bucket, prefix, ok, err := config.RevocationLog{Sink: sink}.S3Sink()
 	if !ok || err != nil {
 		return nil, fmt.Errorf("revocation log sink %q is not an s3:// sink: %w", sink, err)
@@ -32,7 +32,9 @@ func openS3Sink(rl config.RevocationLog, sink string) (*revlog.S3Backend, error)
 	if err != nil {
 		return nil, fmt.Errorf("revocation_log.s3: %w", err)
 	}
-	return revlog.NewS3Backend(c, prefix), nil
+	b := revlog.NewS3Backend(ctx, c, prefix)
+	b.LockDays = rl.S3.LockDays
+	return b, nil
 }
 
 // OpenRevocationSink returns the backend of the revocation-log sink of the boot file; nil for a
@@ -44,7 +46,7 @@ func OpenRevocationSink(ctx context.Context, rl config.RevocationLog, log *slog.
 	if _, _, isS3, _ := rl.S3Sink(); !isS3 {
 		return nil, nil
 	}
-	b, err := openS3Sink(rl, rl.Sink)
+	b, err := openS3Sink(ctx, rl, rl.Sink)
 	if err != nil {
 		return nil, err
 	}

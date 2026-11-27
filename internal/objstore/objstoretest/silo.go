@@ -2,7 +2,7 @@
 
 //go:build objstoreit
 
-package objstore
+package objstoretest
 
 import (
 	"fmt"
@@ -15,27 +15,32 @@ import (
 	"testing"
 	"time"
 
+	"github.com/felix-homelab/rpmgr/internal/objstore"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 )
 
-// The access key of the store StartSilo runs. Test values, low entropy on purpose.
+// The access key of the store the tests start. Test values, low entropy on purpose.
 const (
-	SiloUser     = "itadmin"
-	SiloPassword = "it-password-1234" //nolint:gosec // G101: a test value
+	siloUser     = "itadmin"
+	siloPassword = "it-password-1234" //nolint:gosec // G101: a test value
 )
-
-// SiloCredentials are the access key of the store StartSilo runs.
-func SiloCredentials() Credentials {
-	return Credentials{AccessKeyID: SiloUser, SecretAccessKey: secret.New(SiloPassword)}
-}
 
 var siloCount atomic.Int32
 
-// StartSilo builds test/objstore, runs the store (SILO, the maintained fork of MinIO) on a
-// loopback port and returns its endpoint. The container is named by RPMGR_TEST_OBJSTORE_NAME when
-// that is set, with the process and a number for each store, so that parallel runs on one host do not meet. It is stopped with the test. It is
-// compiled with the build tag objstoreit only, for the tests that run against a real store.
-func StartSilo(t testing.TB) string {
+// With objstoreit, NewTarget starts SILO, the maintained fork of MinIO, in a container built from
+// test/objstore, with one bucket.
+func init() {
+	startReal = func(t testing.TB) Target {
+		endpoint := startSilo(t)
+		makeBucket(t, endpoint, Bucket)
+		return Target{Endpoint: endpoint, Region: "us-east-1", Bucket: Bucket, AccessKeyID: siloUser, SecretKey: siloPassword}
+	}
+}
+
+// startSilo runs the store on a loopback port and returns its endpoint. The container is named by
+// RPMGR_TEST_OBJSTORE_NAME when that is set, with the process and a number, so that parallel runs
+// on one host do not meet. It is stopped with the test.
+func startSilo(t testing.TB) string {
 	t.Helper()
 	dir, err := filepath.Abs("../../test/objstore") // the tests run in internal/<package>
 	if err != nil {
@@ -50,8 +55,7 @@ func StartSilo(t testing.TB) string {
 	if name := os.Getenv("RPMGR_TEST_OBJSTORE_NAME"); name != "" {
 		args = append(args, "--name", fmt.Sprintf("%s-%d-%d", name, os.Getpid(), siloCount.Add(1)))
 	}
-	args = append(args, "-e", "MINIO_ROOT_USER="+SiloUser, "-e", "MINIO_ROOT_PASSWORD="+SiloPassword,
-		image, "server", "/data")
+	args = append(args, "-e", "MINIO_ROOT_USER="+siloUser, "-e", "MINIO_ROOT_PASSWORD="+siloPassword, image, "server", "/data")
 	out, err = exec.Command("docker", args...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("docker run: %v\n%s", err, out)
@@ -76,17 +80,15 @@ func StartSilo(t testing.TB) string {
 	return ""
 }
 
-// MakeBucket creates a bucket on the store StartSilo runs, with Object Lock when lock is set. A
-// store that has just come up answers 503 for a while, so it asks again then.
-func MakeBucket(t testing.TB, endpoint, name string, lock bool) {
+// makeBucket creates a bucket. A store that has just come up answers 503 for a while, so it asks
+// again then.
+func makeBucket(t testing.TB, endpoint, name string) {
 	t.Helper()
+	creds := objstore.Credentials{AccessKeyID: siloUser, SecretAccessKey: secret.New(siloPassword)}
 	var status string
 	for i := 0; i < 60; i++ {
 		req, _ := http.NewRequest(http.MethodPut, endpoint+"/"+name, nil)
-		if lock {
-			req.Header.Set("X-Amz-Bucket-Object-Lock-Enabled", "true")
-		}
-		sign(req, emptyHash, SiloCredentials(), "us-east-1", time.Now())
+		objstore.SignBucketRequest(req, creds, "us-east-1")
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
