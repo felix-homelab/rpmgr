@@ -237,6 +237,8 @@ func TestCARotationRootRotation(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	disabledOne := e.fleetAgent(t, false, at.Add(-rotationDay), pki.RootsDigest([]*x509.Certificate{r1}), false)
+	logs.Reset()
 	run()
 	if got := e.ca.TrustBundle(); len(got) != 1 || !got[0].Equal(e.ca.Root()) {
 		t.Fatalf("the bundle after the drop holds %d certificates", len(got))
@@ -244,8 +246,14 @@ func TestCARotationRootRotation(t *testing.T) {
 	if revisions() != before+1 {
 		t.Fatal("the drop was no configuration change")
 	}
-	if n := e.db.Client().AuditEntry.Query().Where(auditentry.Action("ca.drop_root"), auditentry.ActorID("ca-rotation")).CountX(e.sys); n != 1 {
-		t.Fatalf("%d audit records of the drop", n)
+	drops := e.db.Client().AuditEntry.Query().Where(auditentry.Action("ca.drop_root"), auditentry.ActorID("ca-rotation")).AllX(e.sys)
+	if len(drops) != 1 {
+		t.Fatalf("%d audit records of the drop", len(drops))
+	}
+	// A disabled agent that lacks the new root does not hold the drop back, but the audit entry and the log name it.
+	if !strings.Contains(drops[0].Reason, "disabled agents lack the new root") || !strings.Contains(drops[0].Reason, disabledOne) ||
+		!strings.Contains(logs.String(), disabledOne) {
+		t.Fatalf("the automatic drop does not name the disabled agent %s: %q, log %s", disabledOne, drops[0].Reason, logs.String())
 	}
 	// The old root was offline, and the new one still is online after the drop wiped the old root's row.
 	if rs, err := controller.RotationStatusOf(e.sys, db, at); err != nil || !rs.IssuingRootOnline {
@@ -591,5 +599,66 @@ func TestRotationStatusWarnsOfAnExpiringIntermediate(t *testing.T) {
 	rs, err = controller.CARotationStatus(ctx, h.cfg, func() time.Time { return now.Add(340 * rotationDay) })
 	if err != nil || !rs.Waiting || !rs.IntermediateExpiring || rs.IntermediateExpires.IsZero() {
 		t.Fatalf("status of a rotation that stalled: %+v, %v", rs, err)
+	}
+}
+
+// TestDropRootForceCountsAnAgentThatNeverConnected: an enabled agent that enrolled before the switch and has no
+// session cannot have learned the new root, so it holds a --force drop back; one that enrolled after the
+// switch holds both roots and does not; and --force after the earliest date is a plain drop.
+func TestDropRootForceCountsAnAgentThatNeverConnected(t *testing.T) {
+	ctx := context.Background()
+	h, _ := initHost(t)
+	now := time.Now()
+	org := hostOrg(t, h)
+	// Enrolled three days before the switch; the connector rows are made by hand, without a session.
+	addUnseen := func(created time.Time) {
+		t.Helper()
+		db, err := store.OpenSQLite(ctx, h.db, store.SQLiteOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = db.Close() }()
+		id := ids.New("con")
+		if err := db.Client().Connector.Create().SetID(id).SetOrgID(org).SetName("con-" + strings.ToLower(id[len(id)-6:])).SetSpiffeID("spiffe://x/" + id).
+			SetPubkeySha256("00").SetEnabled(true).SetCreatedAt(created).Exec(storetest.SystemCtx(t)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := controller.NewRoot(ctx, h.cfg, "", noEnv, func() time.Time { return now }); err != nil {
+		t.Fatal(err)
+	}
+	at := func(d time.Duration) func() time.Time { return func() time.Time { return now.Add(d) } }
+	addUnseen(now.Add(2 * rotationDay)) // after the switch: holds both roots
+	if _, err := controller.DropRoot(ctx, h.cfg, true, false, at(3*rotationDay)); err != nil {
+		t.Fatalf("--force with only an agent that enrolled after the switch: %v", err)
+	}
+}
+
+// TestDropRootForceBlockedByAnAgentThatNeverConnected is the other half: enrolled before the switch.
+func TestDropRootForceBlockedByAnAgentThatNeverConnected(t *testing.T) {
+	ctx := context.Background()
+	h, _ := initHost(t)
+	now := time.Now()
+	org := hostOrg(t, h)
+	if _, err := controller.NewRoot(ctx, h.cfg, "", noEnv, func() time.Time { return now }); err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.OpenSQLite(ctx, h.db, store.SQLiteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := ids.New("con")
+	if err := db.Client().Connector.Create().SetID(id).SetOrgID(org).SetName("con-" + strings.ToLower(id[len(id)-6:])).SetSpiffeID("spiffe://x/" + id).
+		SetPubkeySha256("00").SetEnabled(true).SetCreatedAt(now.Add(-3 * rotationDay)).Exec(storetest.SystemCtx(t)); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+	var strag *castore.StragglersError
+	if _, err := controller.DropRoot(ctx, h.cfg, true, false, func() time.Time { return now.Add(rotationDay) }); !errors.As(err, &strag) || strag.N != 1 {
+		t.Fatalf("--force with an agent that never connected = %v, want a StragglersError for 1", err)
+	}
+	// Past the earliest date --force is a plain drop, which never counts an agent that was not seen since the switch.
+	if _, err := controller.DropRoot(ctx, h.cfg, true, false, func() time.Time { return now.Add(38 * rotationDay) }); err != nil {
+		t.Fatalf("--force after the earliest date: %v", err)
 	}
 }

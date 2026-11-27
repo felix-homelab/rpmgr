@@ -102,6 +102,13 @@ func lackingNewRoot(ctx context.Context, tx *ent.Tx, since time.Time) (enabled, 
 			lacking = append(lacking, s.ID)
 		}
 	}
+	// A window that reaches back past the switch is a forced drop's: an agent that enrolled before the
+	// switch in it and has not connected since has no session, but holds the old root alone.
+	unseen, err := unseenBeforeSwitch(ctx, tx, since)
+	if err != nil {
+		return nil, nil, err
+	}
+	lacking = append(lacking, unseen...)
 	if len(lacking) == 0 {
 		return nil, nil, nil
 	}
@@ -530,4 +537,54 @@ func AbortNewRoot(ctx context.Context, path string, now func() time.Time) ([]str
 		return err
 	})
 	return done, err
+}
+
+// unseenBeforeSwitch lists the agents, not decommissioned, that enrolled in the window from `since` to the
+// moment issuing moved and have no session at all: they cannot have learned the new root. Empty when the
+// window does not reach back past the switch, as for a plain drop.
+func unseenBeforeSwitch(ctx context.Context, tx *ent.Tx, since time.Time) ([]string, error) {
+	old, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusOverlap)).Only(ctx)
+	if ent.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if old.RotatedAt == nil || !since.Before(*old.RotatedAt) {
+		return nil, nil
+	}
+	seen, err := tx.AgentSession.Query().IDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	gws, err := tx.Gateway.Query().Where(gateway.DecommissionedAtIsNil(), gateway.CreatedAtGTE(since), gateway.CreatedAtLT(*old.RotatedAt),
+		gateway.IDNotIn(seen...)).IDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cons, err := tx.Connector.Query().Where(connector.DecommissionedAtIsNil(), connector.CreatedAtGTE(since), connector.CreatedAtLT(*old.RotatedAt),
+		connector.IDNotIn(seen...)).IDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return append(gws, cons...), nil
+}
+
+// disabledDetail names the disabled agents that lack the new root in an audit reason, up to maxAuditedAgents.
+func disabledDetail(ids []string) string {
+	shown := ids
+	if len(shown) > maxAuditedAgents {
+		shown = shown[:maxAuditedAgents]
+	}
+	d := fmt.Sprintf("%d disabled agents lack the new root and have to re-enroll: %s", len(ids), strings.Join(shown, ", "))
+	if len(ids) > len(shown) {
+		d += fmt.Sprintf(" and %d more", len(ids)-len(shown))
+	}
+	return d
+}
+
+// rotationRuns reports whether a root rotation is in progress: a next root waits or an old root is in the overlap.
+func rotationRuns(ctx context.Context, db *store.DB) bool {
+	n, err := db.ReadClient().CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusIn(cakey.StatusNext, cakey.StatusOverlap)).Count(ctx)
+	return err != nil || n > 0 // when it cannot tell, look
 }

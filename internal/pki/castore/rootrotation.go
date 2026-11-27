@@ -601,7 +601,8 @@ func DropAfter(r *ent.CAKey, overlap time.Duration) time.Time {
 // through the old root holds the drop back too. It is the start of the overlap the old root has.
 func StragglersSince(r1 *ent.CAKey, now time.Time, o DropOptions) time.Time {
 	since := *r1.RotatedAt
-	if o.Force {
+	// --force past the earliest date is a plain drop: only before it does the window reach back further.
+	if o.Force && now.Before(DropAfter(r1, o.Overlap)) {
 		window := o.Overlap
 		if r1.DropAfter != nil && r1.DropAfter.Sub(*r1.RotatedAt) > window {
 			window = r1.DropAfter.Sub(*r1.RotatedAt)
