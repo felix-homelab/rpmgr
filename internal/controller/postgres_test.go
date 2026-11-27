@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -14,6 +16,10 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
+
+	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -428,16 +434,41 @@ func TestPostgres_AdoptStateReplacesTheHost(t *testing.T) {
 		t.Errorf("host B after adopt-state: %v", err)
 	}
 
-	// Host A is back, its files intact.
+	// Host A is back, its files intact. It is refused before it writes anything: the epoch, the
+	// migrations and the audit log are as B left them.
+	db, err := storetest.OpenPostgres(t, a.cfg.Database.DSN, store.PostgresOptions{PasswordFile: a.cfg.Database.PasswordFile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	snapshot := func() [3]int64 {
+		var s [3]int64
+		if err := db.Writer.QueryRow(`SELECT coalesce(fence_epoch, 0), (SELECT count(*) FROM `+store.RevisionTable+`), (SELECT count(*) FROM audit_log) FROM instance`).Scan(&s[0], &s[1], &s[2]); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	before := snapshot()
 	if err := runOnce(a.replica(t)); !errors.Is(err, controller.ErrHostReplaced) {
 		t.Errorf("host A after B adopted the state: %v, want ErrHostReplaced", err)
+	}
+	if after := snapshot(); after != before {
+		t.Errorf("the refused host wrote: epoch, migrations, audit entries %v before, %v after", before, after)
 	}
 	idNow, _ := os.ReadFile(filepath.Join(a.cfg.State(), "controller-node.id"))
 	if string(idNow) != string(idA) {
 		t.Error("the refused start changed the node ID of host A")
 	}
-	// A is brought back on purpose: adopt-state there makes it the controller host again.
+	// A is brought back on purpose: adopt-state there makes it the controller host again, but not
+	// with the log it kept: that lacks what B recorded. The operator replaces it or moves it aside.
 	controller.SetStateDir(t, a.cfg.State())
+	logA := filepath.Join(a.cfg.State(), "revocations.log")
+	if _, err := controller.AdoptState(ctx, a.h.cfg, true); !errors.Is(err, controller.ErrStaleLog) || !strings.Contains(err.Error(), logA) {
+		t.Fatalf("adopt-state on A with its old log: %v, want ErrStaleLog naming %s", err, logA)
+	}
+	if err := os.Rename(logA, logA+".stale"); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := controller.AdoptState(ctx, a.h.cfg, true); err != nil {
 		t.Fatalf("adopt-state on A: %v", err)
 	}
@@ -519,5 +550,55 @@ func TestPostgres_MigrateDBWaitsBeforeItWrites(t *testing.T) {
 	}
 	if d := time.Unix(0, at).Sub(time.Unix(0, lock)); d < settle-50*time.Millisecond {
 		t.Errorf("the first write came %s after the lock was taken, before the settle time of %s", d, settle)
+	}
+}
+
+// TestPostgres_ClaimsTheEpochAndServesReads: a controller claims the fence epoch of the database
+// when it starts, and everything that reads through a read-only transaction (the event stream, the
+// snapshot compiler, the audit sinks) works after the claim, which a row lock in every transaction
+// would break.
+func TestPostgres_ClaimsTheEpochAndServesReads(t *testing.T) {
+	var db *store.DB
+	var initEpoch int64
+	r := startRunWith(t, runSetup{pg: true, prepare: func(r *running) { // after init, before Run
+		var err error
+		if db, err = storetest.OpenPostgres(t, r.cfg.Database.DSN, store.PostgresOptions{PasswordFile: r.cfg.Database.PasswordFile}); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Writer.QueryRow("SELECT coalesce(fence_epoch, 0) FROM instance").Scan(&initEpoch); err != nil {
+			t.Fatal(err)
+		}
+	}})
+	defer func() { _ = db.Close() }()
+	var epoch int64
+	if err := db.Writer.QueryRow("SELECT coalesce(fence_epoch, 0) FROM instance").Scan(&epoch); err != nil || epoch <= initEpoch {
+		t.Fatalf("the epoch after Run started: %d %v, init left %d: Run did not claim it", epoch, err, initEpoch)
+	}
+	// An Instance Admin's event stream starts with a read-only transaction.
+	_, tok, _ := strings.Cut(r.firstUserLink, "/setup#")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if _, err := rpmgrv1connect.NewAuthServiceClient(r.client, r.url).CompletePasswordReset(ctx, connect.NewRequest(
+		&rpmgrv1.CompletePasswordResetRequest{Token: tok, NewPassword: "correct horse battery staple", Email: "ada@example.com", DisplayName: "Ada"})); err != nil {
+		t.Fatal(err)
+	}
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar, Transport: r.client.Transport}
+	if _, err := rpmgrv1connect.NewAuthServiceClient(client, r.url).Login(ctx, connect.NewRequest(&rpmgrv1.LoginRequest{Email: "ada@example.com", Password: "correct horse battery staple"})); err != nil {
+		t.Fatal(err)
+	}
+	var orgID string
+	if err := db.Writer.QueryRow("SELECT id FROM orgs ORDER BY created_at LIMIT 1").Scan(&orgID); err != nil {
+		t.Fatal(err)
+	}
+	stream, err := rpmgrv1connect.NewStatusServiceClient(client, r.url).WatchEvents(ctx, connect.NewRequest(&rpmgrv1.WatchEventsRequest{OrgId: orgID}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for stream.Receive() {
+		break
+	}
+	if err := stream.Err(); err != nil && connect.CodeOf(err) != connect.CodeCanceled && connect.CodeOf(err) != connect.CodeDeadlineExceeded {
+		t.Errorf("the event stream after the claim: %v", err)
 	}
 }
