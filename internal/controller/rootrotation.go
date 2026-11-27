@@ -311,14 +311,7 @@ func dropDetail(plan *castore.DropPlan) string {
 		parts = append(parts, "before the earliest date "+at.UTC().Format(time.RFC3339)+" (--force)")
 	}
 	if st := plan.Stranded(); len(st) > 0 {
-		shown := st
-		if len(shown) > maxAuditedAgents {
-			shown = shown[:maxAuditedAgents]
-		}
-		d := fmt.Sprintf("%d enabled agents stranded without the new root (--strand-stragglers): %s", len(st), strings.Join(shown, ", "))
-		if len(st) > len(shown) {
-			d += fmt.Sprintf(" and %d more", len(st)-len(shown))
-		}
+		d := fmt.Sprintf("%d enabled agents stranded without the new root (--strand-stragglers): %s", len(st), auditedIDs(st))
 		parts = append(parts, d)
 	}
 	if len(parts) == 0 {
@@ -570,17 +563,17 @@ func unseenBeforeSwitch(ctx context.Context, tx *ent.Tx, since time.Time) ([]str
 	return append(gws, cons...), nil
 }
 
-// disabledDetail names the disabled agents that lack the new root in an audit reason, up to maxAuditedAgents.
+// auditedIDs lists agents in an audit reason, up to maxAuditedAgents, and counts the rest.
+func auditedIDs(ids []string) string {
+	if len(ids) <= maxAuditedAgents {
+		return strings.Join(ids, ", ")
+	}
+	return fmt.Sprintf("%s and %d more", strings.Join(ids[:maxAuditedAgents], ", "), len(ids)-maxAuditedAgents)
+}
+
+// disabledDetail names the disabled agents that lack the new root in an audit reason.
 func disabledDetail(ids []string) string {
-	shown := ids
-	if len(shown) > maxAuditedAgents {
-		shown = shown[:maxAuditedAgents]
-	}
-	d := fmt.Sprintf("%d disabled agents lack the new root and have to re-enroll: %s", len(ids), strings.Join(shown, ", "))
-	if len(ids) > len(shown) {
-		d += fmt.Sprintf(" and %d more", len(ids)-len(shown))
-	}
-	return d
+	return fmt.Sprintf("%d disabled agents lack the new root and have to re-enroll: %s", len(ids), auditedIDs(ids))
 }
 
 // rotationRuns reports whether a root rotation is in progress: a next root waits or an old root is in the overlap.
