@@ -224,11 +224,77 @@ needs no KEK. It refuses a certificate that is for another key, does not chain t
 limited to the trust domain or has the wrong path length, and changes nothing then. The commands are
 recorded in the instance's audit log as `local-cli`.
 
-## The root
+## Rotate the root
 
-The root cannot be rotated yet: rotating it with an overlap is planned for Phase 2
-([13](../../13-roadmap.md#phase-2--production)). If the root's key is compromised, every certificate
-is untrusted: set up a new controller, which creates a new root and pin, and enroll every agent
-again with the new pin ([Root compromise](../../10-operations.md#root-compromise)). Keep the
-controller's database and its KEK, which protects the CA's keys, apart and backed up
-([Backup and restore](backup-and-restore.md)).
+The root lasts ten years. When you want a new one earlier, for instance to move to an offline root
+or to retire an old key, you rotate it **without enrolling anything again**: the old root vouches
+for the new one, both roots are trusted for a while, and agents that are online take the new root
+from their snapshots ([Root rotation](../../04-security.md#root-rotation)). A root whose key
+leaked is not rotated this way, see below.
+
+```sh
+sudo rpmgr ca new-root          # on the controller host
+```
+
+With the root online this makes the new root and its intermediate, lets the old root sign both, and
+moves issuing to the new root at once. It prints the **new pin**, which you use once the old root is
+dropped; until then the install commands and `rpmgr ca status` keep the old pin, so that an agent
+you enroll meanwhile holds both roots. Running controllers load the change within a minute.
+Certificates that were issued before keep working, agents that know only the old
+root keep verifying the new certificates, and gateways and the controller accept both roots with
+no restart.
+
+With the root **offline** the command needs `--csr-out` and stops after it wrote two requests; the
+old root signs them on its host, and you import both:
+
+```sh
+sudo rpmgr ca new-root --csr-out new-root.csr                  # controller host: new-root.csr and new-root.csr.intermediate
+rpmgr ca sign-intermediate --kind cross-root --root-file rpmgr-root.age --csr new-root.csr --out x.crt          # offline host
+rpmgr ca sign-intermediate --root-file rpmgr-root.age --csr new-root.csr.intermediate --out y.crt               # offline host
+sudo rpmgr ca import-intermediate --in x.crt                    # controller host, then the same for y.crt
+```
+
+`new-root` prints the key hashes to compare with what `sign-intermediate` shows. Nothing changes
+until both certificates are in; the controller then moves issuing to the new root within the hour,
+and `rpmgr ca status` says what still waits. The old root's key never goes into the database.
+While a rotation runs, `rpmgr ca rotate-intermediate` is refused, so do not let one that waits
+stall: `rpmgr ca status` and the controller's log warn when the active intermediate expires
+within 30 days. `rpmgr ca new-root --abort` gives up a rotation that has not moved issuing: it
+removes the new root and its intermediate, and the old root issues as before.
+
+**The new root is online.** After a rotation of an offline root the new root's key is in the
+database, sealed under the KEK, and `rpmgr ca status` warns "issuing root online". Once issuing has
+moved, take it offline again with `rpmgr ca offline-root`, as in [the offline
+root](#take-the-root-offline), and rotate the KEK.
+
+**Watch the overlap.** `rpmgr ca status` shows both roots, the date from which the old root can be
+dropped (the longest agent certificate lifetime plus the grace period for expired certificates,
+37 days with the defaults, [Settings](settings.md)), and the **agents that do not hold the new
+root**: those that have not connected since, or that are too old to learn it. Update, re-enroll or
+decommission them.
+
+**Drop the old root.** The controller does it by itself after the overlap, but never while an
+enabled agent that connected since still lacks the new root: it logs "root rotation stalled" then.
+You can do it by hand:
+
+```sh
+sudo rpmgr ca drop-root
+```
+
+Before the date it refuses and names the date; `--force` is accepted before it only while no
+enabled agent seen within the overlap lacks the new root, one that was offline across the switch
+included. After the overlap, `--strand-stragglers` drops the old root although some agents lack the
+new one, after asking (`--yes` skips the question): they have to be enrolled again, and the drop
+lists them. Disabled agents that lack the new root are named in `ca status` and in the drop output.
+After the drop the bundle is the new root
+alone, and agents that were online learn it from their next snapshot. An agent drops a root only
+on a snapshot that is newer than the one it runs and that it can verify without that root, so a
+replayed old snapshot changes nothing.
+
+## The root, if it leaked
+
+If the root's key is compromised, every certificate is untrusted: set up a new controller, which
+creates a new root and pin, and enroll every agent again with the new pin
+([Root compromise](../../10-operations.md#root-compromise)). Keep the controller's database and its
+KEK, which protects the CA's keys, apart and backed up ([Backup and
+restore](backup-and-restore.md)).

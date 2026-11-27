@@ -495,3 +495,42 @@ func TestRuntime_TrustRootsInert(t *testing.T) {
 		t.Errorf("the roots file was written: %v", err)
 	}
 }
+
+// TestRuntime_InvalidSnapshotChangesNoRoots: the roots of a snapshot are taken only once the snapshot is
+// valid; one that is rejected for its content leaves the agent's roots as they were.
+func TestRuntime_InvalidSnapshotChangesNoRoots(t *testing.T) {
+	e := newRTEnv(t)
+	f := &fakeApplier{}
+	out := make(chan *agentv1.AgentMessage, 16)
+	calls := 0
+	rt := agent.NewRuntime(agent.RuntimeOptions{Identity: e.id, StateDir: e.stateDir, Applier: f,
+		Send:         func(m *agentv1.AgentMessage) bool { out <- m; return true },
+		OnTrustRoots: func([][]byte, func([]*x509.Certificate) bool) bool { calls++; return false }})
+	rt.Welcome(&agentv1.Welcome{DbEpoch: epoch1})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { rt.Run(ctx); close(done) }()
+	t.Cleanup(func() { cancel(); <-done })
+
+	foreign, err := pki.NewRoot("rpmgr-7f3k2q6m", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sign := func(seq uint64, rs ...*agentv1.Resource) *agentv1.Signed {
+		s, err := snapsig.Sign(e.config, &agentv1.Snapshot{Revision: &agentv1.Revision{DbEpoch: epoch1, Seq: seq}, Agent: e.id.SPIFFE(),
+			ControllerEndpoints: []string{"https://ctl.example"}, Resources: rs, SigningKeyId: snapsig.KeyID(e.config.Cert),
+			TrustRoots: [][]byte{foreign.Cert.Raw}}) // a root of another trust domain, which would be refused anyway
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	offer(rt, sign(1, res(t, "rt_1", 1), res(t, "rt_1", 1))) // a duplicate ID
+	if answer(t, out).GetRejected() == nil || calls != 0 {
+		t.Fatalf("an invalid snapshot: %d calls to OnTrustRoots, want it rejected with none", calls)
+	}
+	offer(rt, sign(2, res(t, "rt_1", 1)))
+	if answer(t, out).GetApplied() == nil || calls != 1 {
+		t.Fatalf("a valid snapshot: %d calls to OnTrustRoots, want 1", calls)
+	}
+}

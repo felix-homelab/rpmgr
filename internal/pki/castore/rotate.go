@@ -43,11 +43,49 @@ type Plan struct {
 	lock string
 	// csr is the request (PEM) of a PlanSigningRequest: the new one, or the one that waits.
 	csr []byte
+	// now is when the plan was made, which a step that starts an overlap records.
+	now time.Time
+	// config is set when the plan changes the trust bundle or the root that issues: its caller
+	// writes it in a configuration transaction, so that the snapshots agents get carry a new
+	// revision and the roots in them are ordered by it.
+	config bool
+	// requests are the requests an offline old root has to sign, of PlanNewRoot.
+	requests *RootRequests
+	// newRoot is the new root of a PlanNewRoot that makes one.
+	newRoot *x509.Certificate
+	// overlap, when set, is how long the old root stays after a step that starts an overlap: the date is
+	// recorded on the old root, so that a later change of the settings cannot shorten it.
+	overlap time.Duration
+	// from and to are the hashes of the public keys of the root that stopped issuing and of the one that
+	// issues now, once Apply moved issuing.
+	from, to string
 }
+
+// WithOverlap sets the overlap a plan that moves issuing to a new root records: the earliest drop
+// date of the old root is the moment issuing moved plus d.
+func (p *Plan) WithOverlap(d time.Duration) *Plan {
+	p.overlap = d
+	return p
+}
+
+// NewRoot returns the new root that a plan of PlanNewRoot makes; nil for a plan that makes none.
+func (p *Plan) NewRoot() *x509.Certificate { return p.newRoot }
+
+// RootSwitch returns, after Apply, the SHA-256 hashes of the public keys of the root that stopped
+// issuing and of the one that issues now; both are empty for a plan that moved no issuing. The caller
+// logs them as the `root_switched` marker of the revocation log.
+func (p *Plan) RootSwitch() (from, to string) { return p.from, p.to }
+
+// Config reports whether the plan changes the trust bundle or the root that issues, so that its
+// caller must write it in a configuration transaction (store.ConfigTx) and not a plain write.
+func (p *Plan) Config() bool { return p.config }
 
 type planStep struct {
 	done            string
 	retire, promote string // IDs of keys: retire an active one, activate a next one
+	retireNext      string // ID of a next key to retire
+	remove          string // ID of a next key to delete (the abort of a root rotation)
+	overlap         string // ID of the active root that enters the overlap of a root rotation
 	create          *newKey
 }
 
@@ -57,6 +95,9 @@ type newKey struct {
 	status cakey.Status
 	kp     pki.KeyPair
 	sealed []byte
+	// cross is the certificate an old root signed for this key (a root rotation's X or Y); csr is the
+	// request an offline old root signs it from.
+	cross, csr []byte
 	// request is set for a next intermediate that waits for the offline root's signature: it has no
 	// certificate, and the key and the validity it is expected to get are in pub, csr and the times.
 	request *signingRequest
@@ -76,13 +117,16 @@ func keysSeen(rows []*ent.CAKey) string {
 		if keyOffline(r) {
 			b.WriteString(":offline")
 		}
+		if len(r.CrossCertificate) > 0 {
+			b.WriteString(":cross")
+		}
 		b.WriteString(";")
 	}
 	return b.String()
 }
 
 func readActive(ctx context.Context, c *ent.CAKeyClient) ([]*ent.CAKey, error) {
-	return c.Query().Where(cakey.StatusIn(cakey.StatusActive, cakey.StatusNext)).Order(ent.Asc(cakey.FieldID)).All(ctx)
+	return c.Query().Where(cakey.StatusIn(cakey.StatusActive, cakey.StatusNext, cakey.StatusOverlap)).Order(ent.Asc(cakey.FieldID)).All(ctx)
 }
 
 // sealNew makes a key record for kp, sealing its private key with s. It runs before the
@@ -129,14 +173,25 @@ func plan(ctx context.Context, c *ent.CAKeyClient, s *secret.Sealer, now time.Ti
 	if err != nil {
 		return nil, err
 	}
-	p := &Plan{seen: keysSeen(rows)}
+	p := &Plan{seen: keysSeen(rows), now: now}
 	active, next := map[cakey.Kind]*ent.CAKey{}, map[cakey.Kind]*ent.CAKey{}
+	overlap := false // a root in the overlap of a root rotation
 	for _, r := range rows {
-		if r.Status == cakey.StatusActive {
+		switch r.Status {
+		case cakey.StatusActive:
 			active[r.Kind] = r
-		} else {
+		case cakey.StatusOverlap:
+			overlap = true
+		default:
 			next[r.Kind] = r
 		}
+	}
+	// While a root rotation runs, from the new root's request until the old root is dropped, the
+	// intermediate is not rotated: the next intermediate is the rotation's, and an intermediate made
+	// in the overlap would need the old root's signature as well.
+	rotating := next[cakey.KindRoot] != nil || overlap
+	if rotating && forceIntermediate {
+		return nil, ErrRotationInProgress
 	}
 	if active[cakey.KindRoot] == nil || active[cakey.KindIntermediate] == nil {
 		return nil, fmt.Errorf("pki: the database holds no active root or intermediate")
@@ -149,7 +204,17 @@ func plan(ctx context.Context, c *ent.CAKeyClient, s *secret.Sealer, now time.Ti
 	rootOffline := keyOffline(active[cakey.KindRoot])
 	halfLife := !now.Before(old.NotBefore.Add(old.NotAfter.Sub(old.NotBefore) / 2))
 	var inter pki.KeyPair
+	if nr := next[cakey.KindRoot]; nr != nil && next[cakey.KindIntermediate] != nil && len(nr.CrossCertificate) > 0 &&
+		len(next[cakey.KindIntermediate].CrossCertificate) > 0 {
+		// The old root signed both: issuing moves to the new root.
+		if err := planSwitch(ctx, s, p, active, next, now); err != nil {
+			return nil, err
+		}
+		return p, nil
+	}
 	switch {
+	case rotating:
+		inter, err = openKey(ctx, s, old)
 	case forceIntermediate && rootOffline:
 		return nil, ErrRootOffline
 	case !forceIntermediate && !halfLife:
@@ -235,12 +300,18 @@ func plan(ctx context.Context, c *ent.CAKeyClient, s *secret.Sealer, now time.Ti
 // while it is still active, so of two rotations at once one fails with ErrRotated instead of
 // leaving two active intermediates.
 func (p *Plan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
-	if p.lock != "" {
-		// PostgreSQL runs at READ COMMITTED: two requests could both find none waiting. Taking the root's
-		// row lock first makes them take turns, and the second then sees the first's request.
-		if err := lockRoot(ctx, tx, p.lock); err != nil {
+	// PostgreSQL runs at READ COMMITTED: two plans could both find the keys they saw. Taking the root's
+	// row lock first, whatever the plan, makes them take turns, and the second then sees the first's keys.
+	lock := p.lock
+	if lock == "" {
+		id, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusActive)).OnlyID(ctx)
+		if err != nil {
 			return nil, err
 		}
+		lock = id
+	}
+	if err := lockRoot(ctx, tx, lock); err != nil {
+		return nil, err
 	}
 	rows, err := readActive(ctx, tx.CAKey)
 	if err != nil {
@@ -251,6 +322,44 @@ func (p *Plan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
 	}
 	var done []string
 	for _, st := range p.steps {
+		if st.overlap != "" {
+			u := tx.CAKey.Update().Where(cakey.ID(st.overlap), cakey.StatusEQ(cakey.StatusActive)).
+				SetStatus(cakey.StatusOverlap).SetRotatedAt(p.now)
+			if p.overlap > 0 {
+				u.SetDropAfter(p.now.Add(p.overlap))
+			}
+			for _, r := range rows {
+				if r.ID == st.overlap {
+					u.SetWasOffline(keyOffline(r))
+				}
+			}
+			n, err := u.Save(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if n != 1 {
+				return nil, ErrRotated
+			}
+			p.from = hashOfRow(rows, st.overlap)
+		}
+		if st.retireNext != "" {
+			n, err := tx.CAKey.Update().Where(cakey.ID(st.retireNext), cakey.StatusEQ(cakey.StatusNext)).SetStatus(cakey.StatusRetired).Save(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if n != 1 {
+				return nil, ErrRotated
+			}
+		}
+		if st.remove != "" {
+			n, err := tx.CAKey.Delete().Where(cakey.ID(st.remove), cakey.StatusEQ(cakey.StatusNext)).Exec(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if n != 1 {
+				return nil, ErrRotated
+			}
+		}
 		if st.retire != "" {
 			n, err := tx.CAKey.Update().Where(cakey.ID(st.retire), cakey.StatusEQ(cakey.StatusActive)).SetStatus(cakey.StatusRetired).Save(ctx)
 			if err != nil {
@@ -264,8 +373,14 @@ func (p *Plan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
 			if err := tx.CAKey.UpdateOneID(st.promote).SetStatus(cakey.StatusActive).Exec(ctx); err != nil {
 				return nil, err
 			}
+			if p.from != "" && p.to == "" {
+				p.to = hashOfRow(rows, st.promote)
+			}
 		}
 		if k := st.create; k != nil {
+			if k.kind == cakey.KindRoot && k.status == cakey.StatusActive {
+				p.to = pki.PublicKeyHash(k.kp.Cert.RawSubjectPublicKeyInfo)
+			}
 			if err := store.RecordSealed(ctx, tx, keyContext(k.id), k.sealed); err != nil {
 				return nil, err
 			}
@@ -278,11 +393,29 @@ func (p *Plan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
 				c.SetPublicKey(k.kp.Cert.RawSubjectPublicKeyInfo).SetCertificate(k.kp.Cert.Raw).
 					SetNotBefore(k.kp.Cert.NotBefore).SetNotAfter(k.kp.Cert.NotAfter)
 			}
+			if len(k.cross) > 0 {
+				c.SetCrossCertificate(k.cross)
+			}
+			if k.request == nil && len(k.csr) > 0 {
+				c.SetCsr(k.csr)
+			}
 			if err := c.Exec(ctx); err != nil {
 				return nil, err
 			}
 		}
-		done = append(done, st.done)
+		if st.done != "" {
+			done = append(done, st.done)
+		}
 	}
 	return done, nil
+}
+
+// hashOfRow is the SHA-256 hash of the public key of the row id among rows, "" if it is not there.
+func hashOfRow(rows []*ent.CAKey, id string) string {
+	for _, r := range rows {
+		if r.ID == id {
+			return pki.PublicKeyHash(r.PublicKey)
+		}
+	}
+	return ""
 }

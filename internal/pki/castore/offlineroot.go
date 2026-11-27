@@ -199,10 +199,12 @@ func PlanSigningRequest(ctx context.Context, c *ent.CAKeyClient, s *secret.Seale
 	if err != nil {
 		return nil, err
 	}
-	p := &Plan{seen: keysSeen(rows)}
+	p := &Plan{seen: keysSeen(rows), now: now}
 	var root *ent.CAKey
 	for _, r := range rows {
 		switch {
+		case r.Kind == cakey.KindRoot && r.Status != cakey.StatusActive:
+			return nil, ErrRotationInProgress
 		case r.Kind == cakey.KindRoot && r.Status == cakey.StatusActive:
 			root = r
 		case r.Kind == cakey.KindIntermediate && r.Status == cakey.StatusNext && len(r.Certificate) == 0:
@@ -287,6 +289,13 @@ func pendingIntermediate(ctx context.Context, tx *ent.Tx) (*ent.CAKey, error) {
 // tx. It needs no KEK. The certificate must pass pki.VerifyIntermediate against the root of the
 // database, and otherwise nothing changes. The key stays next until the schedule activates it.
 func ImportIntermediate(ctx context.Context, tx *ent.Tx, der []byte, now time.Time) error {
+	if c, err := x509.ParseCertificate(der); err == nil {
+		// The certificates of a root rotation, X and Y, are for the key of the new root or of the new
+		// intermediate, which already hold a certificate of the new root.
+		if handled, err := importCrossCertificate(ctx, tx, c, now); handled || err != nil {
+			return err
+		}
+	}
 	p, err := pendingIntermediate(ctx, tx)
 	if err != nil {
 		return err

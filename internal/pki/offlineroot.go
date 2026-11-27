@@ -217,6 +217,19 @@ func SignIntermediate(root KeyPair, csrPEM []byte, now time.Time) (*x509.Certifi
 	if err != nil {
 		return nil, err
 	}
+	pub, err := parseRequest(csrPEM)
+	if err != nil {
+		return nil, err
+	}
+	if pub.Equal(&root.Key.PublicKey) {
+		return nil, fmt.Errorf("%w: the key is the root's", ErrBadCSR)
+	}
+	return create(intermediateTemplate(td, root.Cert, now), root.Cert, pub, root.Key)
+}
+
+// parseRequest checks a certificate request (PEM): its signature, which proves possession of the
+// key, and that the key is ECDSA P-256; it returns the key.
+func parseRequest(csrPEM []byte) (*ecdsa.PublicKey, error) {
 	b, _ := pem.Decode(csrPEM)
 	if b == nil || b.Type != "CERTIFICATE REQUEST" {
 		return nil, fmt.Errorf("%w: not a PEM certificate request", ErrBadCSR)
@@ -232,10 +245,18 @@ func SignIntermediate(root KeyPair, csrPEM []byte, now time.Time) (*x509.Certifi
 	if !ok || pub.Curve != elliptic.P256() {
 		return nil, fmt.Errorf("%w: the key is not ECDSA P-256", ErrBadCSR)
 	}
-	if pub.Equal(&root.Key.PublicKey) {
-		return nil, fmt.Errorf("%w: the key is the root's", ErrBadCSR)
+	return pub, nil
+}
+
+// RequestFor returns a certificate request (PEM) for key, which signs it as its proof of
+// possession; the signing root ignores the request's subject.
+func RequestFor(key *ecdsa.PrivateKey) ([]byte, error) {
+	der, err := x509.CreateCertificateRequest(rand.Reader,
+		&x509.CertificateRequest{Subject: pkix.Name{CommonName: "rpmgr CA"}}, key)
+	if err != nil {
+		return nil, err
 	}
-	return create(intermediateTemplate(td, root.Cert, now), root.Cert, pub, root.Key)
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der}), nil
 }
 
 // VerifyIntermediate checks a signed intermediate before it is imported, and names the first check

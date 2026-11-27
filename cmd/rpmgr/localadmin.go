@@ -163,6 +163,13 @@ func caCommand() *cli.Command {
 			if msg := signingAlertText(st); msg != "" {
 				fmt.Fprintf(env.Stdout, "\n%s\n", msg)
 			}
+			rot, err := controller.CARotationStatus(ctx, path, time.Now)
+			if err != nil {
+				return err
+			}
+			if msg := rotationText(rot); msg != "" {
+				fmt.Fprintf(env.Stdout, "\n%s\n", msg)
+			}
 			fmt.Fprintln(env.Stdout)
 			return writeCAKeys(env, st.GetKeys())
 		}),
@@ -187,7 +194,7 @@ func caCommand() *cli.Command {
 				k.GetSubject(), k.GetNotAfter().AsTime().UTC().Format(time.RFC3339))
 			return err
 		}),
-		offlineRootCommand(), signIntermediateCommand(), importIntermediateCommand())
+		offlineRootCommand(), signIntermediateCommand(), importIntermediateCommand(), newRootCommand(), dropRootCommand())
 }
 
 // signingAlertText is what `ca status` says of the need for the offline root's signature.
@@ -218,7 +225,7 @@ var caKinds = map[rpmgrv1.CAKeyKind]string{rpmgrv1.CAKeyKind_CA_KEY_KIND_ROOT: "
 	rpmgrv1.CAKeyKind_CA_KEY_KIND_CONFIG_SIGNING: "config-signing", rpmgrv1.CAKeyKind_CA_KEY_KIND_AUDIT_CHECKPOINT: "audit-checkpoint"}
 
 var caStates = map[rpmgrv1.CAKeyState]string{rpmgrv1.CAKeyState_CA_KEY_STATE_ACTIVE: "active", rpmgrv1.CAKeyState_CA_KEY_STATE_NEXT: "next",
-	rpmgrv1.CAKeyState_CA_KEY_STATE_RETIRED: "retired"}
+	rpmgrv1.CAKeyState_CA_KEY_STATE_RETIRED: "retired", rpmgrv1.CAKeyState_CA_KEY_STATE_OVERLAP: "overlap"}
 
 func writeCAKeys(env *cli.Env, keys []*rpmgrv1.CAKey) error {
 	day := func(t interface{ AsTime() time.Time }) string { return t.AsTime().UTC().Format("2006-01-02") }

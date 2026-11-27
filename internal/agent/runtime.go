@@ -58,9 +58,12 @@ type RuntimeOptions struct {
 	Logger      *slog.Logger
 	// OnOffer gets the release offer of every applied snapshot, nil for none; may be nil.
 	OnOffer func(*agentv1.ReleaseOffer)
-	// OnTrustRoots gets the trust roots of every snapshot that verified, before the revision is
-	// checked; may be nil.
-	OnTrustRoots func([][]byte) (changed bool)
+	// OnTrustRoots gets the trust roots of a snapshot that verified and is newer than the running one,
+	// so that the roots of an older snapshot, replayed, neither add a root that was dropped nor drop a
+	// newer one; may be nil. verifiedBy is non-nil when the snapshot may also drop roots: it reports
+	// whether the snapshot verifies with the given roots alone. It is nil when no snapshot runs yet,
+	// so that nothing orders this one against an older one: that snapshot adds roots and drops none.
+	OnTrustRoots func(der [][]byte, verifiedBy func(kept []*x509.Certificate) bool) (changed bool)
 	// OnRootsChanged is called once the snapshot that changed the roots is dealt with; may be nil.
 	OnRootsChanged func()
 	// Roots returns the roots a signer may chain to: every root the agent holds. Nil means the
@@ -237,9 +240,6 @@ func (r *Runtime) receive(ctx context.Context, signed *agentv1.Signed) {
 		r.reject(nil, hash, []*agentv1.SnapshotError{{Message: err.Error()}})
 		return
 	}
-	if r.o.OnTrustRoots != nil && r.o.OnTrustRoots(snap.GetTrustRoots()) && r.o.OnRootsChanged != nil {
-		defer r.o.OnRootsChanged()
-	}
 	rev := snap.GetRevision()
 	r.mu.Lock()
 	cur, epoch := r.cur, r.epoch
@@ -258,6 +258,18 @@ func (r *Runtime) receive(ctx context.Context, signed *agentv1.Signed) {
 			"errors", len(errs), "first", errs[0].GetMessage())
 		r.reject(rev, hash, errs)
 		return
+	}
+	// The roots come from a snapshot only once it is known to be newer than the one that runs and
+	// valid, which orders the bundles by revision (docs/04-security.md, "Root rotation"). The first snapshot, with
+	// nothing to be newer than, only adds roots.
+	if r.o.OnTrustRoots != nil {
+		var verifiedBy func([]*x509.Certificate) bool
+		if cur != nil {
+			verifiedBy = func(kept []*x509.Certificate) bool { return r.verifyRoots(signed, kept) == nil }
+		}
+		if r.o.OnTrustRoots(snap.GetTrustRoots(), verifiedBy) && r.o.OnRootsChanged != nil {
+			defer r.o.OnRootsChanged()
+		}
 	}
 	notReady := r.apply(ctx, signed, snap)
 	// What the agent did, for a live log (D154): the revision, the routes it serves, how many are
@@ -306,13 +318,24 @@ func resigned(rev *agentv1.Revision, cur *running, key string) bool {
 
 // verify checks the signature, the signer and the agent the snapshot is for.
 func (r *Runtime) verify(signed *agentv1.Signed) (*agentv1.Snapshot, error) {
-	r.mu.Lock()
-	signers := r.signers
-	r.mu.Unlock()
 	roots := []*x509.Certificate{r.o.Identity.Root}
 	if r.o.Roots != nil {
 		roots = r.o.Roots()
 	}
+	return r.verifyWith(signed, roots)
+}
+
+// verifyRoots checks that the snapshot verifies with roots alone: the chain of its signer ends at one
+// of them. A root is dropped only on a bundle that one of the roots kept vouched for.
+func (r *Runtime) verifyRoots(signed *agentv1.Signed, roots []*x509.Certificate) error {
+	_, err := r.verifyWith(signed, roots)
+	return err
+}
+
+func (r *Runtime) verifyWith(signed *agentv1.Signed, roots []*x509.Certificate) (*agentv1.Snapshot, error) {
+	r.mu.Lock()
+	signers := r.signers
+	r.mu.Unlock()
 	return snapsig.VerifySnapshotRoots(signed, signers, roots, r.o.Identity.SPIFFE(), r.o.Now())
 }
 

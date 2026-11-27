@@ -39,11 +39,11 @@ func withCA(t *testing.T, f func(t *testing.T, e env, ca *castore.CA, trust audi
 		if err != nil {
 			t.Fatal(err)
 		}
-		signers, inters, root, err := castore.SignerCertificates(ctx, e.db, pki.PurposeAuditCheckpoint)
+		signers, inters, roots, err := castore.SignerCertificates(ctx, e.db, pki.PurposeAuditCheckpoint)
 		if err != nil || len(signers) != 1 {
 			t.Fatalf("signer certificates: %d %v", len(signers), err)
 		}
-		f(t, e, ca, audit.Trust{Root: root, Intermediates: inters, Signers: signers})
+		f(t, e, ca, audit.Trust{Root: roots[0], Roots: roots, Intermediates: inters, Signers: signers})
 	})
 }
 

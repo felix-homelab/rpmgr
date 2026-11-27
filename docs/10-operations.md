@@ -932,6 +932,14 @@ service that still runs the previous binary, with the command that restarts it.
   - all sessions and every **enrollment token** from the backup that can still be used are
     invalidated (a token consumed after the backup would otherwise become usable again). [R] So are
     unused password-reset links and open invitations, which are one-time credentials too.
+  - **a backup from before a root change** is refused: one from before the switch would make the
+    old root issue again, one from before the drop would put it back in the bundle that agents have
+    dropped it from, and one from before a compromise replacement would bring the compromised root
+    back. The revocation log's markers `root_switched`, `root_dropped` and `root_compromised` tell
+    ([04](04-security.md#revocation-log)); the restore names the root and changes nothing. Restore a
+    later backup, and take one at once after a rotation. A restore also puts back the keys a drop
+    wiped, and every backup taken before the drop still holds them: destroy those backups once the
+    drop is done.
   - agents enrolled after the backup are unknown and must re-enroll. An agent that renewed its
     certificate after the backup keeps its control session, but `Renew` and `Reauth` refuse a
     certificate the restored database does not record
@@ -949,9 +957,8 @@ service that still runs the previous binary, with the command that restarts it.
   a replica that may have a backlog [D181](14-open-decisions.md#engineering): the restore needs a
   log of it among the `--revocation-log` it was given, reaching what the sink holds of it, or fails
   closed. The backlog columns are up to one heartbeat old, so a node whose row lacks `stopped_clean`
-  counts the same way. A restore also **refuses** an archive in which an active CA key is named by
-  an issuer revocation ([04](04-security.md#root-compromise)), and restores a root's `root_offline`
-  marker by setting its `key_enc` to null. Without a sink, a single node's whole log is not off the
+  counts the same way. A restore also **refuses** an archive older than a marker of a root change
+  (above), and restores a root's `root_offline` marker by setting its `key_enc` to null. Without a sink, a single node's whole log is not off the
   host, so a restore without that log fails closed too; so does a log entry of a kind the restoring
   version does not know. The entries of every reachable log are merged and re-applied all the same.
   Then all API tokens and service accounts are suspended, all sessions invalidated, every user must
@@ -1469,19 +1476,46 @@ Each runbook: **symptoms → steps → done when**.
 
 ### Rotate the root
 
-- **Steps** ([04](04-security.md#root-rotation)): `rpmgr ca new-root` (with an offline root,
-  `--csr-out`, then sign the cross-certificate offline with `rpmgr ca sign-intermediate --kind
-  cross-root` (the flag comes with `ca new-root`, slice 8.14), the new intermediate's key with the
-  same command, and import both with `rpmgr ca import-intermediate`). Issuing moves to the new root
-  at once and every chain carries both intermediates, so agents that know only the old root keep
-  verifying. Watch Settings → PKI and `rpmgr ca status` until no agent is a straggler; leave the old
-  root in the bundle for the overlap (the longest leaf lifetime plus the Reauth grace period).
-  `rpmgr ca drop-root` before then is refused with the date it is allowed. If the alert "root
-  rotation stalled" fires, an enabled agent cannot or did not take the new root, most often because
-  it has no `trust.roots`: update, re-enroll or decommission it, or `rpmgr ca drop-root
-  --strand-stragglers` to drop the old root and leave it to re-enroll. After the drop, agents that
-  never saw the new root have to re-enroll.
-- **Done when**: the bundle is the new root alone and every agent reports its digest.
+- **Steps** ([04](04-security.md#root-rotation)):
+  1. Run `rpmgr ca new-root` on the controller host. With the old root online it makes the new root
+     and its intermediate, signs the cross-certificate and the intermediate's certificate and
+     moves issuing at once; it prints the new pin, which is for after the drop: until then install
+     commands and `rpmgr ca status` keep the old pin, so that agents enrolled meanwhile hold both
+     roots.
+  2. With the old root **offline** it needs `--csr-out <file>` and stops after it wrote the two
+     requests, `<file>` and `<file>.intermediate`. On the offline host run `rpmgr ca
+     sign-intermediate --kind cross-root --csr <file>` and `rpmgr ca sign-intermediate --csr
+     <file>.intermediate`, each with the key hash `new-root` printed, bring both certificates
+     back and run `rpmgr ca import-intermediate --in <certificate>` for each. The rotation job moves
+     issuing within the hour; `rpmgr ca status` says what still waits. The old root's key is never
+     in the database for this. The intermediate cannot be rotated while a rotation waits, so one
+     that stalls must not run into the expiry of the active intermediate: `ca status` and the job
+     warn once it expires within 30 days, and `rpmgr ca new-root --abort` gives up a rotation that
+     has not moved issuing, by removing the new root and its intermediate.
+  3. Every chain from then carries both intermediates, so agents that know only the old root keep
+     verifying, and the trust bundle holds both roots, so connected agents learn the new one. The
+     gateways and the controller trust the new root at once, **with no restart**. Do not rotate
+     the intermediate until the old root is dropped; the command is refused.
+  4. Watch `rpmgr ca status` until no enabled agent is a straggler; leave the old root in the
+     bundle for the overlap (the longest leaf lifetime plus the Reauth grace period, which the
+     status shows as a date). The rotation job drops it after that, or run `rpmgr ca drop-root`.
+     Before the date it is refused with the date; `--force` before it is accepted only while no
+     enabled agent seen within the overlap lacks the new root, an agent that was offline across the
+     switch included. Disabled agents that lack it are named in the status and in the drop.
+  5. If the alert "root rotation stalled" fires (the job logs it at each run, `rpmgr ca status`
+     names the agents), an enabled agent that was seen cannot or did not take the new root, most
+     often because it has no `trust.roots`: update, re-enroll or decommission it, or `rpmgr ca
+     drop-root --strand-stragglers` to drop the old root and leave it to re-enroll (it asks
+     first; `--yes` skips the question). After the
+     drop, agents that never saw the new root have to re-enroll.
+  6. If the old root was offline, the **new root is online** (sealed under the KEK) from the
+     rotation on: `rpmgr ca status` warns "issuing root online". Once issuing has moved, take it
+     offline as in "Take the root offline": run `rpmgr ca offline-root --out <file>`, then rotate
+     the KEK. The new root then needs the offline host for the next rotation, as the old one did.
+- **Done when**: the bundle is the new root alone, no enabled agent that was seen lacks it (the
+  status lists none; a disabled one that lacks it has to re-enroll), and, when the old root was
+  offline, `rpmgr ca status` shows the new root as offline and no longer warns "issuing root
+  online".
 
 ### Root compromise
 

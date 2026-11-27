@@ -194,3 +194,30 @@ func TestOpen_Errors(t *testing.T) {
 		t.Fatal("read a missing log")
 	}
 }
+
+// The markers of a root change are valid kinds and survive the hash chain; an unknown kind and an entry with no
+// subject are refused.
+func TestRootMarkerKinds(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "revocations.log")
+	l, err := revlog.Open(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []revlog.Kind{revlog.RootSwitched, revlog.RootDropped, revlog.RootCompromised} {
+		if !k.Valid() {
+			t.Errorf("%s is not a valid kind", k)
+		}
+		if _, err := l.Append(revlog.Entry{Kind: k, Subject: strings.Repeat("ab", 32), Detail: "new", Actor: "local-cli"}); err != nil {
+			t.Errorf("append %s: %v", k, err)
+		}
+		if _, err := l.Append(revlog.Entry{Kind: k}); err == nil {
+			t.Errorf("a %s marker with no subject was accepted", k)
+		}
+	}
+	if revlog.Kind("root_replaced").Valid() {
+		t.Error("an unknown kind is valid")
+	}
+	if got, err := revlog.Read(path); err != nil || len(got) != 3 {
+		t.Fatalf("read %d entries, %v", len(got), err)
+	}
+}

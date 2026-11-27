@@ -44,6 +44,17 @@ Changes to the design documents are not recorded here: see the git history and t
   signature, and without `--csr-out` it, and Settings → PKI, refuse to rotate while the root is
   offline. `rpmgr ca status` shows whether the root is offline and warns until the KEK is rotated,
   and a restore of an older backup takes the key out again. (#694)
+- The root can be rotated without enrolling anything again. `rpmgr ca new-root` makes a new root
+  and a first intermediate under it, has the old root vouch for both with cross-certificates, and
+  moves issuing to the new root; with an offline old root, `--csr-out` writes the two requests that
+  `rpmgr ca sign-intermediate --kind cross-root` and `ca sign-intermediate` sign on the offline
+  host, and `ca import-intermediate` takes both. Agents that are online learn the new root from
+  their snapshots, agents that know only the old root keep verifying, and gateways and the
+  controller accept both roots with no restart. `rpmgr ca status` shows the roots, the agents that
+  do not hold the new root and the date the old one can be dropped; `rpmgr ca drop-root` drops it
+  after the overlap, as the controller does by itself unless an enabled agent still lacks the new
+  root, and an agent drops a root only on a snapshot newer than the one it runs
+  ([Rotate the root](docs/guide/operations/pki.md#rotate-the-root)). (#697)
 - Settings → PKI and `rpmgr ca status` alert when the next intermediate waits for the offline root's
   signature, in time before the active one expires, and when the signed one is not valid now. With
   the root offline, the page says so and leaves out the rotation button. (#694)
@@ -55,6 +66,11 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Changed
 
+- `rpmgr restore` refuses a backup taken before the root changed: before issuing moved to a new
+  root, or before the old root was dropped. The
+  revocation log records each change as a marker, and the restore says which root and what
+  happened, and changes nothing; restore a later backup
+  ([Backup and restore](docs/guide/operations/backup-and-restore.md#the-revocation-log-sink)). (#698)
 - The keys that authenticate the API's page tokens and the previews of gateway pages are random and
   stored encrypted in the database instead of derived from the KEK, so every controller replica
   reads the same ones. Secrets are stored in a new envelope format (version 2); values of the older

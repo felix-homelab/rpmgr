@@ -10926,22 +10926,26 @@ func (m *CABundleMutation) ResetEdge(name string) error {
 // CAKeyMutation represents an operation that mutates the CAKey nodes in the graph.
 type CAKeyMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *string
-	kind          *cakey.Kind
-	algorithm     *string
-	public_key    *[]byte
-	certificate   *[]byte
-	csr           *[]byte
-	key_enc       *[]byte
-	not_before    *time.Time
-	not_after     *time.Time
-	status        *cakey.Status
-	clearedFields map[string]struct{}
-	done          bool
-	oldValue      func(context.Context) (*CAKey, error)
-	predicates    []predicate.CAKey
+	op                Op
+	typ               string
+	id                *string
+	kind              *cakey.Kind
+	algorithm         *string
+	public_key        *[]byte
+	certificate       *[]byte
+	csr               *[]byte
+	key_enc           *[]byte
+	not_before        *time.Time
+	not_after         *time.Time
+	status            *cakey.Status
+	cross_certificate *[]byte
+	rotated_at        *time.Time
+	drop_after        *time.Time
+	was_offline       *bool
+	clearedFields     map[string]struct{}
+	done              bool
+	oldValue          func(context.Context) (*CAKey, error)
+	predicates        []predicate.CAKey
 }
 
 var _ ent.Mutation = (*CAKeyMutation)(nil)
@@ -11411,6 +11415,202 @@ func (m *CAKeyMutation) ResetStatus() {
 	m.status = nil
 }
 
+// SetCrossCertificate sets the "cross_certificate" field.
+func (m *CAKeyMutation) SetCrossCertificate(b []byte) {
+	m.cross_certificate = &b
+}
+
+// CrossCertificate returns the value of the "cross_certificate" field in the mutation.
+func (m *CAKeyMutation) CrossCertificate() (r []byte, exists bool) {
+	v := m.cross_certificate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCrossCertificate returns the old "cross_certificate" field's value of the CAKey entity.
+// If the CAKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CAKeyMutation) OldCrossCertificate(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCrossCertificate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCrossCertificate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCrossCertificate: %w", err)
+	}
+	return oldValue.CrossCertificate, nil
+}
+
+// ClearCrossCertificate clears the value of the "cross_certificate" field.
+func (m *CAKeyMutation) ClearCrossCertificate() {
+	m.cross_certificate = nil
+	m.clearedFields[cakey.FieldCrossCertificate] = struct{}{}
+}
+
+// CrossCertificateCleared returns if the "cross_certificate" field was cleared in this mutation.
+func (m *CAKeyMutation) CrossCertificateCleared() bool {
+	_, ok := m.clearedFields[cakey.FieldCrossCertificate]
+	return ok
+}
+
+// ResetCrossCertificate resets all changes to the "cross_certificate" field.
+func (m *CAKeyMutation) ResetCrossCertificate() {
+	m.cross_certificate = nil
+	delete(m.clearedFields, cakey.FieldCrossCertificate)
+}
+
+// SetRotatedAt sets the "rotated_at" field.
+func (m *CAKeyMutation) SetRotatedAt(t time.Time) {
+	m.rotated_at = &t
+}
+
+// RotatedAt returns the value of the "rotated_at" field in the mutation.
+func (m *CAKeyMutation) RotatedAt() (r time.Time, exists bool) {
+	v := m.rotated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRotatedAt returns the old "rotated_at" field's value of the CAKey entity.
+// If the CAKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CAKeyMutation) OldRotatedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRotatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRotatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRotatedAt: %w", err)
+	}
+	return oldValue.RotatedAt, nil
+}
+
+// ClearRotatedAt clears the value of the "rotated_at" field.
+func (m *CAKeyMutation) ClearRotatedAt() {
+	m.rotated_at = nil
+	m.clearedFields[cakey.FieldRotatedAt] = struct{}{}
+}
+
+// RotatedAtCleared returns if the "rotated_at" field was cleared in this mutation.
+func (m *CAKeyMutation) RotatedAtCleared() bool {
+	_, ok := m.clearedFields[cakey.FieldRotatedAt]
+	return ok
+}
+
+// ResetRotatedAt resets all changes to the "rotated_at" field.
+func (m *CAKeyMutation) ResetRotatedAt() {
+	m.rotated_at = nil
+	delete(m.clearedFields, cakey.FieldRotatedAt)
+}
+
+// SetDropAfter sets the "drop_after" field.
+func (m *CAKeyMutation) SetDropAfter(t time.Time) {
+	m.drop_after = &t
+}
+
+// DropAfter returns the value of the "drop_after" field in the mutation.
+func (m *CAKeyMutation) DropAfter() (r time.Time, exists bool) {
+	v := m.drop_after
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDropAfter returns the old "drop_after" field's value of the CAKey entity.
+// If the CAKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CAKeyMutation) OldDropAfter(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDropAfter is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDropAfter requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDropAfter: %w", err)
+	}
+	return oldValue.DropAfter, nil
+}
+
+// ClearDropAfter clears the value of the "drop_after" field.
+func (m *CAKeyMutation) ClearDropAfter() {
+	m.drop_after = nil
+	m.clearedFields[cakey.FieldDropAfter] = struct{}{}
+}
+
+// DropAfterCleared returns if the "drop_after" field was cleared in this mutation.
+func (m *CAKeyMutation) DropAfterCleared() bool {
+	_, ok := m.clearedFields[cakey.FieldDropAfter]
+	return ok
+}
+
+// ResetDropAfter resets all changes to the "drop_after" field.
+func (m *CAKeyMutation) ResetDropAfter() {
+	m.drop_after = nil
+	delete(m.clearedFields, cakey.FieldDropAfter)
+}
+
+// SetWasOffline sets the "was_offline" field.
+func (m *CAKeyMutation) SetWasOffline(b bool) {
+	m.was_offline = &b
+}
+
+// WasOffline returns the value of the "was_offline" field in the mutation.
+func (m *CAKeyMutation) WasOffline() (r bool, exists bool) {
+	v := m.was_offline
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWasOffline returns the old "was_offline" field's value of the CAKey entity.
+// If the CAKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CAKeyMutation) OldWasOffline(ctx context.Context) (v *bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWasOffline is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWasOffline requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWasOffline: %w", err)
+	}
+	return oldValue.WasOffline, nil
+}
+
+// ClearWasOffline clears the value of the "was_offline" field.
+func (m *CAKeyMutation) ClearWasOffline() {
+	m.was_offline = nil
+	m.clearedFields[cakey.FieldWasOffline] = struct{}{}
+}
+
+// WasOfflineCleared returns if the "was_offline" field was cleared in this mutation.
+func (m *CAKeyMutation) WasOfflineCleared() bool {
+	_, ok := m.clearedFields[cakey.FieldWasOffline]
+	return ok
+}
+
+// ResetWasOffline resets all changes to the "was_offline" field.
+func (m *CAKeyMutation) ResetWasOffline() {
+	m.was_offline = nil
+	delete(m.clearedFields, cakey.FieldWasOffline)
+}
+
 // Where appends a list predicates to the CAKeyMutation builder.
 func (m *CAKeyMutation) Where(ps ...predicate.CAKey) {
 	m.predicates = append(m.predicates, ps...)
@@ -11445,7 +11645,7 @@ func (m *CAKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CAKeyMutation) Fields() []string {
-	fields := make([]string, 0, 9)
+	fields := make([]string, 0, 13)
 	if m.kind != nil {
 		fields = append(fields, cakey.FieldKind)
 	}
@@ -11473,6 +11673,18 @@ func (m *CAKeyMutation) Fields() []string {
 	if m.status != nil {
 		fields = append(fields, cakey.FieldStatus)
 	}
+	if m.cross_certificate != nil {
+		fields = append(fields, cakey.FieldCrossCertificate)
+	}
+	if m.rotated_at != nil {
+		fields = append(fields, cakey.FieldRotatedAt)
+	}
+	if m.drop_after != nil {
+		fields = append(fields, cakey.FieldDropAfter)
+	}
+	if m.was_offline != nil {
+		fields = append(fields, cakey.FieldWasOffline)
+	}
 	return fields
 }
 
@@ -11499,6 +11711,14 @@ func (m *CAKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.NotAfter()
 	case cakey.FieldStatus:
 		return m.Status()
+	case cakey.FieldCrossCertificate:
+		return m.CrossCertificate()
+	case cakey.FieldRotatedAt:
+		return m.RotatedAt()
+	case cakey.FieldDropAfter:
+		return m.DropAfter()
+	case cakey.FieldWasOffline:
+		return m.WasOffline()
 	}
 	return nil, false
 }
@@ -11526,6 +11746,14 @@ func (m *CAKeyMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldNotAfter(ctx)
 	case cakey.FieldStatus:
 		return m.OldStatus(ctx)
+	case cakey.FieldCrossCertificate:
+		return m.OldCrossCertificate(ctx)
+	case cakey.FieldRotatedAt:
+		return m.OldRotatedAt(ctx)
+	case cakey.FieldDropAfter:
+		return m.OldDropAfter(ctx)
+	case cakey.FieldWasOffline:
+		return m.OldWasOffline(ctx)
 	}
 	return nil, fmt.Errorf("unknown CAKey field %s", name)
 }
@@ -11598,6 +11826,34 @@ func (m *CAKeyMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetStatus(v)
 		return nil
+	case cakey.FieldCrossCertificate:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCrossCertificate(v)
+		return nil
+	case cakey.FieldRotatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRotatedAt(v)
+		return nil
+	case cakey.FieldDropAfter:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDropAfter(v)
+		return nil
+	case cakey.FieldWasOffline:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWasOffline(v)
+		return nil
 	}
 	return fmt.Errorf("unknown CAKey field %s", name)
 }
@@ -11637,6 +11893,18 @@ func (m *CAKeyMutation) ClearedFields() []string {
 	if m.FieldCleared(cakey.FieldKeyEnc) {
 		fields = append(fields, cakey.FieldKeyEnc)
 	}
+	if m.FieldCleared(cakey.FieldCrossCertificate) {
+		fields = append(fields, cakey.FieldCrossCertificate)
+	}
+	if m.FieldCleared(cakey.FieldRotatedAt) {
+		fields = append(fields, cakey.FieldRotatedAt)
+	}
+	if m.FieldCleared(cakey.FieldDropAfter) {
+		fields = append(fields, cakey.FieldDropAfter)
+	}
+	if m.FieldCleared(cakey.FieldWasOffline) {
+		fields = append(fields, cakey.FieldWasOffline)
+	}
 	return fields
 }
 
@@ -11659,6 +11927,18 @@ func (m *CAKeyMutation) ClearField(name string) error {
 		return nil
 	case cakey.FieldKeyEnc:
 		m.ClearKeyEnc()
+		return nil
+	case cakey.FieldCrossCertificate:
+		m.ClearCrossCertificate()
+		return nil
+	case cakey.FieldRotatedAt:
+		m.ClearRotatedAt()
+		return nil
+	case cakey.FieldDropAfter:
+		m.ClearDropAfter()
+		return nil
+	case cakey.FieldWasOffline:
+		m.ClearWasOffline()
 		return nil
 	}
 	return fmt.Errorf("unknown CAKey nullable field %s", name)
@@ -11694,6 +11974,18 @@ func (m *CAKeyMutation) ResetField(name string) error {
 		return nil
 	case cakey.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case cakey.FieldCrossCertificate:
+		m.ResetCrossCertificate()
+		return nil
+	case cakey.FieldRotatedAt:
+		m.ResetRotatedAt()
+		return nil
+	case cakey.FieldDropAfter:
+		m.ResetDropAfter()
+		return nil
+	case cakey.FieldWasOffline:
+		m.ResetWasOffline()
 		return nil
 	}
 	return fmt.Errorf("unknown CAKey field %s", name)
