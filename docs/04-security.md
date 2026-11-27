@@ -2372,13 +2372,17 @@ Security regression tests ([12](12-testing-and-quality.md#security-testing)):
   that breaks off, such as one the client abandons, is recorded once more with the result
   `failure`, and a refused one is recorded as any refusal is, under the method's name. The export
   is JSON Lines: a header line (format version, chain, first and last seq, the seq of the newest
-  checkpoint, the root's and the signers' certificates),
+  checkpoint, the root's and the signers' certificates; an instance that rotated its root adds `roots`,
+  every root it has had, and the cross-certificate of the new root among the intermediates),
   then each entry with every stored field as in its canonical form plus `prev_hash` and `hash`,
   with each checkpoint in its place. It ends at the newest checkpoint; entries after it are listed
   as an unanchored tail, flagged so, which a later export anchors. `rpmgr audit verify-export
   --ca-pin sha256:<base64>` verifies an export offline against the CA root pin alone: links, hashes,
   checkpoint signatures and their keys' certificates, and that nothing was removed, reordered or
-  edited. The header is not signed. It tells the verifier where to start and end, and the verifier
+  edited. Across a root rotation the pin of the **old** root verifies the whole export, trusting
+  the new root through the cross-certificate it signed; the pin of the new root verifies only what
+  was signed under it, since nothing the old root signed proves the new root's own key is not a
+  forgery's. An export without `roots`, from before a rotation, verifies as before. The header is not signed. It tells the verifier where to start and end, and the verifier
   takes the seqs it reports from the verified entries: a first entry that is not the header's
   `first_seq` is refused. A cut at the start or the end that falls exactly on a checkpoint, with the
   header adjusted to it, leaves a file that verifies, because every part of it is still signed:

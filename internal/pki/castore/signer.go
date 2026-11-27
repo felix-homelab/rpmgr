@@ -14,7 +14,7 @@ import (
 )
 
 // SignerCertificates returns what verifies old signatures of purpose p: every certificate a key
-// of that purpose has had and every intermediate, retired or expired ones too, with every root: the
+// of that purpose has had and every intermediate, retired or expired ones too, with the cross-certificates of the roots and every root: the
 // active one first, then the old roots of a rotation (overlap or retired), which signatures made
 // before the rotation still chain to.
 func SignerCertificates(ctx context.Context, db *store.DB, p pki.Purpose) (signers, intermediates, roots []*x509.Certificate, err error) {
@@ -40,6 +40,15 @@ func SignerCertificates(ctx context.Context, db *store.DB, p pki.Purpose) (signe
 			active = true
 		default:
 			roots = append(roots, c)
+		}
+		// X, the cross-certificate the old root signed for a new root's key: it is how a verifier that
+		// pins the old root comes to trust the new one (audit exports carry it with the roots).
+		if r.Kind == cakey.KindRoot && len(r.CrossCertificate) > 0 {
+			x, err := x509.ParseCertificate(r.CrossCertificate)
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("pki: cross-certificate of key %s: %w", r.ID, err)
+			}
+			intermediates = append(intermediates, x)
 		}
 	}
 	if !active {
