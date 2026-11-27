@@ -28,7 +28,7 @@ func ConfirmRestore(ctx context.Context, path, org string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	db, err := openDatabase(ctx, cfg, nil, dbOptions{RefuseRetired: true})
+	db, err := openDatabase(ctx, cfg, nil, dbOptions{RefuseRetired: true, Local: true})
 	if err != nil {
 		return nil, err
 	}

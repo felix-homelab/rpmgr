@@ -138,6 +138,9 @@ func Run(ctx context.Context, o RunOptions) error {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
 	cfg := o.Config
+	if err := requireHostState(cfg); err != nil {
+		return err
+	}
 	public, err := url.Parse(cfg.PublicURL)
 	if err != nil {
 		return err
@@ -173,6 +176,18 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	defer func() { _ = db.Close() }()
+	// From here on a lost lock ends the run: every context below derives from ctx, so the jobs, the
+	// sessions and the requests in flight stop at once, and the database fences what is left
+	// (store.ErrLockLost).
+	ctx, endRun := context.WithCancelCause(ctx)
+	defer endRun(nil)
+	go func() {
+		select {
+		case <-db.LockLost():
+			endRun(ErrLockLost)
+		case <-ctx.Done():
+		}
+	}()
 	if err := settleLock(ctx, db); err != nil {
 		return err
 	}
@@ -537,6 +552,13 @@ func Run(ctx context.Context, o RunOptions) error {
 		redirect = &http.Server{Handler: port80, ReadHeaderTimeout: 10 * time.Second}
 	}
 	split := NewSplitter(td, ln.Addr())
+	if errors.Is(context.Cause(ctx), ErrLockLost) { // lost while starting
+		_ = ln.Close()
+		if httpLn != nil {
+			_ = httpLn.Close()
+		}
+		return ErrLockLost
+	}
 
 	run, stop := context.WithCancel(ctx)
 	defer stop()
@@ -635,9 +657,26 @@ func Run(ctx context.Context, o RunOptions) error {
 	var result error
 	select {
 	case <-ctx.Done():
+		if errors.Is(context.Cause(ctx), ErrLockLost) {
+			result = ErrLockLost
+		}
 	case result = <-errs:
-	case <-db.LockLost(): // never ready on SQLite
-		result = ErrLockLost
+	}
+	if errors.Is(result, ErrLockLost) || errors.Is(context.Cause(ctx), ErrLockLost) {
+		// Another controller may hold the database: no drain, no final checkpoint, nothing that
+		// waits. The listeners close, the connections are cut and the jobs stop.
+		_ = ln.Close()
+		if httpLn != nil {
+			_ = redirect.Close()
+		}
+		agents.Stop()
+		_ = web.Close()
+		stop()
+		<-sessionsDone
+		stopJobs()
+		bg.Wait()
+		admin.Wait()
+		return ErrLockLost
 	}
 	// Drain: agents move to another endpoint, then the servers stop.
 	select {
@@ -664,12 +703,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	shut, cancel := context.WithTimeout(context.Background(), drainWait)
 	defer cancel()
 	_ = web.Shutdown(shut)
-	// The last requests are recorded; a checkpoint covers them. A controller that lost its lock
-	// writes nothing more: another one may hold it already.
-	if !errors.Is(result, ErrLockLost) {
-		if err := FinalCheckpoints(context.WithoutCancel(sys), cpOpts); err != nil {
-			o.Logger.Error("cannot write the final audit checkpoints", "error", err)
-		}
+	// The last requests are recorded; a checkpoint covers them.
+	if err := FinalCheckpoints(context.WithoutCancel(sys), cpOpts); err != nil {
+		o.Logger.Error("cannot write the final audit checkpoints", "error", err)
 	}
 	stop()
 	<-sessionsDone

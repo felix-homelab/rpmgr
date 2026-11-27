@@ -5,14 +5,17 @@ package controller_test
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/controller"
+	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
@@ -138,7 +141,8 @@ func TestPostgres_PasswordFileRefused(t *testing.T) {
 // TestPostgres_LockLostStopsController: when the session that holds the lock ends, the controller
 // stops with ErrLockLost (docs/06-data-model.md, "Connecting to PostgreSQL").
 func TestPostgres_LockLostStopsController(t *testing.T) {
-	r := startRunWith(t, runSetup{pg: true})
+	w := &warnings{}
+	r := startRunWith(t, runSetup{pg: true, logger: slog.New(w)})
 	db, err := storetest.OpenPostgres(t, r.cfg.Database.DSN, store.PostgresOptions{PasswordFile: r.cfg.Database.PasswordFile})
 	if err != nil {
 		t.Fatal(err)
@@ -157,19 +161,205 @@ func TestPostgres_LockLostStopsController(t *testing.T) {
 	case <-time.After(30 * time.Second):
 		t.Fatal("the controller kept running without its lock")
 	}
+	// No drain and no final checkpoint: a controller that lost its lock writes nothing more, and
+	// does not wait for its sessions or requests.
+	for _, m := range w.all() {
+		if strings.Contains(m, "final audit checkpoints") {
+			t.Errorf("a controller without its lock tried its final checkpoints: %s", m)
+		}
+	}
 }
 
-// TestPostgres_WaitsBeforeFirstWrite: a controller that has just taken the lock waits the stop
-// bound before it writes anything, so that one that lost it is not writing at the same time.
+// auditCount counts the audit entries through a connection that takes no lock.
+func auditCount(t *testing.T, db *store.DB) int {
+	t.Helper()
+	var n int
+	if err := db.Writer.QueryRow("SELECT count(*) FROM audit_log").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// TestPostgres_WaitsBeforeFirstWrite: a controller that has just taken the lock writes nothing for
+// the settle time: the first audit entry of its start (a system scope's) lands after it, so that a
+// controller that lost the lock is not writing at the same time.
 func TestPostgres_WaitsBeforeFirstWrite(t *testing.T) {
-	const settle = 800 * time.Millisecond
+	const settle = 1500 * time.Millisecond
 	var begin time.Time
-	startRunWith(t, runSetup{pg: true, prepare: func(*running) {
+	var first atomic.Int64 // when the audit log first grew, unix nanoseconds
+	done := make(chan struct{})
+	startRunWith(t, runSetup{pg: true, prepare: func(r *running) {
 		controller.SetLockSettle(t, settle)
+		db, err := storetest.OpenPostgres(t, r.cfg.Database.DSN, store.PostgresOptions{PasswordFile: r.cfg.Database.PasswordFile})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = db.Close() })
+		base := auditCount(t, db)
 		begin = time.Now()
+		go func() {
+			for {
+				select {
+				case <-done:
+					return
+				case <-time.After(5 * time.Millisecond):
+					var n int
+					if db.Writer.QueryRow("SELECT count(*) FROM audit_log").Scan(&n) == nil && n != base {
+						first.CompareAndSwap(0, time.Now().UnixNano())
+						return
+					}
+				}
+			}
+		}()
 	}})
-	if d := time.Since(begin); d < settle {
-		t.Errorf("the controller listened after %s, before the wait of %s", d, settle)
+	close(done)
+	at := first.Load()
+	if at == 0 {
+		t.Fatal("the controller wrote no audit entry while starting; the test sees nothing")
+	}
+	if d := time.Unix(0, at).Sub(begin); d < settle {
+		t.Errorf("the first write came %s after the start, before the settle time of %s", d, settle)
+	}
+}
+
+// TestPostgres_StartsOnlyOnTheControllerHost: on PostgreSQL the node ID and the revocation log are
+// files of the host, which init made on the controller host. A host without either refuses to
+// start the controller, rather than start with an empty revocation log, until `rpmgr controller
+// adopt-state` makes them on purpose.
+func TestPostgres_StartsOnlyOnTheControllerHost(t *testing.T) {
+	r := startRunWith(t, runSetup{pg: true})
+	r.stop(t)
+	state := r.cfg.State()
+	for _, name := range []string{"controller-node.id", "revocations.log"} {
+		if _, err := os.Stat(filepath.Join(state, name)); err != nil {
+			t.Fatalf("init did not make %s: %v", name, err)
+		}
+	}
+	ctx := context.Background()
+	for _, name := range []string{"controller-node.id", "revocations.log"} {
+		kept := filepath.Join(t.TempDir(), name)
+		if err := os.Rename(filepath.Join(state, name), kept); err != nil {
+			t.Fatal(err)
+		}
+		o := r.replica(t)
+		if err := controller.Run(ctx, o); !errors.Is(err, controller.ErrNotControllerHost) {
+			t.Errorf("a host without %s: %v, want ErrNotControllerHost", name, err)
+		}
+		if _, err := os.Stat(filepath.Join(state, name)); err == nil {
+			t.Errorf("the refused start created %s", name)
+		}
+		if err := os.Rename(kept, filepath.Join(state, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A host with neither: adopt-state makes both, an existing one is left alone.
+	for _, name := range []string{"controller-node.id", "revocations.log"} {
+		if err := os.Remove(filepath.Join(state, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	made, err := controller.AdoptState(ctx, r.h.cfg)
+	if err != nil || len(made) != 2 {
+		t.Fatalf("adopt-state: %v %v", made, err)
+	}
+	if made, err := controller.AdoptState(ctx, r.h.cfg); err != nil || len(made) != 0 {
+		t.Errorf("adopt-state again: %v %v", made, err)
+	}
+	o := r.replica(t)
+	listening := make(chan struct{})
+	o.Listening = func() { close(listening) }
+	run, stop := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- controller.Run(run, o) }()
+	select {
+	case <-listening:
+	case err := <-done:
+		t.Fatalf("the controller after adopt-state: %v", err)
+	case <-time.After(30 * time.Second):
+		t.Fatal("the controller after adopt-state did not start")
+	}
+	// It runs, so adopt-state is refused: it needs the database to itself.
+	if _, err := controller.AdoptState(ctx, r.h.cfg); !errors.Is(err, controller.ErrStopController) {
+		t.Errorf("adopt-state beside a controller: %v, want ErrStopController", err)
+	}
+	stop()
+	<-done
+}
+
+// TestPostgres_LocalCommandsNeedTheControllerHost: `ca offline-root`, the warnings of `ca status`
+// and `release import` use this host's revocation log and mirror, so on PostgreSQL they refuse a
+// host that is not the controller's, and create nothing there.
+func TestPostgres_LocalCommandsNeedTheControllerHost(t *testing.T) {
+	r := startRunWith(t, runSetup{pg: true})
+	r.stop(t)
+	ctx := context.Background()
+	logPath := filepath.Join(r.cfg.State(), "revocations.log")
+	kept := logPath + ".moved"
+	if err := os.Rename(logPath, kept); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "root.age")
+	_, err := controller.OfflineRoot(ctx, controller.OfflineRootOptions{ConfigPath: r.h.cfg, Out: out, Passphrase: suppliedPass, Getenv: noEnv})
+	if !errors.Is(err, controller.ErrNotControllerHost) {
+		t.Errorf("ca offline-root on another host: %v, want ErrNotControllerHost", err)
+	}
+	for _, p := range []string{out, logPath} {
+		if _, err := os.Stat(p); err == nil {
+			t.Errorf("the refused command created %s", p)
+		}
+	}
+	if _, err := controller.CAStatusWarnings(ctx, r.h.cfg); !errors.Is(err, controller.ErrNotControllerHost) {
+		t.Errorf("ca status warnings on another host: %v, want ErrNotControllerHost", err)
+	}
+	if _, err := controller.ImportRelease(ctx, r.h.cfg, t.TempDir(), "1.2.3", nil, time.Now); !errors.Is(err, controller.ErrNotControllerHost) {
+		t.Errorf("release import on another host: %v, want ErrNotControllerHost", err)
+	}
+	// On the controller host the ceremony works on PostgreSQL and marks this host's log.
+	if err := os.Rename(kept, logPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.OfflineRoot(ctx, controller.OfflineRootOptions{ConfigPath: r.h.cfg, Out: out, Passphrase: suppliedPass, Getenv: noEnv}); err != nil {
+		t.Fatalf("ca offline-root on the controller host: %v", err)
+	}
+	entries, err := revlog.Read(logPath)
+	if err != nil || len(entries) == 0 || entries[len(entries)-1].Kind != revlog.RootOffline {
+		t.Errorf("the log after the ceremony: %v %v", entries, err)
+	}
+}
+
+// TestPostgres_PasswordCredentialInAShell: a command run from a shell cannot read a systemd
+// credential, and says how to run it under systemd-run, as for the KEK; with the credential
+// directory set it works, which is what makes `rpmgr user reset-password` usable.
+func TestPostgres_PasswordCredentialInAShell(t *testing.T) {
+	r := startRunWith(t, runSetup{pg: true})
+	pw, err := os.ReadFile(r.cfg.Database.PasswordFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cred := filepath.Join(r.h.dir, "creds")
+	if err := os.MkdirAll(cred, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cred, "dbpw"), pw, 0o600); err != nil { //nolint:gosec // G703: a path under the test's directory
+		t.Fatal(err)
+	}
+	boot := filepath.Join(r.h.dir, "controller-credential.yaml")
+	text := "version: 1\npublic_url: " + r.url + "\ndatabase: {driver: postgres, dsn: '" + r.cfg.Database.DSN + "', password_credential: dbpw}\n" + r.h.fileKEK()
+	if err := os.WriteFile(boot, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	t.Setenv("CREDENTIALS_DIRECTORY", "")
+	_, err = controller.ResetPasswordLink(ctx, boot, "")
+	if err == nil || !strings.Contains(err.Error(), "systemd-run") || !strings.Contains(err.Error(), "LoadCredentialEncrypted=dbpw:") {
+		t.Errorf("reset-password from a shell: %v, want the systemd-run hint", err)
+	}
+	if _, err := controller.ConfirmRestore(ctx, boot, ""); err == nil || !strings.Contains(err.Error(), "systemd-run") {
+		t.Errorf("restore confirm from a shell: %v, want the systemd-run hint", err)
+	}
+	t.Setenv("CREDENTIALS_DIRECTORY", cred)
+	if _, err := controller.ResetPasswordLink(ctx, boot, ""); err != nil {
+		t.Errorf("reset-password with the credential loaded: %v", err)
 	}
 }
 

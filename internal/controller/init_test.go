@@ -29,6 +29,7 @@ import (
 // the file source, a KEK inside it.
 type host struct {
 	dir, cfg, db, kek, credstore string
+	state                        string // the state directory of a controller on PostgreSQL
 }
 
 func newHost(t *testing.T) host {
@@ -52,7 +53,7 @@ func (h host) writeBoot(t *testing.T, kek string) {
 func (h host) fileKEK() string { return "kek: {source: file, path: " + h.kek + "}\n" }
 
 func (h host) opts() controller.InitOptions {
-	return controller.InitOptions{ConfigPath: h.cfg, CredentialsDir: h.credstore,
+	return controller.InitOptions{ConfigPath: h.cfg, CredentialsDir: h.credstore, StateDir: h.state,
 		Getenv: func(string) string { return "" },
 		Encrypt: func(context.Context, string, string, []byte) error {
 			return errors.New("systemd-creds is not used in this test")

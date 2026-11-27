@@ -64,6 +64,9 @@ func OfflineRoot(ctx context.Context, o OfflineRootOptions) (OfflineRootResult, 
 	if err != nil {
 		return res, err
 	}
+	if err := requireHostState(cfg); err != nil { // the marker goes into this host's revocation log
+		return res, err
+	}
 	kek, err := localWrapper(ctx, cfg, o.Getenv)
 	if err != nil {
 		return res, err

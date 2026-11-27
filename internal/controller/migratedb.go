@@ -175,10 +175,6 @@ func MigrateDB(ctx context.Context, o MigrateDBOptions) (res MigrateDBResult, er
 	return res, nil
 }
 
-// ErrLockLost is returned when the PostgreSQL session that holds a database's controller lock ends
-// while the command works on it.
-var ErrLockLost = errors.New("controller: the PostgreSQL controller lock was lost")
-
 // untilLost derives a context that ends when either database loses its controller lock.
 func untilLost(ctx context.Context, dbs ...*store.DB) (context.Context, context.CancelCauseFunc) {
 	c, cancel := context.WithCancelCause(ctx)

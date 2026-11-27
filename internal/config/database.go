@@ -117,6 +117,9 @@ func (d Database) check() error {
 		if d.PasswordFile != "" && d.PasswordCredential != "" {
 			return errors.New("database: password_file or password_credential, not both")
 		}
+		if d.PasswordFile != "" && !filepath.IsAbs(d.PasswordFile) {
+			return fmt.Errorf("database.password_file %q: want an absolute path", d.PasswordFile)
+		}
 	default:
 		return fmt.Errorf("database.driver %q: want sqlite or postgres", d.Driver)
 	}

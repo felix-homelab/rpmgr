@@ -155,6 +155,7 @@ func TestRefused(t *testing.T) {
 		{"public_url without a host", "controller", "version: 1\npublic_url: https:///\n", "public_url"},
 		{"postgres without a DSN", "controller", ctl + "database: {driver: postgres}\n", "database.dsn"},
 		{"postgres with two password sources", "controller", ctl + "database: {driver: postgres, dsn: postgres://u@h/d, password_file: /a, password_credential: b}\n", "not both"},
+		{"relative password file", "controller", ctl + "database: {driver: postgres, dsn: postgres://u@h/d, password_file: pw}\n", "absolute"},
 		{"sqlite with a password file", "controller", ctl + "database: {driver: sqlite, password_file: /a}\n", "no password"},
 		{"postgres key that does not exist", "controller", ctl + "database: {driver: postgres, dsn: postgres://u@h/d, password: x}\n", "password"},
 		{"unknown driver", "controller", ctl + "database: {driver: mysql}\n", "driver"},

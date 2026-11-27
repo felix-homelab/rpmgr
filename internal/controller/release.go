@@ -476,7 +476,10 @@ func ImportRelease(ctx context.Context, path, dir, version string, roots []relea
 	if !release.Releasable(version) {
 		return nil, release.ErrDevelopment
 	}
-	db, err := openDatabase(ctx, cfg, nil, dbOptions{RefuseRetired: true})
+	if err := requireHostState(cfg); err != nil { // the mirror is this host's /dl/
+		return nil, err
+	}
+	db, err := openDatabase(ctx, cfg, nil, dbOptions{RefuseRetired: true, Local: true})
 	if err != nil {
 		return nil, err
 	}

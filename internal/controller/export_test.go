@@ -25,15 +25,23 @@ import (
 // which must not run in parallel with others.
 func SetRunTimers(t testing.TB, drain, reload time.Duration) {
 	oldDrain, oldReload, oldSettle := drainWait, webCertReload, lockSettle
-	drainWait, webCertReload, lockSettle = drain, reload, 0
+	drainWait, webCertReload, lockSettle = drain, reload, func() time.Duration { return 0 }
 	t.Cleanup(func() { drainWait, webCertReload, lockSettle = oldDrain, oldReload, oldSettle })
+}
+
+// SetStateDir makes the commands that read a boot file use dir as the state directory of a
+// controller on PostgreSQL, for one test, which must not run in parallel with others.
+func SetStateDir(t testing.TB, dir string) {
+	old := stateDirOverride
+	stateDirOverride = dir
+	t.Cleanup(func() { stateDirOverride = old })
 }
 
 // SetLockSettle sets how long Run waits after it took the PostgreSQL controller lock, for one
 // test, which must not run in parallel with others.
 func SetLockSettle(t testing.TB, d time.Duration) {
 	old := lockSettle
-	lockSettle = d
+	lockSettle = func() time.Duration { return d }
 	t.Cleanup(func() { lockSettle = old })
 }
 

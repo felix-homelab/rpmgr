@@ -179,6 +179,8 @@ func startRunWith(t *testing.T, o runSetup) *running {
 	database := "database: {dsn: " + h.db + "}\n"
 	if o.pg {
 		database = pgBoot(t, h.dir)
+		h.state, r.h.state = filepath.Dir(h.db), filepath.Dir(h.db)
+		controller.SetStateDir(t, h.state)
 	}
 	boot := "version: 1\npublic_url: " + r.url + "\n" + database + h.fileKEK() +
 		"listen: {https: \"" + r.https + "\", http: \"" + r.http + "\", admin: \"" + r.admin + "\"}\n" + files

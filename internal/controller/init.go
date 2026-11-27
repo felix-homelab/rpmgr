@@ -51,6 +51,7 @@ type InitOptions struct {
 	SystemdVersion func() int                                                   // systemctl --version; 0 without systemd
 	ServiceUser    string                                                       // rpmgr: owns a new KEK file
 	OwnState       func(dir string) error                                       // gives dir and its contents to dir's owner, as root
+	StateDir       string                                                       // a controller on PostgreSQL keeps /var/lib/rpmgr
 }
 
 // Own gives the state directory dir, and everything init put into it, to the directory's owner,
@@ -94,6 +95,9 @@ func Init(ctx context.Context, o InitOptions) (res InitResult, err error) {
 	if err := bootFile(o, &cfg); err != nil {
 		return InitResult{}, err
 	}
+	if o.StateDir != "" {
+		cfg.StateDir = o.StateDir
+	}
 	// Deferred before the database's Close, so it runs after it.
 	defer func() {
 		if oerr := o.Own(cfg.State()); oerr != nil && err == nil {
@@ -106,6 +110,9 @@ func Init(ctx context.Context, o InitOptions) (res InitResult, err error) {
 		return InitResult{}, err
 	}
 	defer func() { _ = db.Close() }()
+	if err := settleLock(ctx, db); err != nil { // as Run does, before its first write
+		return InitResult{}, err
+	}
 	dir, err := migrations.Dir(db.Dialect)
 	if err != nil {
 		return InitResult{}, err
@@ -173,6 +180,13 @@ func Init(ctx context.Context, o InitOptions) (res InitResult, err error) {
 	ca, err := castore.LoadCA(ctx, db, sealer, o.Now)
 	if err != nil {
 		return InitResult{}, err
+	}
+	// A PostgreSQL database belongs to no host, so init gives this one its node ID and revocation
+	// log, which Run and the commands that use them look for (ErrNotControllerHost).
+	if cfg.Database.Driver == "postgres" {
+		if _, err := createHostState(cfg); err != nil {
+			return InitResult{}, fmt.Errorf("controller: initialised, but the state directory %s cannot take the node ID and the revocation log (`rpmgr controller adopt-state` makes them): %w", cfg.State(), err)
+		}
 	}
 	tok, err := accounts.New(db, ctx, o.Now).FirstUserLink("local-cli")
 	if err != nil {

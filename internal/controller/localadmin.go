@@ -62,7 +62,7 @@ func openLocal(ctx context.Context, path, what string) (config.Controller, *stor
 			return cfg, nil, nil, fmt.Errorf("controller: no database at %s; run `rpmgr controller init` first: %w", cfg.Database.DSN, err)
 		}
 	}
-	db, err := openDatabase(ctx, cfg, nil, dbOptions{RefuseRetired: true})
+	db, err := openDatabase(ctx, cfg, nil, dbOptions{RefuseRetired: true, Local: true})
 	if err != nil {
 		return cfg, nil, nil, err
 	}
@@ -123,6 +123,9 @@ func CAStatusWarnings(ctx context.Context, path string) ([]string, error) {
 		return nil, err
 	}
 	defer func() { _ = db.Close() }()
+	if err := requireHostState(cfg); err != nil { // a host without the log would show no warning at all
+		return nil, err
+	}
 	log := filepath.Join(cfg.State(), "revocations.log")
 	if _, err := os.Stat(log); err != nil {
 		return nil, nil
