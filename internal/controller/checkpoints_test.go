@@ -4,6 +4,8 @@ package controller_test
 
 import (
 	"context"
+	"crypto/x509"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -186,4 +188,87 @@ func TestCheckpointsAcrossRootRotation(t *testing.T) {
 	}
 	checkpoint() // after the drop, under the new root; the chain holds all three and R1 is retired
 	verify(2)
+}
+
+// TestAuditExportAcrossRootRotation: an export that spans a root rotation verifies offline with the old
+// root's pin, which trusts the new root through the cross-certificate the header carries; the new root's pin
+// verifies what was signed under it and, for what the old root's chain signed, says so; an export of an
+// instance that never rotated, with its single root, still verifies as it did.
+func TestAuditExportAcrossRootRotation(t *testing.T) {
+	db := storetest.Migrated(t, store.SQLite)
+	e := startSessions(t, db, "0.1.0", 0)
+	leases := lease.New(db, "ctn_test", nil)
+	at := time.Now()
+	o := controller.CheckpointOptions{DB: db, CA: e.ca, Leases: leases, Now: func() time.Time { return at },
+		Log: &audit.CheckpointLog{Path: filepath.Join(t.TempDir(), "audit-checkpoints.log")}}
+	record := func(org string) {
+		t.Helper()
+		if _, err := audit.Record(context.Background(), db, audit.Entry{OrgID: org, ActorType: audit.ActorSystem, ActorID: "test", Action: "test.run",
+			Result: audit.Success}); err != nil {
+			t.Fatal(err)
+		}
+		if err := controller.FinalCheckpoints(e.sys, o); err != nil {
+			t.Fatal(err)
+		}
+	}
+	export := func(org string) []string {
+		t.Helper()
+		signers, inters, roots, err := castore.SignerCertificates(e.sys, db, pki.PurposeAuditCheckpoint)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var lines []string
+		ctx := e.sys
+		if org != "" {
+			ctx = storetest.OrgCtx(t, org)
+		}
+		trust := audit.Trust{Root: roots[0], Roots: roots, Intermediates: inters, Signers: signers}
+		if err := audit.Export(ctx, db, org, trust, at, func(l []byte) error { lines = append(lines, string(l)); return nil }); err != nil {
+			t.Fatal(err)
+		}
+		return lines
+	}
+	verify := func(lines []string, r *x509.Certificate) error {
+		_, err := audit.VerifyExport(strings.NewReader(strings.Join(lines, "\n")+"\n"), pki.RootPin(r))
+		return err
+	}
+	r1 := e.ca.Root()
+	record("")
+	if err := verify(export(""), r1); err != nil {
+		t.Fatalf("an export without a rotation: %v", err)
+	}
+	e.newRootOnline(t, at)
+	r2 := e.ca.Root()
+	at = at.Add(time.Minute)
+	record("")
+	if err := verify(export(""), r1); err != nil {
+		t.Fatalf("an export across the switch, with the old root's pin: %v", err)
+	}
+	if err := verify(export(""), r2); err == nil {
+		t.Fatal("what the old root's chain signed verified with the new root's pin alone")
+	}
+
+	co := controller.CAOptions{DB: db, CA: e.ca, Sealer: e.sealer, Leases: leases, Now: func() time.Time { return at }}
+	at = at.Add(38 * rotationDay)
+	if err := runOnce(t, leases, controller.CARotation(co)); err != nil {
+		t.Fatal(err)
+	}
+	record("")
+	if err := verify(export(""), r1); err != nil {
+		t.Fatalf("an export across the drop, with the old root's pin: %v", err)
+	}
+	// A chain that began after the drop is signed under the new root alone, and verifies with its pin.
+	org := storetest.Org(t, db, "org-x")
+	record(org)
+	if err := verify(export(org), r2); err != nil {
+		t.Fatalf("an export of a chain signed under the new root, with the new root's pin: %v", err)
+	}
+	// Another root's pin is refused.
+	other, err := pki.NewRoot("rpmgr-7f3k2q6m", at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verify(export(""), other.Cert); !errors.Is(err, audit.ErrExportPin) {
+		t.Fatalf("a pin of another root = %v, want ErrExportPin", err)
+	}
 }

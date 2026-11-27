@@ -396,6 +396,7 @@ var (
 		{Name: "cross_certificate", Type: field.TypeBytes, Nullable: true},
 		{Name: "rotated_at", Type: field.TypeTime, Nullable: true},
 		{Name: "drop_after", Type: field.TypeTime, Nullable: true},
+		{Name: "was_offline", Type: field.TypeBool, Nullable: true},
 	}
 	// CaKeysTable holds the schema information for the "ca_keys" table.
 	CaKeysTable = &schema.Table{

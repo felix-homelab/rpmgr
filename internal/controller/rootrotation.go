@@ -105,6 +105,13 @@ func lackingNewRoot(ctx context.Context, tx *ent.Tx, since time.Time) (enabled, 
 			lacking = append(lacking, s.ID)
 		}
 	}
+	// A window that reaches back past the switch is a forced drop's: an agent that enrolled before the
+	// switch in it and has not connected since has no session, but holds the old root alone.
+	unseen, err := unseenBeforeSwitch(ctx, tx, since)
+	if err != nil {
+		return nil, nil, err
+	}
+	lacking = append(lacking, unseen...)
 	if len(lacking) == 0 {
 		return nil, nil, nil
 	}
@@ -318,14 +325,7 @@ func dropDetail(plan *castore.DropPlan) string {
 		parts = append(parts, "before the earliest date "+at.UTC().Format(time.RFC3339)+" (--force)")
 	}
 	if st := plan.Stranded(); len(st) > 0 {
-		shown := st
-		if len(shown) > maxAuditedAgents {
-			shown = shown[:maxAuditedAgents]
-		}
-		d := fmt.Sprintf("%d enabled agents stranded without the new root (--strand-stragglers): %s", len(st), strings.Join(shown, ", "))
-		if len(st) > len(shown) {
-			d += fmt.Sprintf(" and %d more", len(st)-len(shown))
-		}
+		d := fmt.Sprintf("%d enabled agents stranded without the new root (--strand-stragglers): %s", len(st), auditedIDs(st))
 		parts = append(parts, d)
 	}
 	if len(parts) == 0 {
@@ -503,7 +503,7 @@ func rotationStatus(sys context.Context, db *store.DB, now time.Time) (RotationS
 }
 
 // issuingRootOnline sets IssuingRootOnline: the active root has its key in the database while an old root of
-// a rotation, in the overlap or retired, had none, that is was offline.
+// a rotation, in the overlap or retired, was offline when issuing moved (was_offline).
 func (st *RotationStatus) issuingRootOnline(sys context.Context, c *ent.Client) error {
 	roots, err := c.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusIn(cakey.StatusActive, cakey.StatusOverlap, cakey.StatusRetired)).All(sys)
 	if err != nil {
@@ -515,7 +515,7 @@ func (st *RotationStatus) issuingRootOnline(sys context.Context, c *ent.Client) 
 		switch {
 		case r.Status == cakey.StatusActive:
 			online = hasKey
-		case !hasKey:
+		case r.WasOffline != nil && *r.WasOffline:
 			hadOffline = true
 		}
 	}
@@ -566,4 +566,53 @@ func markRoot(rl *revlog.Log, kind revlog.Kind, subject, detail, actor string) e
 	}
 	_, err := rl.Append(revlog.Entry{Kind: kind, Subject: subject, Detail: detail, Actor: actor})
 	return err
+}
+
+// unseenBeforeSwitch lists the agents without a session that enrolled between `since` and the switch:
+// they cannot have learned the new root. Empty when the window starts at the switch, as for a plain drop.
+func unseenBeforeSwitch(ctx context.Context, tx *ent.Tx, since time.Time) ([]string, error) {
+	old, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusOverlap)).Only(ctx)
+	if ent.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if old.RotatedAt == nil || !since.Before(*old.RotatedAt) {
+		return nil, nil
+	}
+	seen, err := tx.AgentSession.Query().IDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	gws, err := tx.Gateway.Query().Where(gateway.DecommissionedAtIsNil(), gateway.CreatedAtGTE(since), gateway.CreatedAtLT(*old.RotatedAt),
+		gateway.IDNotIn(seen...)).IDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cons, err := tx.Connector.Query().Where(connector.DecommissionedAtIsNil(), connector.CreatedAtGTE(since), connector.CreatedAtLT(*old.RotatedAt),
+		connector.IDNotIn(seen...)).IDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return append(gws, cons...), nil
+}
+
+// auditedIDs lists agents in an audit reason, up to maxAuditedAgents, and counts the rest.
+func auditedIDs(ids []string) string {
+	if len(ids) <= maxAuditedAgents {
+		return strings.Join(ids, ", ")
+	}
+	return fmt.Sprintf("%s and %d more", strings.Join(ids[:maxAuditedAgents], ", "), len(ids)-maxAuditedAgents)
+}
+
+// disabledDetail names the disabled agents that lack the new root in an audit reason.
+func disabledDetail(ids []string) string {
+	return fmt.Sprintf("%d disabled agents lack the new root and have to re-enroll: %s", len(ids), auditedIDs(ids))
+}
+
+// rotationRuns reports whether a next root waits or an old root is in the overlap.
+func rotationRuns(ctx context.Context, db *store.DB) bool {
+	n, err := db.ReadClient().CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusIn(cakey.StatusNext, cakey.StatusOverlap)).Count(ctx)
+	return err != nil || n > 0 // when it cannot tell, look
 }

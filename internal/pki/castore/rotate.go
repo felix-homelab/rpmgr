@@ -328,6 +328,11 @@ func (p *Plan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
 			if p.overlap > 0 {
 				u.SetDropAfter(p.now.Add(p.overlap))
 			}
+			for _, r := range rows {
+				if r.ID == st.overlap {
+					u.SetWasOffline(keyOffline(r))
+				}
+			}
 			n, err := u.Save(ctx)
 			if err != nil {
 				return nil, err

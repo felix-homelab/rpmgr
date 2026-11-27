@@ -56,6 +56,9 @@ func (CAKey) Fields() []ent.Field {
 		// drop_after is the earliest date the old root may be dropped, fixed when issuing moved: the overlap
 		// of that moment, so that a later change of the leaf lifetime or the grace cannot shorten it.
 		field.Time("drop_after").Optional().Nillable(),
+		// was_offline is set on the old root when it enters the overlap: its key was not in the database. The
+		// drop wipes the key, so this is what `ca status` tells an online new root from afterwards.
+		field.Bool("was_offline").Optional().Nillable(),
 	}
 }
 

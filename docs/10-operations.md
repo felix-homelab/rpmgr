@@ -937,7 +937,9 @@ service that still runs the previous binary, with the command that restarts it.
     dropped it from, and one from before a compromise replacement would bring the compromised root
     back. The revocation log's markers `root_switched`, `root_dropped` and `root_compromised` tell
     ([04](04-security.md#revocation-log)); the restore names the root and changes nothing. Restore a
-    later backup, and take one at once after a rotation.
+    later backup, and take one at once after a rotation. A restore also puts back the keys a drop
+    wiped, and every backup taken before the drop still holds them: destroy those backups once the
+    drop is done.
   - agents enrolled after the backup are unknown and must re-enroll. An agent that renewed its
     certificate after the backup keeps its control session, but `Renew` and `Reauth` refuse a
     certificate the restored database does not record
@@ -1512,7 +1514,8 @@ Each runbook: **symptoms → steps → done when**.
      the KEK. The new root then needs the offline host for the next rotation, as the old one did.
 - **Done when**: the bundle is the new root alone, no enabled agent that was seen lacks it (the
   status lists none; a disabled one that lacks it has to re-enroll), and, when the old root was
-  offline, `rpmgr ca status` shows the new root as offline and no longer warns "issuing root online".
+  offline, `rpmgr ca status` shows the new root as offline and no longer warns "issuing root
+  online".
 
 ### Root compromise
 

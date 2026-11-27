@@ -124,12 +124,23 @@ func (o *CAOptions) dropOldRoot(ctx context.Context, l lease.Lease) (bool, error
 	if err != nil {
 		return false, err
 	}
-	_, err = applyDrop(ctx, o.DB, plan, o.RevLog, "ca-rotation", "the overlap of the root rotation has passed",
-		func(tx *ent.Tx) error { return o.Leases.Fence(ctx, tx, l) })
+	disabled, err := disabledLacking(ctx, o.DB, o.Now(), overlap)
+	if err != nil {
+		return false, err
+	}
+	reason := "the overlap of the root rotation has passed"
+	if len(disabled) > 0 {
+		reason += "; " + disabledDetail(disabled)
+	}
+	_, err = applyDrop(ctx, o.DB, plan, o.RevLog, "ca-rotation", reason, func(tx *ent.Tx) error { return o.Leases.Fence(ctx, tx, l) })
 	if errors.As(err, &stalled) {
 		o.Logger.Error("root rotation stalled: the old root is not dropped while enabled agents lack the new one; update, "+
 			"re-enroll or decommission them, or run `rpmgr ca drop-root --strand-stragglers`", "agents", stalled.N)
 		return false, nil
+	}
+	if err == nil && len(disabled) > 0 {
+		o.Logger.Warn("the old root is dropped; disabled agents that lack the new root have to re-enroll before they can connect again",
+			"agents", disabled)
 	}
 	return err == nil, err
 }
@@ -151,7 +162,15 @@ func (o *CAOptions) warnSigning(ctx context.Context) {
 	}
 	// The intermediate is not rotated while a root rotation runs: one that stalls must not run into the
 	// expiry of the active intermediate unseen.
-	if st, err := rotationStatus(ctx, o.DB, o.Now()); err == nil && st.IntermediateExpiring {
+	if !rotationRuns(ctx, o.DB) {
+		return
+	}
+	st, err := rotationStatus(ctx, o.DB, o.Now())
+	if err != nil {
+		o.Logger.Error("cannot check the root rotation against the intermediate's expiry", "error", err)
+		return
+	}
+	if st.IntermediateExpiring {
 		o.Logger.Error("the active intermediate expires within 30 days and cannot be rotated during a root rotation: finish it "+
 			"(rpmgr ca status) or give it up with rpmgr ca new-root --abort", "expires", st.IntermediateExpires)
 	}
