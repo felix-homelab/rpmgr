@@ -41,7 +41,7 @@ Changes to the design documents are not recorded here: see the git history and t
   them refuse a host without them (`rpmgr controller adopt-state --old-host-lost` makes them on purpose, and the database then refuses
   the old host). The controller that takes the database's lock ends the sessions of the one before
   it, and every write transaction checks a fence epoch on the server, so a stale transaction cannot
-  commit late. For now
+  commit late, whether it ran in a transaction or as a single statement. For now
   `rpmgr backup`, `rpmgr restore`, `rpmgr migrate` and `rpmgr kek rotate` refuse a PostgreSQL
   controller, and an all-in-one stays on SQLite. (#689)
 - The controller can keep its key-encryption key in a key of Vault or OpenBao Transit:
