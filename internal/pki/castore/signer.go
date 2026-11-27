@@ -14,9 +14,9 @@ import (
 )
 
 // SignerCertificates returns what verifies old signatures of purpose p: every certificate a key
-// of that purpose has had and every intermediate, retired or expired ones too, with the cross-certificates of the roots and every root: the
-// active one first, then the old roots of a rotation (overlap or retired), which signatures made
-// before the rotation still chain to.
+// of that purpose has had and every intermediate, retired or expired ones too, with the
+// cross-certificates of the roots, and every root: the active one first, then the old roots of a
+// rotation (overlap or retired), which signatures made before the rotation still chain to.
 func SignerCertificates(ctx context.Context, db *store.DB, p pki.Purpose) (signers, intermediates, roots []*x509.Certificate, err error) {
 	kind := map[pki.Purpose]cakey.Kind{pki.PurposeConfigSigning: cakey.KindConfigSigning, pki.PurposeAuditCheckpoint: cakey.KindAuditCheckpoint}[p]
 	rows, err := db.ReadClient().CAKey.Query().Where(cakey.KindIn(kind, cakey.KindIntermediate, cakey.KindRoot),

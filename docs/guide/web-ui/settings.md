@@ -172,8 +172,9 @@ The **Certificate authority** card shows:
 - the **Root pin, for rpmgr enroll --ca-pin**, with **Copy**: the value install commands pass as
   `--ca-pin`;
 - each key whose certificate has not expired: its **Key** (**Root**, **Intermediate**, **Snapshot
-  signing** or **Audit checkpoints**), its **State** (**Next**, **Active** or **Retired**), its
-  **Subject**, when it is **Valid**, and when the schedule **Replaced on** it.
+  signing** or **Audit checkpoints**), its **State** (**Next**, **Active**, **Old root, still
+  trusted** during a root rotation, or **Retired**), its **Subject**, when it is **Valid**, and when
+  the schedule **Replaced on** it.
 
 **Rotate the intermediate now…** asks first, then needs a [step-up](README.md#the-step-up-dialog):
 a new intermediate becomes active, and the old one keeps verifying the certificates it issued until

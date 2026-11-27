@@ -53,8 +53,10 @@ You find the pin:
 Under **Settings**, the Instance Admin opens **PKI**. **Certificate authority** shows the trust
 domain, the root pin, and each key whose certificate has not expired: **Key**, **State**,
 **Subject**, **Valid** and **Replaced on**, the day the schedule replaces it. The states are
-**Next** (made ahead and announced to agents, not signing yet), **Active** and **Retired**
-(replaced, still verifying what it signed until it expires). With the root offline the page says
+**Next** (made ahead and announced to agents, not signing yet), **Active**, **Old root, still
+trusted** (the old root during a [root rotation](#rotate-the-root): it no longer issues, and
+`rpmgr ca status` shows it as `overlap`) and **Retired** (replaced, still verifying what it signed
+until it expires). With the root offline the page says
 so, has no rotation button, and shows a notice while the next intermediate waits for the root's
 signature or its signature is not valid, and while the sealed root key may still be recoverable
 ([Take the root offline](#take-the-root-offline)).
@@ -240,9 +242,8 @@ With the root online this makes the new root and its intermediate, lets the old 
 moves issuing to the new root at once. It prints the **new pin**, which you use once the old root is
 dropped; until then the install commands and `rpmgr ca status` keep the old pin, so that an agent
 you enroll meanwhile holds both roots. Running controllers load the change within a minute.
-Certificates that were issued before keep working, agents that know only the old
-root keep verifying the new certificates, and gateways and the controller accept both roots with
-no restart.
+Certificates that were issued before keep working, agents that know only the old root keep verifying
+the new certificates, and gateways and the controller accept both roots with no restart.
 
 With the root **offline** the command needs `--csr-out` and stops after it wrote two requests; the
 old root signs them on its host, and you import both:
@@ -281,15 +282,14 @@ You can do it by hand:
 sudo rpmgr ca drop-root
 ```
 
-Before the date it refuses and names the date; `--force` is accepted before it only while no
-enabled agent seen within the overlap lacks the new root, one that was offline across the switch
-included. After the overlap, `--strand-stragglers` drops the old root although some agents lack the
-new one, after asking (`--yes` skips the question): they have to be enrolled again, and the drop
-lists them. Disabled agents that lack the new root are named in `ca status` and in the drop output.
-After the drop the bundle is the new root
-alone, and agents that were online learn it from their next snapshot. An agent drops a root only
-on a snapshot that is newer than the one it runs and that it can verify without that root, so a
-replayed old snapshot changes nothing.
+Before the date it refuses and names the date; `--force` is accepted before it only while no enabled
+agent seen within the overlap lacks the new root, one that was offline across the switch included.
+After the overlap, `--strand-stragglers` drops the old root although some agents lack the new one,
+after asking (`--yes` skips the question): they have to be enrolled again, and the drop lists them.
+Disabled agents that lack the new root are named in `ca status` and in the drop output. After the
+drop the bundle is the new root alone, and agents that were online learn it from their next
+snapshot. An agent drops a root only on a snapshot that is newer than the one it runs and that it
+can verify without that root, so a replayed old snapshot changes nothing.
 
 ## The root, if it leaked
 

@@ -148,7 +148,8 @@ rpmgr audit verify-export --ca-pin sha256:<base64> audit-org.jsonl
 It checks that the entries link and hash as the chain does, that every checkpoint carries a
 signature of a key your CA certified for audit checkpoints, and that nothing was removed,
 reordered or edited. After a [root rotation](pki.md#rotate-the-root), use the **old** root's pin
-for an export that spans it: the new root's pin verifies only what was signed under the new root.
+for an export that spans it: the new root's pin verifies only what was signed under the new root. An older export, or one
+that reaches back before a rotation, needs the old root's pin: keep it.
 A failure says at which entry and exits 1. Entries after the newest
 checkpoint are reported as not yet anchored. An export proves the chain as of its newest
 checkpoint: a cut-off file is found only if its end no longer matches its header, so compare the
