@@ -99,6 +99,26 @@ func NotAfter(v time.Time) predicate.CAKey {
 	return predicate.CAKey(sql.FieldEQ(FieldNotAfter, v))
 }
 
+// CrossCertificate applies equality check predicate on the "cross_certificate" field. It's identical to CrossCertificateEQ.
+func CrossCertificate(v []byte) predicate.CAKey {
+	return predicate.CAKey(sql.FieldEQ(FieldCrossCertificate, v))
+}
+
+// RotatedAt applies equality check predicate on the "rotated_at" field. It's identical to RotatedAtEQ.
+func RotatedAt(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldEQ(FieldRotatedAt, v))
+}
+
+// DropAfter applies equality check predicate on the "drop_after" field. It's identical to DropAfterEQ.
+func DropAfter(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldEQ(FieldDropAfter, v))
+}
+
+// WasOffline applies equality check predicate on the "was_offline" field. It's identical to WasOfflineEQ.
+func WasOffline(v bool) predicate.CAKey {
+	return predicate.CAKey(sql.FieldEQ(FieldWasOffline, v))
+}
+
 // KindEQ applies the EQ predicate on the "kind" field.
 func KindEQ(v Kind) predicate.CAKey {
 	return predicate.CAKey(sql.FieldEQ(FieldKind, v))
@@ -472,6 +492,176 @@ func StatusIn(vs ...Status) predicate.CAKey {
 // StatusNotIn applies the NotIn predicate on the "status" field.
 func StatusNotIn(vs ...Status) predicate.CAKey {
 	return predicate.CAKey(sql.FieldNotIn(FieldStatus, vs...))
+}
+
+// CrossCertificateEQ applies the EQ predicate on the "cross_certificate" field.
+func CrossCertificateEQ(v []byte) predicate.CAKey {
+	return predicate.CAKey(sql.FieldEQ(FieldCrossCertificate, v))
+}
+
+// CrossCertificateNEQ applies the NEQ predicate on the "cross_certificate" field.
+func CrossCertificateNEQ(v []byte) predicate.CAKey {
+	return predicate.CAKey(sql.FieldNEQ(FieldCrossCertificate, v))
+}
+
+// CrossCertificateIn applies the In predicate on the "cross_certificate" field.
+func CrossCertificateIn(vs ...[]byte) predicate.CAKey {
+	return predicate.CAKey(sql.FieldIn(FieldCrossCertificate, vs...))
+}
+
+// CrossCertificateNotIn applies the NotIn predicate on the "cross_certificate" field.
+func CrossCertificateNotIn(vs ...[]byte) predicate.CAKey {
+	return predicate.CAKey(sql.FieldNotIn(FieldCrossCertificate, vs...))
+}
+
+// CrossCertificateGT applies the GT predicate on the "cross_certificate" field.
+func CrossCertificateGT(v []byte) predicate.CAKey {
+	return predicate.CAKey(sql.FieldGT(FieldCrossCertificate, v))
+}
+
+// CrossCertificateGTE applies the GTE predicate on the "cross_certificate" field.
+func CrossCertificateGTE(v []byte) predicate.CAKey {
+	return predicate.CAKey(sql.FieldGTE(FieldCrossCertificate, v))
+}
+
+// CrossCertificateLT applies the LT predicate on the "cross_certificate" field.
+func CrossCertificateLT(v []byte) predicate.CAKey {
+	return predicate.CAKey(sql.FieldLT(FieldCrossCertificate, v))
+}
+
+// CrossCertificateLTE applies the LTE predicate on the "cross_certificate" field.
+func CrossCertificateLTE(v []byte) predicate.CAKey {
+	return predicate.CAKey(sql.FieldLTE(FieldCrossCertificate, v))
+}
+
+// CrossCertificateIsNil applies the IsNil predicate on the "cross_certificate" field.
+func CrossCertificateIsNil() predicate.CAKey {
+	return predicate.CAKey(sql.FieldIsNull(FieldCrossCertificate))
+}
+
+// CrossCertificateNotNil applies the NotNil predicate on the "cross_certificate" field.
+func CrossCertificateNotNil() predicate.CAKey {
+	return predicate.CAKey(sql.FieldNotNull(FieldCrossCertificate))
+}
+
+// RotatedAtEQ applies the EQ predicate on the "rotated_at" field.
+func RotatedAtEQ(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldEQ(FieldRotatedAt, v))
+}
+
+// RotatedAtNEQ applies the NEQ predicate on the "rotated_at" field.
+func RotatedAtNEQ(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldNEQ(FieldRotatedAt, v))
+}
+
+// RotatedAtIn applies the In predicate on the "rotated_at" field.
+func RotatedAtIn(vs ...time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldIn(FieldRotatedAt, vs...))
+}
+
+// RotatedAtNotIn applies the NotIn predicate on the "rotated_at" field.
+func RotatedAtNotIn(vs ...time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldNotIn(FieldRotatedAt, vs...))
+}
+
+// RotatedAtGT applies the GT predicate on the "rotated_at" field.
+func RotatedAtGT(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldGT(FieldRotatedAt, v))
+}
+
+// RotatedAtGTE applies the GTE predicate on the "rotated_at" field.
+func RotatedAtGTE(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldGTE(FieldRotatedAt, v))
+}
+
+// RotatedAtLT applies the LT predicate on the "rotated_at" field.
+func RotatedAtLT(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldLT(FieldRotatedAt, v))
+}
+
+// RotatedAtLTE applies the LTE predicate on the "rotated_at" field.
+func RotatedAtLTE(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldLTE(FieldRotatedAt, v))
+}
+
+// RotatedAtIsNil applies the IsNil predicate on the "rotated_at" field.
+func RotatedAtIsNil() predicate.CAKey {
+	return predicate.CAKey(sql.FieldIsNull(FieldRotatedAt))
+}
+
+// RotatedAtNotNil applies the NotNil predicate on the "rotated_at" field.
+func RotatedAtNotNil() predicate.CAKey {
+	return predicate.CAKey(sql.FieldNotNull(FieldRotatedAt))
+}
+
+// DropAfterEQ applies the EQ predicate on the "drop_after" field.
+func DropAfterEQ(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldEQ(FieldDropAfter, v))
+}
+
+// DropAfterNEQ applies the NEQ predicate on the "drop_after" field.
+func DropAfterNEQ(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldNEQ(FieldDropAfter, v))
+}
+
+// DropAfterIn applies the In predicate on the "drop_after" field.
+func DropAfterIn(vs ...time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldIn(FieldDropAfter, vs...))
+}
+
+// DropAfterNotIn applies the NotIn predicate on the "drop_after" field.
+func DropAfterNotIn(vs ...time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldNotIn(FieldDropAfter, vs...))
+}
+
+// DropAfterGT applies the GT predicate on the "drop_after" field.
+func DropAfterGT(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldGT(FieldDropAfter, v))
+}
+
+// DropAfterGTE applies the GTE predicate on the "drop_after" field.
+func DropAfterGTE(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldGTE(FieldDropAfter, v))
+}
+
+// DropAfterLT applies the LT predicate on the "drop_after" field.
+func DropAfterLT(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldLT(FieldDropAfter, v))
+}
+
+// DropAfterLTE applies the LTE predicate on the "drop_after" field.
+func DropAfterLTE(v time.Time) predicate.CAKey {
+	return predicate.CAKey(sql.FieldLTE(FieldDropAfter, v))
+}
+
+// DropAfterIsNil applies the IsNil predicate on the "drop_after" field.
+func DropAfterIsNil() predicate.CAKey {
+	return predicate.CAKey(sql.FieldIsNull(FieldDropAfter))
+}
+
+// DropAfterNotNil applies the NotNil predicate on the "drop_after" field.
+func DropAfterNotNil() predicate.CAKey {
+	return predicate.CAKey(sql.FieldNotNull(FieldDropAfter))
+}
+
+// WasOfflineEQ applies the EQ predicate on the "was_offline" field.
+func WasOfflineEQ(v bool) predicate.CAKey {
+	return predicate.CAKey(sql.FieldEQ(FieldWasOffline, v))
+}
+
+// WasOfflineNEQ applies the NEQ predicate on the "was_offline" field.
+func WasOfflineNEQ(v bool) predicate.CAKey {
+	return predicate.CAKey(sql.FieldNEQ(FieldWasOffline, v))
+}
+
+// WasOfflineIsNil applies the IsNil predicate on the "was_offline" field.
+func WasOfflineIsNil() predicate.CAKey {
+	return predicate.CAKey(sql.FieldIsNull(FieldWasOffline))
+}
+
+// WasOfflineNotNil applies the NotNil predicate on the "was_offline" field.
+func WasOfflineNotNil() predicate.CAKey {
+	return predicate.CAKey(sql.FieldNotNull(FieldWasOffline))
 }
 
 // And groups predicates with the AND operator between them.

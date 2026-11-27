@@ -106,6 +106,78 @@ func (_u *CAKeyUpdate) SetNillableStatus(v *cakey.Status) *CAKeyUpdate {
 	return _u
 }
 
+// SetCrossCertificate sets the "cross_certificate" field.
+func (_u *CAKeyUpdate) SetCrossCertificate(v []byte) *CAKeyUpdate {
+	_u.mutation.SetCrossCertificate(v)
+	return _u
+}
+
+// ClearCrossCertificate clears the value of the "cross_certificate" field.
+func (_u *CAKeyUpdate) ClearCrossCertificate() *CAKeyUpdate {
+	_u.mutation.ClearCrossCertificate()
+	return _u
+}
+
+// SetRotatedAt sets the "rotated_at" field.
+func (_u *CAKeyUpdate) SetRotatedAt(v time.Time) *CAKeyUpdate {
+	_u.mutation.SetRotatedAt(v)
+	return _u
+}
+
+// SetNillableRotatedAt sets the "rotated_at" field if the given value is not nil.
+func (_u *CAKeyUpdate) SetNillableRotatedAt(v *time.Time) *CAKeyUpdate {
+	if v != nil {
+		_u.SetRotatedAt(*v)
+	}
+	return _u
+}
+
+// ClearRotatedAt clears the value of the "rotated_at" field.
+func (_u *CAKeyUpdate) ClearRotatedAt() *CAKeyUpdate {
+	_u.mutation.ClearRotatedAt()
+	return _u
+}
+
+// SetDropAfter sets the "drop_after" field.
+func (_u *CAKeyUpdate) SetDropAfter(v time.Time) *CAKeyUpdate {
+	_u.mutation.SetDropAfter(v)
+	return _u
+}
+
+// SetNillableDropAfter sets the "drop_after" field if the given value is not nil.
+func (_u *CAKeyUpdate) SetNillableDropAfter(v *time.Time) *CAKeyUpdate {
+	if v != nil {
+		_u.SetDropAfter(*v)
+	}
+	return _u
+}
+
+// ClearDropAfter clears the value of the "drop_after" field.
+func (_u *CAKeyUpdate) ClearDropAfter() *CAKeyUpdate {
+	_u.mutation.ClearDropAfter()
+	return _u
+}
+
+// SetWasOffline sets the "was_offline" field.
+func (_u *CAKeyUpdate) SetWasOffline(v bool) *CAKeyUpdate {
+	_u.mutation.SetWasOffline(v)
+	return _u
+}
+
+// SetNillableWasOffline sets the "was_offline" field if the given value is not nil.
+func (_u *CAKeyUpdate) SetNillableWasOffline(v *bool) *CAKeyUpdate {
+	if v != nil {
+		_u.SetWasOffline(*v)
+	}
+	return _u
+}
+
+// ClearWasOffline clears the value of the "was_offline" field.
+func (_u *CAKeyUpdate) ClearWasOffline() *CAKeyUpdate {
+	_u.mutation.ClearWasOffline()
+	return _u
+}
+
 // Mutation returns the CAKeyMutation object of the builder.
 func (_u *CAKeyUpdate) Mutation() *CAKeyMutation {
 	return _u.mutation
@@ -186,6 +258,30 @@ func (_u *CAKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(cakey.FieldStatus, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.CrossCertificate(); ok {
+		_spec.SetField(cakey.FieldCrossCertificate, field.TypeBytes, value)
+	}
+	if _u.mutation.CrossCertificateCleared() {
+		_spec.ClearField(cakey.FieldCrossCertificate, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.RotatedAt(); ok {
+		_spec.SetField(cakey.FieldRotatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.RotatedAtCleared() {
+		_spec.ClearField(cakey.FieldRotatedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.DropAfter(); ok {
+		_spec.SetField(cakey.FieldDropAfter, field.TypeTime, value)
+	}
+	if _u.mutation.DropAfterCleared() {
+		_spec.ClearField(cakey.FieldDropAfter, field.TypeTime)
+	}
+	if value, ok := _u.mutation.WasOffline(); ok {
+		_spec.SetField(cakey.FieldWasOffline, field.TypeBool, value)
+	}
+	if _u.mutation.WasOfflineCleared() {
+		_spec.ClearField(cakey.FieldWasOffline, field.TypeBool)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -282,6 +378,78 @@ func (_u *CAKeyUpdateOne) SetNillableStatus(v *cakey.Status) *CAKeyUpdateOne {
 	if v != nil {
 		_u.SetStatus(*v)
 	}
+	return _u
+}
+
+// SetCrossCertificate sets the "cross_certificate" field.
+func (_u *CAKeyUpdateOne) SetCrossCertificate(v []byte) *CAKeyUpdateOne {
+	_u.mutation.SetCrossCertificate(v)
+	return _u
+}
+
+// ClearCrossCertificate clears the value of the "cross_certificate" field.
+func (_u *CAKeyUpdateOne) ClearCrossCertificate() *CAKeyUpdateOne {
+	_u.mutation.ClearCrossCertificate()
+	return _u
+}
+
+// SetRotatedAt sets the "rotated_at" field.
+func (_u *CAKeyUpdateOne) SetRotatedAt(v time.Time) *CAKeyUpdateOne {
+	_u.mutation.SetRotatedAt(v)
+	return _u
+}
+
+// SetNillableRotatedAt sets the "rotated_at" field if the given value is not nil.
+func (_u *CAKeyUpdateOne) SetNillableRotatedAt(v *time.Time) *CAKeyUpdateOne {
+	if v != nil {
+		_u.SetRotatedAt(*v)
+	}
+	return _u
+}
+
+// ClearRotatedAt clears the value of the "rotated_at" field.
+func (_u *CAKeyUpdateOne) ClearRotatedAt() *CAKeyUpdateOne {
+	_u.mutation.ClearRotatedAt()
+	return _u
+}
+
+// SetDropAfter sets the "drop_after" field.
+func (_u *CAKeyUpdateOne) SetDropAfter(v time.Time) *CAKeyUpdateOne {
+	_u.mutation.SetDropAfter(v)
+	return _u
+}
+
+// SetNillableDropAfter sets the "drop_after" field if the given value is not nil.
+func (_u *CAKeyUpdateOne) SetNillableDropAfter(v *time.Time) *CAKeyUpdateOne {
+	if v != nil {
+		_u.SetDropAfter(*v)
+	}
+	return _u
+}
+
+// ClearDropAfter clears the value of the "drop_after" field.
+func (_u *CAKeyUpdateOne) ClearDropAfter() *CAKeyUpdateOne {
+	_u.mutation.ClearDropAfter()
+	return _u
+}
+
+// SetWasOffline sets the "was_offline" field.
+func (_u *CAKeyUpdateOne) SetWasOffline(v bool) *CAKeyUpdateOne {
+	_u.mutation.SetWasOffline(v)
+	return _u
+}
+
+// SetNillableWasOffline sets the "was_offline" field if the given value is not nil.
+func (_u *CAKeyUpdateOne) SetNillableWasOffline(v *bool) *CAKeyUpdateOne {
+	if v != nil {
+		_u.SetWasOffline(*v)
+	}
+	return _u
+}
+
+// ClearWasOffline clears the value of the "was_offline" field.
+func (_u *CAKeyUpdateOne) ClearWasOffline() *CAKeyUpdateOne {
+	_u.mutation.ClearWasOffline()
 	return _u
 }
 
@@ -395,6 +563,30 @@ func (_u *CAKeyUpdateOne) sqlSave(ctx context.Context) (_node *CAKey, err error)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(cakey.FieldStatus, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.CrossCertificate(); ok {
+		_spec.SetField(cakey.FieldCrossCertificate, field.TypeBytes, value)
+	}
+	if _u.mutation.CrossCertificateCleared() {
+		_spec.ClearField(cakey.FieldCrossCertificate, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.RotatedAt(); ok {
+		_spec.SetField(cakey.FieldRotatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.RotatedAtCleared() {
+		_spec.ClearField(cakey.FieldRotatedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.DropAfter(); ok {
+		_spec.SetField(cakey.FieldDropAfter, field.TypeTime, value)
+	}
+	if _u.mutation.DropAfterCleared() {
+		_spec.ClearField(cakey.FieldDropAfter, field.TypeTime)
+	}
+	if value, ok := _u.mutation.WasOffline(); ok {
+		_spec.SetField(cakey.FieldWasOffline, field.TypeBool, value)
+	}
+	if _u.mutation.WasOfflineCleared() {
+		_spec.ClearField(cakey.FieldWasOffline, field.TypeBool)
 	}
 	_node = &CAKey{config: _u.config}
 	_spec.Assign = _node.assignValues

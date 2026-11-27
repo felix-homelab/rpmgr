@@ -151,7 +151,7 @@ func (a *Audit) export(ctx, scope context.Context, orgID string, sendLines func(
 	defer cancel()
 	stop := context.AfterFunc(ctx, cancel) // the instance scope does not end with the request
 	defer stop()
-	signers, inters, root, err := castore.SignerCertificates(a.Sys, a.DB, pki.PurposeAuditCheckpoint)
+	signers, inters, roots, err := castore.SignerCertificates(a.Sys, a.DB, pki.PurposeAuditCheckpoint)
 	if err != nil {
 		return err
 	}
@@ -180,7 +180,7 @@ func (a *Audit) export(ctx, scope context.Context, orgID string, sendLines func(
 		}
 		return err
 	}
-	err = audit.Export(scope, a.DB, orgID, audit.Trust{Root: root, Intermediates: inters, Signers: signers}, now(), func(line []byte) error {
+	err = audit.Export(scope, a.DB, orgID, audit.Trust{Root: roots[0], Roots: roots, Intermediates: inters, Signers: signers}, now(), func(line []byte) error {
 		part, size = append(part, string(line)), size+len(line)
 		if len(part) >= exportPartLines || size >= exportPartBytes {
 			return send()
@@ -224,11 +224,11 @@ func (a *Audit) VerifyInstanceAuditChain(context.Context, *connect.Request[rpmgr
 // verify verifies the chain of orgID with every certificate the CA has had for audit checkpoints;
 // a broken chain is an answer, not an error.
 func (a *Audit) verify(ctx context.Context, orgID string) (*rpmgrv1.AuditVerification, error) {
-	signers, inters, root, err := castore.SignerCertificates(a.Sys, a.DB, pki.PurposeAuditCheckpoint)
+	signers, inters, roots, err := castore.SignerCertificates(a.Sys, a.DB, pki.PurposeAuditCheckpoint)
 	if err != nil {
 		return nil, err
 	}
-	head, last, err := audit.VerifyChain(ctx, a.DB, orgID, audit.Trust{Root: root, Intermediates: inters, Signers: signers})
+	head, last, err := audit.VerifyChain(ctx, a.DB, orgID, audit.Trust{Root: roots[0], Roots: roots, Intermediates: inters, Signers: signers})
 	out := &rpmgrv1.AuditVerification{}
 	var broken *audit.ChainError
 	switch {

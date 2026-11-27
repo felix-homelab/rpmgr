@@ -157,9 +157,12 @@ func checkpoints(ctx context.Context, tx *ent.Tx, orgID, tail string) ([]Checkpo
 }
 
 // Trust verifies checkpoint signatures: the root, and every intermediate and audit-checkpoint
-// certificate the CA has had (castore.SignerCertificates).
+// certificate the CA has had (castore.SignerCertificates). Roots are every root the CA has had: a
+// checkpoint signed under an old root of a rotation verifies against it after the switch and the
+// drop. Root is the one root of a trust that has no rotation; Roots, when set, replaces it.
 type Trust struct {
 	Root          *x509.Certificate
+	Roots         []*x509.Certificate
 	Intermediates []*x509.Certificate
 	Signers       []*x509.Certificate
 }
@@ -181,8 +184,18 @@ func (t Trust) VerifySignature(c Checkpoint) error {
 	if cert == nil {
 		return fmt.Errorf("audit: no certificate for key %s", c.KeyID)
 	}
-	if err := pki.VerifySigner(cert, t.Intermediates, t.Root, pki.PurposeAuditCheckpoint, c.Time); err != nil {
-		return err
+	roots := t.Roots
+	if len(roots) == 0 {
+		roots = []*x509.Certificate{t.Root}
+	}
+	var verr error
+	for _, r := range roots {
+		if verr = pki.VerifySigner(cert, t.Intermediates, r, pki.PurposeAuditCheckpoint, c.Time); verr == nil {
+			break
+		}
+	}
+	if verr != nil {
+		return verr
 	}
 	pub, ok := cert.PublicKey.(*ecdsa.PublicKey)
 	digest := sha256.Sum256(c.signed())

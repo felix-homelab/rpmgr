@@ -14,14 +14,17 @@ import (
 )
 
 // SignerCertificates returns what verifies old signatures of purpose p: every certificate a key
-// of that purpose has had and every intermediate, retired or expired ones too, with the root.
-func SignerCertificates(ctx context.Context, db *store.DB, p pki.Purpose) (signers, intermediates []*x509.Certificate, root *x509.Certificate, err error) {
+// of that purpose has had and every intermediate, retired or expired ones too, with the
+// cross-certificates of the roots, and every root: the active one first, then the old roots of a
+// rotation (overlap or retired), which signatures made before the rotation still chain to.
+func SignerCertificates(ctx context.Context, db *store.DB, p pki.Purpose) (signers, intermediates, roots []*x509.Certificate, err error) {
 	kind := map[pki.Purpose]cakey.Kind{pki.PurposeConfigSigning: cakey.KindConfigSigning, pki.PurposeAuditCheckpoint: cakey.KindAuditCheckpoint}[p]
 	rows, err := db.ReadClient().CAKey.Query().Where(cakey.KindIn(kind, cakey.KindIntermediate, cakey.KindRoot),
 		cakey.StatusNEQ(cakey.StatusNext)).All(ctx)
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	active := false
 	for _, r := range rows {
 		c, err := x509.ParseCertificate(r.Certificate)
 		if err != nil {
@@ -33,11 +36,23 @@ func SignerCertificates(ctx context.Context, db *store.DB, p pki.Purpose) (signe
 		case r.Kind == cakey.KindIntermediate:
 			intermediates = append(intermediates, c)
 		case r.Status == cakey.StatusActive:
-			root = c
+			roots = append([]*x509.Certificate{c}, roots...)
+			active = true
+		default:
+			roots = append(roots, c)
+		}
+		// X, the cross-certificate the old root signed for a new root's key: it is how a verifier that
+		// pins the old root comes to trust the new one (audit exports carry it with the roots).
+		if r.Kind == cakey.KindRoot && len(r.CrossCertificate) > 0 {
+			x, err := x509.ParseCertificate(r.CrossCertificate)
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("pki: cross-certificate of key %s: %w", r.ID, err)
+			}
+			intermediates = append(intermediates, x)
 		}
 	}
-	if root == nil {
+	if !active {
 		return nil, nil, nil, errors.New("pki: no active root")
 	}
-	return signers, intermediates, root, nil
+	return signers, intermediates, roots, nil
 }

@@ -250,7 +250,7 @@ func TestCompile_TrustRoots(t *testing.T) {
 		storetest.Init(t, db)
 		sys := storetest.SystemCtx(t)
 		roots := [][]byte{[]byte("root"), []byte("cross")}
-		c := &snapshot.Compiler{Roots: func() ([][]byte, error) { return roots, nil }}
+		c := &snapshot.Compiler{Roots: func(context.Context, *ent.Tx) ([][]byte, error) { return roots, nil }}
 		withCap := testAgent
 		withCap.Capabilities = []string{agentproto.CapTunnelQUIC, agentproto.CapTrustRoots}
 
@@ -274,7 +274,7 @@ func TestCompile_TrustRoots(t *testing.T) {
 		if bytes.Equal(pa, pb) || len(a.GetTrustRoots()) != 1 || !bytes.Equal(b.GetTrustRoots()[0], []byte("other")) {
 			t.Error("the roots do not change the snapshot")
 		}
-		c.Roots = func() ([][]byte, error) { return nil, errors.New("no roots") }
+		c.Roots = func(context.Context, *ent.Tx) ([][]byte, error) { return nil, errors.New("no roots") }
 		var logged bytes.Buffer
 		c.Log = slog.New(slog.NewTextHandler(&logged, nil))
 		if got, err := c.Compile(sys, db, withCap); err != nil || len(got.GetTrustRoots()) != 0 || !strings.Contains(logged.String(), "no roots") {

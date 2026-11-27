@@ -175,3 +175,8 @@ func SetEffectiveUID(t testing.TB, uid int) {
 	effectiveUID = func() int { return uid }
 	t.Cleanup(func() { effectiveUID = os.Geteuid })
 }
+
+// RotationStatusOf is rotationStatus on a database, for tests that have no boot file.
+func RotationStatusOf(ctx context.Context, db *store.DB, now time.Time) (RotationStatus, error) {
+	return rotationStatus(ctx, db, now)
+}

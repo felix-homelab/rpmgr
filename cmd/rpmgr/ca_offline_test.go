@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/felix-homelab/rpmgr/internal/cli"
+	"github.com/felix-homelab/rpmgr/internal/controller"
 )
 
 // TestCAOfflineRootRoundTrip is the ceremony through the command line: take the root offline, see
@@ -246,5 +247,116 @@ func TestAskSecret(t *testing.T) {
 	openTTY = func() (*os.File, error) { return nil, errors.New("no tty") }
 	if _, err := passphrasePrompt(false); err == nil || !strings.Contains(err.Error(), "--passphrase-file") {
 		t.Errorf("no terminal: %v", err)
+	}
+}
+
+// TestCAOfflineRootRotationPath: the whole offline path of a root rotation through the CLI, as the output
+// of `ca new-root --csr-out` tells it: both requests are signed with sign-intermediate (the new root's with
+// --kind cross-root) and imported; a kind that does not exist, or the wrong kind for a request, is refused.
+func TestCAOfflineRootRotationPath(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "controller.yaml")
+	boot := "version: 1\npublic_url: https://panel.example.com\n" +
+		"database: {dsn: " + filepath.Join(dir, "controller.db") + "}\n" +
+		"kek: {source: file, path: " + filepath.Join(dir, "kek") + "}\n"
+	if err := os.WriteFile(cfg, []byte(boot), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	passFile := filepath.Join(dir, "pass")
+	if err := os.WriteFile(passFile, []byte("Tr4ffic-Light-Mango-91x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rootFile := filepath.Join(dir, "root.age")
+	run := func(args ...string) string {
+		t.Helper()
+		code, stdout, stderr := runRpmgr(append(args, "--config", cfg)...)
+		if code != cli.ExitOK {
+			t.Fatalf("rpmgr %s: exit %d: %q %q", strings.Join(args, " "), code, stdout, stderr)
+		}
+		return stdout
+	}
+	run("controller", "init")
+	run("ca", "offline-root", "--out", rootFile, "--passphrase-file", passFile)
+
+	csr := filepath.Join(dir, "r2.csr")
+	out := run("ca", "new-root", "--csr-out", csr)
+	hashes := regexp.MustCompile(`key SHA-256 ([0-9a-f]{64})`).FindAllStringSubmatch(out, -1)
+	if len(hashes) != 2 || !strings.Contains(out, "--kind cross-root") {
+		t.Fatalf("new-root --csr-out: %q", out)
+	}
+	sign := func(csrFile, out, hash string, extra ...string) (int, string, string) {
+		return runRpmgr(append([]string{"ca", "sign-intermediate", "--root-file", rootFile, "--csr", csrFile, "--out", out,
+			"--passphrase-file", passFile, "--yes", "--key-sha256", hash}, extra...)...)
+	}
+	x, y := filepath.Join(dir, "x.crt"), filepath.Join(dir, "y.crt")
+	if code, _, stderr := sign(csr, filepath.Join(dir, "bad.crt"), hashes[0][1], "--kind", "bogus"); code != cli.ExitUsage || !strings.Contains(stderr, "--kind") {
+		t.Errorf("an unknown --kind: exit %d, %q", code, stderr)
+	}
+	// Without --kind cross-root the request of the new root is signed as an intermediate, which the import refuses.
+	plain := filepath.Join(dir, "plain.crt")
+	if code, _, stderr := sign(csr, plain, hashes[0][1]); code != cli.ExitOK {
+		t.Fatalf("signing as an intermediate: exit %d, %q", code, stderr)
+	}
+	if code, _, _ := runRpmgr("ca", "import-intermediate", "--in", plain, "--config", cfg); code == cli.ExitOK {
+		t.Error("an ordinary intermediate for the new root's key was imported")
+	}
+	if code, _, stderr := sign(csr, x, hashes[0][1], "--kind", "cross-root"); code != cli.ExitOK {
+		t.Fatalf("signing the cross-certificate: exit %d, %q", code, stderr)
+	}
+	if code, _, stderr := sign(csr+controller.IntermediateSuffix, y, hashes[1][1]); code != cli.ExitOK {
+		t.Fatalf("signing the intermediate: exit %d, %q", code, stderr)
+	}
+	if st := run("ca", "status"); !strings.Contains(st, "cross-certificate of the new root is missing") {
+		t.Errorf("status before the imports: %q", st)
+	}
+	run("ca", "import-intermediate", "--in", x)
+	run("ca", "import-intermediate", "--in", y)
+	if st := run("ca", "status"); !strings.Contains(st, "Both are imported") {
+		t.Errorf("status after the imports: %q", st)
+	}
+}
+
+// TestCANewRootAbort: a rotation that waits for the old root is given up with --abort, which the status
+// points to; it excludes --csr-out and is refused when nothing waits.
+func TestCANewRootAbort(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "controller.yaml")
+	boot := "version: 1\npublic_url: https://panel.example.com\n" +
+		"database: {dsn: " + filepath.Join(dir, "controller.db") + "}\n" +
+		"kek: {source: file, path: " + filepath.Join(dir, "kek") + "}\n"
+	if err := os.WriteFile(cfg, []byte(boot), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	passFile := filepath.Join(dir, "pass")
+	if err := os.WriteFile(passFile, []byte("Tr4ffic-Light-Mango-91x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run := func(args ...string) (int, string, string) { return runRpmgr(append(args, "--config", cfg)...) }
+	if code, _, stderr := run("controller", "init"); code != cli.ExitOK {
+		t.Fatal(stderr)
+	}
+	if code, _, stderr := run("ca", "offline-root", "--out", filepath.Join(dir, "root.age"), "--passphrase-file", passFile); code != cli.ExitOK {
+		t.Fatal(stderr)
+	}
+	if code, _, stderr := run("ca", "new-root", "--abort"); code != cli.ExitError || !strings.Contains(stderr, "no new root waits") {
+		t.Errorf("--abort with no rotation: exit %d, %q", code, stderr)
+	}
+	if code, _, stderr := run("ca", "new-root", "--csr-out", filepath.Join(dir, "r2.csr")); code != cli.ExitOK {
+		t.Fatal(stderr)
+	}
+	if code, stdout, _ := run("ca", "status"); code != cli.ExitOK || !strings.Contains(stdout, "new-root --abort") {
+		t.Errorf("status of a rotation that waits: %q", stdout)
+	}
+	if code, _, stderr := run("ca", "new-root", "--abort", "--csr-out", filepath.Join(dir, "x.csr")); code != cli.ExitUsage {
+		t.Errorf("--abort with --csr-out: exit %d, %q", code, stderr)
+	}
+	if code, stdout, stderr := run("ca", "new-root", "--abort"); code != cli.ExitOK || !strings.Contains(stdout, "removed") {
+		t.Fatalf("--abort: exit %d, %q %q", code, stdout, stderr)
+	}
+	if code, stdout, _ := run("ca", "status"); code != cli.ExitOK || strings.Contains(stdout, "Root rotation") {
+		t.Errorf("status after the abort: %q", stdout)
+	}
+	if code, _, stderr := run("ca", "new-root", "--csr-out", filepath.Join(dir, "r2b.csr")); code != cli.ExitOK {
+		t.Errorf("a new rotation after the abort: %q", stderr)
 	}
 }

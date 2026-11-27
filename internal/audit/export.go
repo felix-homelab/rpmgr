@@ -29,16 +29,19 @@ const (
 // the seq of its newest checkpoint, after which entries are the unanchored tail, and the
 // certificates its checkpoints verify with (in DER).
 type ExportHeader struct {
-	Type          string    `json:"type"`
-	Format        string    `json:"format"`
-	Chain         string    `json:"chain"`
-	Exported      time.Time `json:"exported"`
-	FirstSeq      int64     `json:"first_seq"`
-	LastSeq       int64     `json:"last_seq"`
-	AnchoredSeq   int64     `json:"anchored_seq"`
-	Root          []byte    `json:"root"`
-	Intermediates [][]byte  `json:"intermediates"`
-	Signers       [][]byte  `json:"signers"`
+	Type        string    `json:"type"`
+	Format      string    `json:"format"`
+	Chain       string    `json:"chain"`
+	Exported    time.Time `json:"exported"`
+	FirstSeq    int64     `json:"first_seq"`
+	LastSeq     int64     `json:"last_seq"`
+	AnchoredSeq int64     `json:"anchored_seq"`
+	Root        []byte    `json:"root"`
+	// Roots are every root the CA has had, the issuing one first (Root is its first), for an export that
+	// spans a root rotation; absent in an export of an instance that never rotated.
+	Roots         [][]byte `json:"roots,omitempty"`
+	Intermediates [][]byte `json:"intermediates"`
+	Signers       [][]byte `json:"signers"`
 }
 
 // ExportEntry is an entry of an export, every field as the chain hashes it.
@@ -118,6 +121,9 @@ func Export(ctx context.Context, db *store.DB, orgID string, trust Trust, now ti
 			Intermediates: raws(trust.Intermediates...), Signers: raws(trust.Signers...)}
 		if trust.Root != nil {
 			h.Root = trust.Root.Raw
+		}
+		if len(trust.Roots) > 1 {
+			h.Roots = raws(trust.Roots...)
 		}
 		if first != nil {
 			h.FirstSeq, h.LastSeq = *first, *last

@@ -489,13 +489,19 @@ same trust domain as R1 (the URI SAN `spiffe://<td>`).
 
 1. `rpmgr ca new-root` makes R2 (ECDSA P-256, 10 years), X, the first intermediate I2 under R2, and
    **Y, a certificate for I2's key that R1 signs**: an ordinary intermediate (`pathlen=0`, the
-   same name constraints). R2 is stored sealed with `status = next`. With R1 offline the command
-   takes `--csr-out <file>` and stops after it made the requests for R2 and I2; X is signed with
-   `rpmgr ca sign-intermediate --kind cross-root` and Y with the same command as any intermediate,
-   and both are imported with `rpmgr ca import-intermediate`. The import of X checks that its
-   **Subject and SubjectKeyId equal R2's byte for byte**, that its key is R2's, that R1 signed
-   it, that it is a CA with `pathlen` of at least 1 and valid within R1's lifetime; Y is checked
-   as any intermediate.
+   same name constraints). R2 has R1's Subject and its own key, which the controller seals like any
+   CA key, so R2 is online until `rpmgr ca offline-root` takes it out. With R1 online the command
+   signs X and Y itself and **moves issuing to R2 in the same transaction** (step 4). With R1
+   offline the keys are sealed with `status = next` and the command takes `--csr-out <file>`: it
+   writes the request for R2 to `<file>` and the request for I2 to `<file>.intermediate` (neither
+   may exist), and stops. X is signed with `rpmgr ca sign-intermediate --kind cross-root` and Y
+   with the same command as any intermediate, both on the offline host, and both are imported with
+   `rpmgr ca import-intermediate`; the import needs no KEK, so **the rotation job moves issuing**
+   within the hour after both are in. Asking `new-root --csr-out` again while they wait writes
+   nothing and shows the same requests. The import of X checks that its **Subject and SubjectKeyId
+   equal R2's byte for byte**, that its key is R2's, that R1 signed it, that it is a CA with
+   `pathlen` of at least 1 and valid within R1's lifetime; Y is checked as any intermediate. Until
+   issuing has moved, neither a second `new-root` nor a rotation of the intermediate is accepted.
 2. The **bundle is {R1, R2, X}**: it goes in `Welcome` and in every snapshot
    ([03](03-connections.md#trust-roots-in-welcome-and-snapshots)). X is only how an agent learns
    R2; it is no link of any chain. Go counts the path length of a root, and R1 allows one
@@ -504,13 +510,24 @@ same trust domain as R1 (the URI SAN `spiffe://<td>`).
    `leaf ← Y ← R1`.
 3. **Agents take R2.** The `Hello` digest shows who holds which roots; the UI and `rpmgr ca status`
    list the stragglers.
-4. **Issuing moves to R2** at once: from then the rotation job issues leaves from I2, and every
+4. **Issuing moves to R2**: R2 and I2 become active; R1 stays as the root of the overlap, which the
+   database marks with its status and the time the overlap began, and I1 as a retired intermediate
+   that keeps verifying its leaves. A next config-signing key and a next audit-checkpoint key are
+   made that I2 issues, so that what agents verify snapshots and deny-lists with chains to R2 as
+   well as, through Y, to R1. Connected agents get their certificates with their next `Welcome`,
+   which every renewal brings; the active signing keys stay active through the overlap, because an
+   agent cannot verify a snapshot that a key it does not know signed. The drop makes the next keys
+   active in its own transaction, and the old ones are retired and no longer delivered once they
+   chain to no root of the bundle. The change is a configuration change: it gets a revision, which
+   orders the bundle for the agents. From then the rotation job issues leaves from I2, and every
    chain the controller presents or hands out (`Enroll`, `Renew`, `Reauth`, the node's own, and so
    an agent's own chain to its peers, [Trust domain and identities](#trust-domain-and-identities))
    carries **both I2 and Y**. A verifier finds `leaf ← I2 ← R2` or `leaf ← Y ← R1`, whichever root
    it holds. An agent that is offline, or that never learns R2, verifies through Y until R1 is
    dropped, and learns R2 when it reconnects, also at `Reauth`. The same holds for each intermediate
-   issued during the overlap: R1 signs a certificate for it too.
+   issued during the overlap would need R1's signature too, so **no intermediate is rotated during
+   the overlap**: `rpmgr ca rotate-intermediate` is refused and the schedule skips it until R1 is
+   dropped; an intermediate lives a year, a half-life is months away.
 5. **R1 is dropped** by the same job, or by `rpmgr ca drop-root`, only when **the longest agent leaf
    lifetime plus the Reauth grace period** (7 + 30 days with the defaults) has passed since step 4,
    so an agent that was offline can still reauthenticate. The command before then is refused, with
@@ -520,7 +537,26 @@ same trust domain as R1 (the URI SAN `spiffe://<td>`).
    agent without the capability `trust.roots` can never learn R2, and the alert names it and the
    choices, which are to update it, to re-enroll it, to decommission it, or `rpmgr ca drop-root
    --strand-stragglers` to drop R1 and let it re-enroll [D181](14-open-decisions.md#engineering).
-   The bundle becomes {R2}, R1, its intermediates and Y are `retired`.
+   The alert is the error line "root rotation stalled" the job logs at each run, and the stragglers
+   `rpmgr ca status` lists. The longest agent leaf lifetime and the Reauth grace period are those of
+   the instance settings when issuing moved, which fix the earliest drop date; a later change of the
+   settings can lengthen the overlap but never shorten it. A **straggler** is an enabled gateway or
+   connector whose session was seen since issuing moved and whose `Hello` digest is not that of R2
+   alone or of R2 with R1: it holds no R2, or it announced no `trust.roots`. For `--force`, which
+   drops before the date, the stragglers are counted from further back: every enabled agent seen
+   within the overlap before the drop, so one that was offline across the switch and may still renew
+   through R1 holds a forced drop back. A disabled agent that lacks R2 holds nothing back, but
+   `rpmgr ca status` and the drop name it, as it must re-enroll before it can connect again. A drop
+   re-checks the date and the stragglers in its own transaction. The bundle becomes {R2}, R1 is
+   `retired`, and I1 and Y no longer chain to a root of the bundle, so neither is loaded or sent;
+   the keys of R1, I1 and of every signing key that chained to R1 are wiped from the database. The
+   audit entry of the drop records a drop before the date (`--force`) and the enabled agents that
+   `--strand-stragglers` left without R2, by identifier. The drop is refused when an active signing
+   key chains to R1 and no next key under I2 can replace it. **An agent enrolled during the overlap
+   pins R1**: install commands and `rpmgr ca status` show R1's pin until it is dropped, `Enroll`
+   returns the whole bundle, and the agent then holds both roots and verifies the snapshots signed
+   under either; R2's pin is for after the drop. `rpmgr ca drop-root --strand-stragglers` is
+   accepted only after the overlap.
 
 **What an agent keeps.** The pinned root, and an offered certificate only as a root when all of
 these hold: it is a CA certificate whose own signature verifies and that is valid now; its only
@@ -540,13 +576,22 @@ an attacker nothing. The agent writes the new set to `roots.pem` atomically (a t
 reloads its trust and **re-pins**: the set of SPKI hashes it trusts is the file's. The signatures
 of snapshots and deny-lists are checked against **every root it holds**, so once R1 is dropped
 they still verify under R2. The control session and the connector's dial to a gateway use the new
-set at once; a gateway's listener keeps the roots it started with until it restarts. A root
-learned from a `Welcome` or from a snapshot ends the control session once, so that the
-reconnect's `Hello` reports the new digest. It removes a root only when an authenticated bundle no
-longer lists it and another root it keeps verified the chain of the session that said so. **That
-removal is not built yet; when it is, a replayed older snapshot or a stale replica must not add a
-dropped root again while its cross-certificate is still valid**, for instance by taking roots only
-from a snapshot that is newer than the one that dropped it.
+set at once. A gateway's listener, the connectors' dial to it and the controller's agent listener
+take the roots the process trusts at each handshake, so R2 is accepted before R1 is dropped and
+R1 is refused after, with no restart. A root learned from a `Welcome` or from a snapshot ends the
+control session once, so that the reconnect's `Hello` reports the new digest.
+
+**What an agent drops.** A root, and only a root it holds, when **a snapshot that no longer lists
+it** says so and all of these hold: the snapshot's signature verifies, the snapshot is **newer
+than the one the agent runs** (the same database epoch and a higher `seq`, or a new epoch that the
+`Welcome` announced), the agent runs a snapshot already, so that the first one only adds, at
+least one root the snapshot lists is held, and the snapshot **verifies with the roots that remain
+alone**, so that the root that goes cannot vouch for its own removal. The roots of a snapshot are
+read only after the revision check, so **a replayed older snapshot or a stale replica neither adds
+a dropped root nor drops a newer one**; a dropped root could come back only through a
+cross-certificate from a root held, and R2 signed none for R1. A `Welcome` carries no revision and
+only adds. The kept roots are written to `roots.pem` as an addition is, in order, so that the
+first of them is the pinned root from then on.
 
 ### Root compromise
 
@@ -2324,23 +2369,28 @@ Security regression tests ([12](12-testing-and-quality.md#security-testing)):
 - [R] **Export** (Phase 2, `ExportAudit`): an org's chain, for `audit.read` with a step-up, or the
   instance chain for the Instance Admin with a step-up (`ExportInstanceAudit`). The request is
   audited as `audit.export` before the chain is read, so the export holds its own entry; an export
-  that breaks off, such as one the client abandons, is recorded once more with the result
-  `failure`, and a refused one is recorded as any refusal is, under the method's name. The export
-  is JSON Lines: a header line (format version, chain, first and last seq, the seq of the newest
-  checkpoint, the root's and the signers' certificates),
-  then each entry with every stored field as in its canonical form plus `prev_hash` and `hash`,
-  with each checkpoint in its place. It ends at the newest checkpoint; entries after it are listed
-  as an unanchored tail, flagged so, which a later export anchors. `rpmgr audit verify-export
-  --ca-pin sha256:<base64>` verifies an export offline against the CA root pin alone: links, hashes,
+  that breaks off, such as one the client abandons, is recorded once more with the result `failure`,
+  and a refused one is recorded as any refusal is, under the method's name. The export is JSON
+  Lines: a header line (format version, chain, first and last seq, the seq of the newest checkpoint,
+  the root's and the signers' certificates; an instance that rotated its root adds `roots`, every
+  root it has had, and the cross-certificate of the new root among the intermediates), then each
+  entry with every stored field as in its canonical form plus `prev_hash` and `hash`, with each
+  checkpoint in its place. It ends at the newest checkpoint; entries after it are listed as an
+  unanchored tail, flagged so, which a later export anchors. `rpmgr audit verify-export --ca-pin
+  sha256:<base64>` verifies an export offline against the CA root pin alone: links, hashes,
   checkpoint signatures and their keys' certificates, and that nothing was removed, reordered or
-  edited. The header is not signed. It tells the verifier where to start and end, and the verifier
-  takes the seqs it reports from the verified entries: a first entry that is not the header's
-  `first_seq` is refused. A cut at the start or the end that falls exactly on a checkpoint, with the
-  header adjusted to it, leaves a file that verifies, because every part of it is still signed:
-  cutting leading entries up to a checkpoint, or trailing entries back to an older one. Only a
-  reference from outside shows it, an audit sink or an earlier export that holds the newer seq.
-  Leading entries cut away anywhere else are refused; entries cut from the end are the unanchored
-  tail of an older state, which no signature covers. One export stream runs at most the export deadline
+  edited. Across a root rotation the pin of the **old** root verifies the whole export, trusting the
+  new root through the cross-certificate it signed; the pin of the new root verifies only what was
+  signed under it, since nothing the old root signed proves the new root's own key is not a
+  forgery's. An export without `roots`, from before a rotation, verifies as before. The header is
+  not signed. It tells the verifier where to start and end, and the verifier takes the seqs it
+  reports from the verified entries: a first entry that is not the header's `first_seq` is refused.
+  A cut at the start or the end that falls exactly on a checkpoint, with the header adjusted to it,
+  leaves a file that verifies, because every part of it is still signed: cutting leading entries up
+  to a checkpoint, or trailing entries back to an older one. Only a reference from outside shows it,
+  an audit sink or an earlier export that holds the newer seq. Leading entries cut away anywhere
+  else are refused; entries cut from the end are the unanchored tail of an older state, which no
+  signature covers. One export stream runs at most the export deadline
   ([03](03-connections.md#timeouts-keepalive-and-backoff)), its read transaction with it.
 - **Webhook signatures** (Phase 2) and their maximum age are under
   [Webhooks and the egress guard](#webhooks-and-the-egress-guard-phase-2).

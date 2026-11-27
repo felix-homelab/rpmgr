@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/felix-homelab/rpmgr/internal/pki"
 )
@@ -189,25 +190,62 @@ func VerifyExport(r io.Reader, pin string) (ExportResult, error) {
 	return res, nil
 }
 
-// trust is the certificates of the header, accepted only when the root matches pin.
+// trust is the certificates of the header, accepted only when a root of the header matches pin. The
+// root the pin names is trusted; another root of the header is trusted too only when a
+// cross-certificate of the header, signed by the pinned root, certifies its key (the pinned old root
+// vouches for the new one, X of a root rotation). A pin of the new root trusts the old one never:
+// nothing the old root's key can sign proves it is the new root's own, so what was signed under the
+// old root verifies with the old root's pin.
 func (h ExportHeader) trust(pin string) (Trust, error) {
 	root, err := x509.ParseCertificate(h.Root)
 	if err != nil {
 		return Trust{}, fmt.Errorf("%w: the root certificate", ErrExportFormat)
 	}
-	if pki.RootPin(root) != pin {
+	candidates := []*x509.Certificate{root}
+	for _, b := range h.Roots {
+		c, err := x509.ParseCertificate(b)
+		if err != nil {
+			return Trust{}, fmt.Errorf("%w: a root certificate", ErrExportFormat)
+		}
+		if !c.Equal(root) {
+			candidates = append(candidates, c)
+		}
+	}
+	var pinned *x509.Certificate
+	for _, c := range candidates {
+		if pki.RootPin(c) == pin {
+			pinned = c
+			break
+		}
+	}
+	if pinned == nil {
 		return Trust{}, ErrExportPin
 	}
-	if root.CheckSignatureFrom(root) != nil {
+	if pinned.CheckSignatureFrom(pinned) != nil {
 		return Trust{}, fmt.Errorf("%w: the pinned certificate is not a self-signed root", ErrExportPin)
 	}
-	t := Trust{Root: root}
+	t := Trust{Root: pinned, Roots: []*x509.Certificate{pinned}}
 	for _, b := range h.Intermediates {
 		c, err := x509.ParseCertificate(b)
 		if err != nil {
 			return Trust{}, fmt.Errorf("%w: an intermediate certificate", ErrExportFormat)
 		}
 		t.Intermediates = append(t.Intermediates, c)
+	}
+	// Trust spreads along cross-certificates, in the direction they were signed, until nothing changes: a
+	// root is trusted when a cross-certificate that a trusted root signed certifies its key, so that
+	// R1 trusted gives R2 (through X) and R2 then R3 (through X'), and what each signed chains to it directly.
+	for changed := true; changed; {
+		changed = false
+		for _, c := range candidates {
+			if slices.Contains(t.Roots, c) || c.CheckSignatureFrom(c) != nil {
+				continue
+			}
+			if certifiedBy(c, t.Intermediates, t.Roots) {
+				t.Roots = append(t.Roots, c)
+				changed = true
+			}
+		}
 	}
 	for _, b := range h.Signers {
 		c, err := x509.ParseCertificate(b)
@@ -217,4 +255,19 @@ func (h ExportHeader) trust(pin string) (Trust, error) {
 		t.Signers = append(t.Signers, c)
 	}
 	return t, nil
+}
+
+// certifiedBy reports whether one of the cross-certificates carries the subject and key of root and was signed by one of the trusted roots.
+func certifiedBy(root *x509.Certificate, cross, trusted []*x509.Certificate) bool {
+	for _, x := range cross {
+		if x.Subject.String() != root.Subject.String() || !bytes.Equal(x.RawSubjectPublicKeyInfo, root.RawSubjectPublicKeyInfo) {
+			continue
+		}
+		for _, r := range trusted {
+			if x.CheckSignatureFrom(r) == nil {
+				return true
+			}
+		}
+	}
+	return false
 }

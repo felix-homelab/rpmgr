@@ -52,6 +52,9 @@ enum CAKeyState {
   CA_KEY_STATE_ACTIVE = 2;
   // Replaced; it still verifies until its certificate expires.
   CA_KEY_STATE_RETIRED = 3;
+  // The old root of a root rotation after issuing moved: it no longer issues but is still trusted and in
+  // the trust bundle, until it is dropped and becomes retired.
+  CA_KEY_STATE_OVERLAP = 4;
 }
 
 // CAKey is one key of the CA, as its certificate shows it.

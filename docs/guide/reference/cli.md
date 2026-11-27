@@ -631,6 +631,8 @@ rpmgr ca <command>
 | [`rpmgr ca offline-root`](#rpmgr-ca-offline-root) | Move the root's key into a passphrase file and out of the database |
 | [`rpmgr ca sign-intermediate`](#rpmgr-ca-sign-intermediate) | Sign a request for an intermediate with the offline root, on the offline host |
 | [`rpmgr ca import-intermediate`](#rpmgr-ca-import-intermediate) | Import the intermediate the offline root signed |
+| [`rpmgr ca new-root`](#rpmgr-ca-new-root) | Rotate the root by cross-signing: make the new root and its intermediate |
+| [`rpmgr ca drop-root`](#rpmgr-ca-drop-root) | Drop the old root of a rotation from the trust bundle |
 
 ## rpmgr ca status
 
@@ -682,8 +684,9 @@ rpmgr ca sign-intermediate [flags]
 
 | Flag | Default | Description |
 |---|---|---|
-| `--csr ca rotate-intermediate --csr-out` |  | the request that ca rotate-intermediate --csr-out wrote |
+| `--csr ca rotate-intermediate --csr-out` |  | the request that ca rotate-intermediate --csr-out or \`ca new-root --csr-out\` wrote |
 | `--key-sha256 ca status` |  | the SHA-256 of the key the request must carry, as ca status and \`ca rotate-intermediate --csr-out\` show it; required with --yes |
+| `--kind string` | `intermediate` | intermediate, or cross-root for the request of a new root that ca new-root --csr-out wrote |
 | `--out string` |  | the certificate to write, which must not exist |
 | `--passphrase-file string` |  | read the passphrase from this file (mode 0600) instead of asking for it |
 | `--root-file ca offline-root` |  | the root file that ca offline-root wrote |
@@ -701,6 +704,35 @@ rpmgr ca import-intermediate [flags]
 |---|---|---|
 | `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
 | `--in ca sign-intermediate` |  | the certificate that ca sign-intermediate wrote |
+
+## rpmgr ca new-root
+
+Rotate the root by cross-signing: make the new root and its intermediate.
+
+```text
+rpmgr ca new-root [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--abort` |  | give up a rotation that waits for the offline root's signatures and has not moved issuing: remove the new root and intermediate |
+| `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
+| `--csr-out string` |  | with an offline old root: write the request for the new root to this new file, and the one for the new intermediate to the file with the suffix .intermediate (never overwritten) |
+
+## rpmgr ca drop-root
+
+Drop the old root of a rotation from the trust bundle.
+
+```text
+rpmgr ca drop-root [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
+| `--force` |  | drop before the overlap has passed; accepted only while no enabled agent lacks the new root, counting every one seen within the longest a leaf and the Reauth grace reach back, so one that was offline across the switch counts too |
+| `--strand-stragglers` |  | after the overlap, drop the old root although enabled agents still lack the new one; they have to re-enroll, and it asks first |
+| `--yes` |  | do not ask for the confirmation --strand-stragglers needs |
 
 ## rpmgr kek
 
