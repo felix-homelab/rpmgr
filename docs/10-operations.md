@@ -586,7 +586,8 @@ tracing:                      # every role's boot file takes this section
 revocation_log:
   sink: ""                    # a directory, usually a share, for a copy off the host; "" = none;
                               # or s3://<bucket>/<prefix> with the s3 section below
-  # s3: { endpoint: https://s3.example.com, region: eu-central-1, credentials_file: /etc/rpmgr/s3-credentials }
+  # s3: { endpoint: https://s3.example.com, region: eu-central-1, credentials_file: /etc/rpmgr/s3-credentials,
+  #       lock_days: 365 }   # lock_days: 0 = no Object Lock, or 30 to 3650
 ```
 
 ```yaml
@@ -694,8 +695,10 @@ Rules for every boot file:
     `listen.internal_address` (`host:port`, a name or an address the other replicas can dial) and
     `revocation_log.sink` are required, `database.driver` must be `postgres`, and the controller
     runs as a replica ([High availability](#high-availability)).
-  - **The sink.** `revocation_log.sink` is a directory or `s3://<bucket>/<prefix>`; `s3` goes with
-    the second form only, with `endpoint` (an `https://` URL), `region` and `credentials_file`
+  - **The sink.** `revocation_log.sink` is a directory or `s3://<bucket>/<prefix>`, the prefix
+    required and one that nothing else writes to; `s3` goes with the second form only, with
+    `endpoint` (an `https://` URL, `http://` for a loopback address), `region`, `credentials_file`
+    and optionally `lock_days` (0, or 30 to 3650)
     (a regular file of mode 0600 or 0400, YAML with the keys `access_key_id` and `secret_access_key`
     and nothing else, as for the external audit sink). At start the controller probes the store for
     conditional create and refuses to start on one without it
@@ -891,14 +894,16 @@ service that still runs the previous binary, with the command that restarts it.
   - **The S3-compatible sink** is the boot setting `revocation_log.sink: s3://<bucket>/<prefix>`
     with the section `revocation_log.s3` ([Boot files](#boot-files)). Nothing is mounted, so the
     unit adds no writable path. Create a bucket for it and an access key that may put, get and list
-    under the prefix and may not delete or overwrite. The store must support a conditional create
-    (`If-None-Match: *`): the controller creates an object under `_probe/` twice at start and
-    refuses to start when the second create succeeds, or the store does not know the header, so a
-    store of that kind is never written to. Probe objects stay in the bucket. When the store does
-    not answer (503, a timeout, a refused credential) revocations are enforced as before, the
-    entries wait in the local log, and the alert "revocation log not yet off-host" fires after
-    5 min; shipping goes on at the next tick. Verification, the break handling and the metrics are those
-    of the filesystem sink, below.
+    under the prefix and may not delete or overwrite; as a PUT permission includes overwrite, set
+    `lock_days` and enable Object Lock on the bucket to have the store refuse it
+    ([04](04-security.md#revocation-log)). The store must support a conditional create
+    (`If-None-Match: *`): the controller creates the object `_probe/conditional-create` twice at
+    start and refuses to start when the second create succeeds, or the store does not know the
+    header, so a store of that kind is never written to. The probe object stays in the bucket.
+    When the store does not answer (503, a timeout, a refused credential) revocations are enforced
+    as before, the entries wait in the local log, and the alert "revocation log not yet off-host"
+    fires after 5 min; shipping goes on at the next tick. Verification, the break handling and the
+    metrics are those of the filesystem sink, below.
   - **The filesystem sink** is the boot setting `revocation_log.sink`, a directory, which the unit
     of `rpmgr systemd-unit` makes writable ([Hardened systemd units](#hardened-systemd-units)).
     - **Publishing:** each entry is written to a temporary file, synced, then hard-linked to its

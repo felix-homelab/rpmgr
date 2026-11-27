@@ -157,9 +157,11 @@ a probe object under `_probe/` twice when it starts, and **refuses to start** wh
 not refuse the second write, because such a store would overwrite entries and leave gaps
 ([04](../../04-security.md#revocation-log)). The probe objects stay in the bucket.
 
-1. **Create the bucket and an access key** that may put, get and list objects under the prefix you
-   choose and may not delete or overwrite them. Keep the key for the controllers alone: whoever can
-   write to the sink can stop shipping.
+1. **Create the bucket and an access key** that may put, get and list objects under a prefix that
+   nothing else writes to, and may not delete them; a foreign object under the prefix stops the
+   shipping. Keep the key for the controllers alone: whoever can write to the sink can stop
+   shipping. A permission to put includes the permission to overwrite, so for the store to refuse an
+   overwrite as well, create the bucket with Object Lock enabled and set `lock_days` below.
 
 2. **Put the key in a file** that only `rpmgr` can read, mode 0600 or 0400, with the two keys of
    the file the external audit sink uses and nothing else:
@@ -178,10 +180,12 @@ not refuse the second write, because such a store would overwrite entries and le
        endpoint: https://s3.example.com
        region: eu-central-1
        credentials_file: /etc/rpmgr/s3-credentials
+       lock_days: 365     # optional: Object Lock in compliance mode, 30 to 3650 days
    ```
 
-   The endpoint is an `https://` URL; plain `http://` is accepted for a loopback address only. The
-   key never appears in a log or an error message.
+   The prefix is required. The endpoint is an `https://` URL; plain `http://` is accepted for a
+   loopback address only. The key never appears in a log or an error message. A bucket without
+   Object Lock refuses the writes when `lock_days` is set.
 
 While the store does not answer, or refuses the key, the controller logs
 `revocation log: the sink takes no entries; revocations are still enforced` and tries again every

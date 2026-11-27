@@ -103,10 +103,11 @@ tracing section is described in [Monitoring](../operations/monitoring.md).
 | `tls.cert_file` | path | none | The certificate chain of the public URL's host, PEM, the certificate first. Goes with `tls.key_file` |
 | `tls.key_file` | path | none | Its private key, PEM |
 | `revocation_log.sink` | path | `""` | A directory, usually on a share, that keeps a copy of the revocation log off the host. It must exist, and the user `rpmgr` must be able to write to it. `rpmgr systemd-unit` makes it writable in the unit, so write the unit again after setting it ([below](#directories-outside-varlibrpmgr)). Empty keeps only the local log ([Backup and restore](../operations/backup-and-restore.md#the-revocation-log-sink)) |
-| `revocation_log.sink` as `s3://<bucket>/<prefix>` | URL | `""` | An S3-compatible bucket instead of a directory; needs `revocation_log.s3`. The store must support a conditional create, or the controller refuses to start. Nothing is mounted, so the unit adds no path ([Backup and restore](../operations/backup-and-restore.md#an-s3-compatible-sink)) |
+| `revocation_log.sink` as `s3://<bucket>/<prefix>` | URL | `""` | An S3-compatible bucket instead of a directory; needs a prefix that nothing else writes to, and `revocation_log.s3`. The store must support a conditional create, or the controller refuses to start. Nothing is mounted, so the unit adds no path ([Backup and restore](../operations/backup-and-restore.md#an-s3-compatible-sink)) |
 | `revocation_log.s3.endpoint` | URL | none | The store's `https://` URL (`http://` on a loopback address only) |
 | `revocation_log.s3.region` | string | none | The region the store signs for |
 | `revocation_log.s3.credentials_file` | path | none | A YAML file with `access_key_id` and `secret_access_key`, mode 0600 or 0400 |
+| `revocation_log.s3.lock_days` | number | `0` | Writes each entry with Object Lock in compliance mode for this many days, in a bucket with Object Lock enabled; `0` for no lock, otherwise 30 to 3650 |
 | `log`, `tracing` | | | As above |
 
 **The KEK.** With `systemd-credential`, systemd decrypts the credential
