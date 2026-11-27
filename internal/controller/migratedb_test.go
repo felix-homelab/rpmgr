@@ -753,9 +753,16 @@ func TestMigrateDB_PostgresToPostgres(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	spelled := filepath.Join(t.TempDir(), "localhost.yaml")
-	if err := os.WriteFile(spelled, //nolint:gosec // G703: a path of this test
-		[]byte(strings.ReplaceAll(string(body), "127.0.0.1", "localhost")), 0o600); err != nil {
+	// The loopback address and localhost name the same server, whichever RPMGR_TEST_PG uses.
+	respelled := strings.ReplaceAll(string(body), "127.0.0.1", "localhost")
+	if respelled == string(body) {
+		respelled = strings.ReplaceAll(string(body), "localhost", "127.0.0.1")
+	}
+	if respelled == string(body) {
+		t.Fatal("RPMGR_TEST_PG must name the server as 127.0.0.1 or localhost for this test")
+	}
+	spelled := filepath.Join(t.TempDir(), "respelled.yaml")
+	if err := os.WriteFile(spelled, []byte(respelled), 0o600); err != nil { //nolint:gosec // G703: a path of this test
 		t.Fatal(err)
 	}
 	_ = firstDSN
