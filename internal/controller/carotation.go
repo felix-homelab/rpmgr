@@ -11,6 +11,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/pki/castore"
+	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -30,6 +31,8 @@ type CAOptions struct {
 	Leases *lease.Leases
 	Now    func() time.Time
 	Logger *slog.Logger
+	// RevLog receives the marker of a root switch or drop; nil records none.
+	RevLog *revlog.Log
 }
 
 func (o *CAOptions) defaults() {
@@ -74,7 +77,9 @@ func CARotation(o CAOptions) lease.Job {
 						return err
 					}
 				}
-				return nil
+				// A switch of issuing to a new root is marked for a restore of an older archive.
+				from, to := plan.RootSwitch()
+				return markRoot(o.RevLog, revlog.RootSwitched, from, to, "ca-rotation")
 			}
 			if plan.Config() {
 				// Issuing moved to a new root: the trust bundle changed, so the write is a configuration
@@ -119,7 +124,7 @@ func (o *CAOptions) dropOldRoot(ctx context.Context, l lease.Lease) (bool, error
 	if err != nil {
 		return false, err
 	}
-	_, err = applyDrop(ctx, o.DB, plan, "ca-rotation", "the overlap of the root rotation has passed",
+	_, err = applyDrop(ctx, o.DB, plan, o.RevLog, "ca-rotation", "the overlap of the root rotation has passed",
 		func(tx *ent.Tx) error { return o.Leases.Fence(ctx, tx, l) })
 	if errors.As(err, &stalled) {
 		o.Logger.Error("root rotation stalled: the old root is not dropped while enabled agents lack the new one; update, "+

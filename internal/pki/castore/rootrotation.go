@@ -368,7 +368,13 @@ type DropPlan struct {
 	earliest time.Time
 	// stranded are the agents a drop with Strand leaves without the new root, as Apply found them.
 	stranded []string
+	// dropped is the SHA-256 hash of the dropped root's public key, once Apply ran.
+	dropped string
 }
+
+// Dropped returns, after Apply, the SHA-256 hash of the public key of the root that left the bundle;
+// the caller logs it as the `root_dropped` marker of the revocation log.
+func (p *DropPlan) Dropped() string { return p.dropped }
 
 // Early reports whether the drop was made before the earliest date, which Force allows, and the date.
 func (p *DropPlan) Early() (bool, time.Time) { return p.early, p.earliest }
@@ -477,6 +483,7 @@ func (p *DropPlan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
 	if n != 1 {
 		return nil, ErrRotated
 	}
+	p.dropped = pki.PublicKeyHash(r1.PublicKey)
 	// The signing keys that chain to the old root give way to the next ones, which agents hold.
 	for _, sw := range p.swaps {
 		if n, err := tx.CAKey.Update().Where(cakey.ID(sw.old), cakey.StatusEQ(cakey.StatusActive)).SetStatus(cakey.StatusRetired).Save(ctx); err != nil {
@@ -623,4 +630,16 @@ func PlanAbortNewRoot(ctx context.Context, c *ent.CAKeyClient, now time.Time) (*
 		p.steps = append(p.steps, planStep{done: "the new intermediate that waited for the old root's signatures removed", remove: ni.ID})
 	}
 	return p, nil
+}
+
+// RootHeldAs reports whether the database holds a root whose public key has the SHA-256 hash, in one of
+// the statuses. A restore asks it of the archive's database for a root that a marker of the revocation
+// log says has moved on (docs/04-security.md, "Revocation log"): an archive that still holds the root
+// in the state the marker ended is older than the marker.
+func RootHeldAs(ctx context.Context, c *ent.CAKeyClient, hash string, statuses ...cakey.Status) (bool, error) {
+	rows, err := c.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusIn(statuses...)).All(ctx)
+	if err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(rows, func(r *ent.CAKey) bool { return pki.PublicKeyHash(r.PublicKey) == hash }), nil
 }

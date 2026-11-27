@@ -8,13 +8,16 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
+	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/pki/castore"
+	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -181,6 +184,10 @@ func NewRoot(ctx context.Context, path, csrOut string, getenv func(string) strin
 		return res, err
 	}
 	defer func() { _ = db.Close() }()
+	rl, err := openRevLog(cfg, now)
+	if err != nil {
+		return res, err
+	}
 	// The keys are made and sealed before the transaction: sealing may wait for a key service. If the
 	// keys changed meanwhile, plan again.
 	for attempt := 0; ; attempt++ {
@@ -200,7 +207,7 @@ func NewRoot(ctx context.Context, path, csrOut string, getenv func(string) strin
 		if err = fault("planned", csrOut); err != nil {
 			return res, err
 		}
-		res.Done, err = applyNewRoot(sys, db, plan, now)
+		res.Done, err = applyNewRoot(sys, db, plan, rl)
 		if !errors.Is(err, castore.ErrRotated) || attempt == 2 {
 			if err == nil && plan.NewRoot() != nil && plan.Requests() == nil {
 				res.Pin = pki.RootPin(plan.NewRoot())
@@ -226,7 +233,7 @@ func NewRoot(ctx context.Context, path, csrOut string, getenv func(string) strin
 
 // applyNewRoot writes the plan and the audit entry of the call: in a configuration transaction when
 // it changes the trust bundle, so that agents get snapshots of a new revision that carry it.
-func applyNewRoot(sys context.Context, db *store.DB, plan *castore.Plan, _ func() time.Time) ([]string, error) {
+func applyNewRoot(sys context.Context, db *store.DB, plan *castore.Plan, rl *revlog.Log) ([]string, error) {
 	var done []string
 	write := func(tx *ent.Tx) error {
 		var err error
@@ -240,9 +247,12 @@ func applyNewRoot(sys context.Context, db *store.DB, plan *castore.Plan, _ func(
 		if len(done) == 0 {
 			return nil // the requests that waited are shown again; nothing changed
 		}
-		_, err = audit.Append(sys, tx, audit.Entry{ActorType: audit.ActorSystem, ActorID: "local-cli", Action: action,
-			TargetType: "ca", Result: audit.Success, Reason: reason})
-		return err
+		if _, err = audit.Append(sys, tx, audit.Entry{ActorType: audit.ActorSystem, ActorID: "local-cli", Action: action,
+			TargetType: "ca", Result: audit.Success, Reason: reason}); err != nil {
+			return err
+		}
+		from, to := plan.RootSwitch()
+		return markRoot(rl, revlog.RootSwitched, from, to, "local-cli")
 	}
 	if plan.Config() {
 		_, err := store.ConfigTx(sys, db, func(tx *ent.Tx) ([]string, error) { return []string{"pki"}, write(tx) })
@@ -269,11 +279,15 @@ type DropRootResult struct {
 // snapshot of a new revision that carries it.
 func DropRoot(ctx context.Context, path string, force, strand bool, now func() time.Time) (DropRootResult, error) {
 	var res DropRootResult
-	_, db, sys, err := openLocal(ctx, path, "rpmgr ca drop-root")
+	cfg, db, sys, err := openLocal(ctx, path, "rpmgr ca drop-root")
 	if err != nil {
 		return res, err
 	}
 	defer func() { _ = db.Close() }()
+	rl, err := openRevLog(cfg, now)
+	if err != nil {
+		return res, err
+	}
 	overlap, err := RotationOverlap(sys, db.ReadClient())
 	if err != nil {
 		return res, err
@@ -286,7 +300,7 @@ func DropRoot(ctx context.Context, path string, force, strand bool, now func() t
 	if err != nil {
 		return res, err
 	}
-	res.Done, err = applyDrop(sys, db, plan, "local-cli", "the old root dropped from the trust bundle")
+	res.Done, err = applyDrop(sys, db, plan, rl, "local-cli", "the old root dropped from the trust bundle")
 	if err == nil {
 		res.Stranded = plan.Stranded()
 	}
@@ -342,7 +356,7 @@ func disabledLacking(sys context.Context, db *store.DB, now time.Time, overlap t
 
 // applyDrop writes the drop of the old root and its audit entry in a configuration transaction. The
 // caller adds to tx through fenced, if it must.
-func applyDrop(sys context.Context, db *store.DB, plan *castore.DropPlan, actor, reason string, fenced ...func(*ent.Tx) error) ([]string, error) {
+func applyDrop(sys context.Context, db *store.DB, plan *castore.DropPlan, rl *revlog.Log, actor, reason string, fenced ...func(*ent.Tx) error) ([]string, error) {
 	var done []string
 	_, err := store.ConfigTx(sys, db, func(tx *ent.Tx) ([]string, error) {
 		for _, f := range fenced {
@@ -356,6 +370,9 @@ func applyDrop(sys context.Context, db *store.DB, plan *castore.DropPlan, actor,
 		}
 		_, err = audit.Append(sys, tx, audit.Entry{ActorType: audit.ActorSystem, ActorID: actor, Action: "ca.drop_root",
 			TargetType: "ca", Result: audit.Success, Reason: reason + dropDetail(plan)})
+		if err == nil {
+			err = markRoot(rl, revlog.RootDropped, plan.Dropped(), "", actor)
+		}
 		return []string{"pki"}, err
 	})
 	return done, err
@@ -530,4 +547,23 @@ func AbortNewRoot(ctx context.Context, path string, now func() time.Time) ([]str
 		return err
 	})
 	return done, err
+}
+
+// openRevLog opens the revocation log in the state directory of the boot file, where a command run on
+// the controller host appends the markers of a root change.
+func openRevLog(cfg config.Controller, now func() time.Time) (*revlog.Log, error) {
+	return revlog.Open(filepath.Join(filepath.Dir(cfg.Database.DSN), "revocations.log"), now)
+}
+
+// markRoot appends the marker of a root change to rl, as the last step of the transaction that makes the
+// change: a restore of an archive older than the change then refuses (docs/04-security.md, "Revocation
+// log"). If the transaction fails to commit after that, the marker stays: a restore refuses an archive
+// that is still current until the change is made, which is the safe way to be wrong, and running the
+// command again makes it. It does nothing for a nil log, which only tests use, or an empty subject.
+func markRoot(rl *revlog.Log, kind revlog.Kind, subject, detail, actor string) error {
+	if rl == nil || subject == "" {
+		return nil
+	}
+	_, err := rl.Append(revlog.Entry{Kind: kind, Subject: subject, Detail: detail, Actor: actor})
+	return err
 }

@@ -25,6 +25,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/pki/castore"
+	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -132,8 +133,13 @@ func TestCARotationRootRotation(t *testing.T) {
 	leases := lease.New(db, "ctn_test", nil)
 	at := time.Now()
 	var logs bytes.Buffer
+	rlPath := filepath.Join(t.TempDir(), "revocations.log")
+	rl, err := revlog.Open(rlPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	o := controller.CAOptions{DB: db, CA: e.ca, Sealer: e.sealer, Leases: leases, Now: func() time.Time { return at },
-		Logger: slog.New(slog.NewTextHandler(&logs, nil))}
+		Logger: slog.New(slog.NewTextHandler(&logs, nil)), RevLog: rl}
 	run := func() {
 		t.Helper()
 		if err := runOnce(t, leases, controller.CARotation(o)); err != nil {
@@ -142,6 +148,7 @@ func TestCARotationRootRotation(t *testing.T) {
 	}
 	revisions := func() int { return e.db.Client().ConfigRevision.Query().CountX(e.sys) }
 	r1 := e.ca.Root()
+	hash1 := pki.PublicKeyHash(r1.RawSubjectPublicKeyInfo)
 
 	// The old root goes offline; the new root's requests are signed on its host and imported.
 	plan, err := castore.PlanRootExport(e.sys, db.ReadClient().CAKey, e.sealer)
@@ -211,6 +218,13 @@ func TestCARotationRootRotation(t *testing.T) {
 	if n := e.db.Client().AuditEntry.Query().Where(auditentry.Action("ca.rotate"), auditentry.ActorID("ca-rotation")).CountX(e.sys); n < 2 {
 		t.Fatalf("%d audit records of the switch", n)
 	}
+	// The switch is in the revocation log, so that a restore of an older archive refuses: it names the old
+	// root and the new one.
+	marks := rootMarkers(t, rlPath)
+	if len(marks) != 1 || marks[0].Kind != revlog.RootSwitched || marks[0].Subject != hash1 ||
+		marks[0].Detail != pki.PublicKeyHash(e.ca.Root().RawSubjectPublicKeyInfo) || marks[0].Actor != "ca-rotation" {
+		t.Fatalf("markers after the switch: %+v", marks)
+	}
 
 	// Within the overlap the job drops nothing.
 	switchedAt := at
@@ -247,6 +261,25 @@ func TestCARotationRootRotation(t *testing.T) {
 	if n := e.db.Client().AuditEntry.Query().Where(auditentry.Action("ca.drop_root"), auditentry.ActorID("ca-rotation")).CountX(e.sys); n != 1 {
 		t.Fatalf("%d audit records of the drop", n)
 	}
+	if marks := rootMarkers(t, rlPath); len(marks) != 2 || marks[1].Kind != revlog.RootDropped || marks[1].Subject != hash1 {
+		t.Fatalf("markers after the drop: %+v", marks)
+	}
+}
+
+// rootMarkers reads the markers of a root change from the revocation log at path.
+func rootMarkers(t *testing.T, path string) []revlog.Entry {
+	t.Helper()
+	all, err := revlog.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []revlog.Entry
+	for _, e := range all {
+		if e.Kind == revlog.RootSwitched || e.Kind == revlog.RootDropped || e.Kind == revlog.RootCompromised {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // TestRootRotationCommands: `ca new-root` and `ca drop-root` on a host with a controller database. The
@@ -587,5 +620,51 @@ func TestRotationStatusWarnsOfAnExpiringIntermediate(t *testing.T) {
 	rs, err = controller.CARotationStatus(ctx, h.cfg, func() time.Time { return now.Add(340 * rotationDay) })
 	if err != nil || !rs.Waiting || !rs.IntermediateExpiring || rs.IntermediateExpires.IsZero() {
 		t.Fatalf("status of a rotation that stalled: %+v, %v", rs, err)
+	}
+}
+
+// A drop whose marker cannot be written is not made: the marker is the last step of the transaction, so the
+// failure rolls the drop back, the old root stays in the bundle, and a run with a log that works makes it.
+func TestCARotationDropNeedsItsMarker(t *testing.T) {
+	db := storetest.Migrated(t, store.SQLite)
+	e := startSessions(t, db, "0.1.0", 0)
+	leases := lease.New(db, "ctn_test", nil)
+	at := time.Now()
+	e.newRootOnline(t, at)
+	at = at.Add(38 * rotationDay)
+	dir := t.TempDir()
+	rlPath := filepath.Join(dir, "revocations.log")
+	rl, err := revlog.Open(rlPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := controller.CAOptions{DB: db, CA: e.ca, Sealer: e.sealer, Leases: leases, Now: func() time.Time { return at }, RevLog: rl}
+	// The log's file is replaced by a directory, so that no append can work.
+	if err := os.Remove(rlPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(rlPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := runOnce(t, leases, controller.CARotation(o)); err == nil {
+		t.Fatal("the job dropped the old root although its marker could not be written")
+	}
+	if n := db.Client().CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusOverlap)).CountX(e.sys); n != 1 {
+		t.Fatalf("%d roots in the overlap after the failed drop, want 1: the transaction was not rolled back", n)
+	}
+	if n := db.Client().AuditEntry.Query().Where(auditentry.Action("ca.drop_root")).CountX(e.sys); n != 0 {
+		t.Fatalf("%d audit records of a drop that did not happen", n)
+	}
+	if err := os.Remove(rlPath); err != nil {
+		t.Fatal(err)
+	}
+	if o.RevLog, err = revlog.Open(rlPath, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := runOnce(t, leases, controller.CARotation(o)); err != nil {
+		t.Fatal(err)
+	}
+	if marks := rootMarkers(t, rlPath); len(marks) != 1 || marks[0].Kind != revlog.RootDropped {
+		t.Fatalf("markers after the retried drop: %+v", marks)
 	}
 }

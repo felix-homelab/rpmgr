@@ -932,11 +932,12 @@ service that still runs the previous binary, with the command that restarts it.
   - all sessions and every **enrollment token** from the backup that can still be used are
     invalidated (a token consumed after the backup would otherwise become usable again). [R] So are
     unused password-reset links and open invitations, which are one-time credentials too.
-  - **a backup from before a root rotation** brings the old root back as the issuing root, and
-    agents that dropped it no longer trust it: restoring one from before the switch makes the old
-    root issue again, and one from before the drop puts the old root back in the bundle, which the
-    agents dropped. The restore does not refuse or warn of this: rotate the root again after such a
-    restore, or re-enroll every agent, and take a new backup at once after a rotation.
+  - **a backup from before a root change** is refused: one from before the switch would make the
+    old root issue again, one from before the drop would put it back in the bundle that agents have
+    dropped it from, and one from before a compromise replacement would bring the compromised root
+    back. The revocation log's markers `root_switched`, `root_dropped` and `root_compromised` tell
+    ([04](04-security.md#revocation-log)); the restore names the root and changes nothing. Restore a
+    later backup, and take one at once after a rotation.
   - agents enrolled after the backup are unknown and must re-enroll. An agent that renewed its
     certificate after the backup keeps its control session, but `Renew` and `Reauth` refuse a
     certificate the restored database does not record
@@ -954,9 +955,8 @@ service that still runs the previous binary, with the command that restarts it.
   a replica that may have a backlog [D181](14-open-decisions.md#engineering): the restore needs a
   log of it among the `--revocation-log` it was given, reaching what the sink holds of it, or fails
   closed. The backlog columns are up to one heartbeat old, so a node whose row lacks `stopped_clean`
-  counts the same way. A restore also **refuses** an archive in which an active CA key is named by
-  an issuer revocation ([04](04-security.md#root-compromise)), and restores a root's `root_offline`
-  marker by setting its `key_enc` to null. Without a sink, a single node's whole log is not off the
+  counts the same way. A restore also **refuses** an archive older than a marker of a root change
+  (above), and restores a root's `root_offline` marker by setting its `key_enc` to null. Without a sink, a single node's whole log is not off the
   host, so a restore without that log fails closed too; so does a log entry of a kind the restoring
   version does not know. The entries of every reachable log are merged and re-applied all the same.
   Then all API tokens and service accounts are suspended, all sessions invalidated, every user must
