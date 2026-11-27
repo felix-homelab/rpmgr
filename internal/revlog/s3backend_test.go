@@ -427,8 +427,8 @@ func TestS3Backend_ProbeUnreachableFirstCreate(t *testing.T) {
 func TestS3Backend_ListSequence(t *testing.T) {
 	g := objstoretest.NewTarget(t)
 	b := revlog.NewS3Backend(context.Background(), g.Client(t, 0), "sink")
-	for _, n := range []int{1, 2, 4, 5, 6, 7, 8, 9} {
-		if err := b.CreateIfAbsent(revlog.Key(uint64(n)), []byte("x\n")); err != nil {
+	for _, n := range []uint64{1, 2, 4, 5, 6, 7, 8, 9} {
+		if err := b.CreateIfAbsent(revlog.Key(n), []byte("x\n")); err != nil {
 			t.Fatal(err)
 		}
 	}

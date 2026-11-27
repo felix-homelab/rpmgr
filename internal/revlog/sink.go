@@ -183,7 +183,7 @@ func (s *Sink) tailGap(err error) error {
 	if s.lagged++; s.lagged >= MaxUnlistedRounds {
 		return s.fail(err)
 	}
-	return fmt.Errorf("%w: %s", ErrListingLags, err)
+	return fmt.Errorf("%w: %s", ErrListingLags, err.Error())
 }
 
 func (s *Sink) fail(err error) error {
