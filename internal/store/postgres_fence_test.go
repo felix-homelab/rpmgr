@@ -21,9 +21,11 @@ import (
 // restarted server does, and waits until db knows.
 func endLockSession(t *testing.T, admin *store.DB, db *store.DB) {
 	t.Helper()
-	if _, err := admin.Writer.Exec(`SELECT pg_terminate_backend(pid) FROM pg_locks
-		WHERE locktype = 'advisory' AND classid = 1919970663 AND objid = 2 AND granted`); err != nil {
-		t.Fatal(err)
+	var n int
+	if err := admin.Writer.QueryRow(`SELECT count(pg_terminate_backend(pid)) FROM pg_locks
+		WHERE locktype = 'advisory' AND classid = 1919970663 AND objid = 2 AND granted
+		AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("ending the lock's session: %d %v", n, err)
 	}
 	select {
 	case <-db.LockLost():
@@ -177,5 +179,233 @@ func TestMigrate_WaitForLockIsBounded(t *testing.T) {
 	}
 	if d := time.Since(start); d > 10*time.Second {
 		t.Errorf("Migrate waited %s with a wait of 300 ms", d)
+	}
+}
+
+// migratedPG makes a PostgreSQL database with the schema and an instance, and returns its DSN.
+func migratedPG(t *testing.T) string {
+	t.Helper()
+	dsn := pgDSN(t)
+	db, err := storetest.OpenPostgres(t, dsn, store.PostgresOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	dir, err := migrations.Dir(store.Postgres)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Migrate(context.Background(), db, dir); err != nil {
+		t.Fatal(err)
+	}
+	storetest.Init(t, db)
+	return dsn
+}
+
+// TestPostgres_NewHolderEndsPreviousSessions (docs/06-data-model.md, "Connecting to PostgreSQL"):
+// the controller that takes the lock ends the sessions of the one before it, so a transaction of
+// that controller that is still open, as one held back by a stalled socket or a frozen process is,
+// cannot commit after the new holder has started to write. The previous controller has not noticed
+// the loss yet in this test, so only the server stops it.
+func TestPostgres_NewHolderEndsPreviousSessions(t *testing.T) {
+	dsn := migratedPG(t)
+	prev, err := storetest.OpenPostgres(t, dsn, store.PostgresOptions{Lock: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = prev.Close() }()
+	admin, err := storetest.OpenPostgres(t, dsn, store.PostgresOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = admin.Close() }()
+	sys := storetest.SystemCtx(t)
+	began, release := make(chan struct{}), make(chan struct{})
+	result := make(chan error, 1)
+	go func() {
+		result <- store.WriteTx(sys, prev, func(tx *ent.Tx) error {
+			if err := tx.Org.Create().SetName("stale").SetSlug("stale").Exec(sys); err != nil {
+				return err
+			}
+			close(began)
+			<-release // the COMMIT is "on the wire"
+			return nil
+		})
+	}()
+	<-began
+	// The previous controller's lock session goes (a partition ends it on the server); the new one
+	// takes the lock and, as the exclusive holder, ends the other sessions of the previous one.
+	if _, err := admin.Writer.Exec(`SELECT pg_terminate_backend(pid) FROM pg_locks
+		WHERE locktype = 'advisory' AND classid = 1919970663 AND objid = 2 AND granted
+		AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`); err != nil {
+		t.Fatal(err)
+	}
+	next, err := storetest.OpenPostgres(t, dsn, store.PostgresOptions{Lock: true})
+	if err != nil {
+		t.Fatalf("the new holder: %v", err)
+	}
+	defer func() { _ = next.Close() }()
+	close(release)
+	if err := <-result; err == nil {
+		t.Error("the previous controller's transaction committed after the new holder took over")
+	}
+	n, err := admin.Client().Org.Query().Where(org.Slug("stale")).Count(sys)
+	if err != nil || n != 0 {
+		t.Errorf("the stale write: %d %v", n, err)
+	}
+}
+
+// TestPostgres_StaleEpochCannotCommit: the server refuses a write transaction of a controller
+// that is not the one that claimed the database last, whenever it arrives; a claim waits for a
+// transaction in flight instead of overtaking it, and does not go on when one does not end.
+func TestPostgres_StaleEpochCannotCommit(t *testing.T) {
+	dsn := migratedPG(t)
+	ctx := context.Background()
+	sys := storetest.SystemCtx(t)
+	a, err := storetest.OpenPostgres(t, dsn, store.PostgresOptions{Lock: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = a.Close() }()
+	if err := store.ClaimFence(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	put := func(slug string) error {
+		return store.WriteTx(sys, a, func(tx *ent.Tx) error { return tx.Org.Create().SetName(slug).SetSlug(slug).Exec(sys) })
+	}
+	if err := put("one"); err != nil {
+		t.Fatalf("a write of the claiming controller: %v", err)
+	}
+	admin, err := storetest.OpenPostgres(t, dsn, store.PostgresOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = admin.Close() }()
+
+	// A claim by another controller waits for a transaction of a that is in flight, which then
+	// commits; every later transaction of a fails.
+	began, release := make(chan struct{}), make(chan struct{})
+	inFlight := make(chan error, 1)
+	go func() {
+		inFlight <- store.WriteTx(sys, a, func(tx *ent.Tx) error {
+			if err := tx.Org.Create().SetName("two").SetSlug("two").Exec(sys); err != nil {
+				return err
+			}
+			close(began)
+			<-release
+			return nil
+		})
+	}()
+	<-began
+	bumped := make(chan error, 1)
+	go func() {
+		_, err := admin.Writer.Exec("UPDATE instance SET fence_epoch = fence_epoch + 1 WHERE id = 1")
+		bumped <- err
+	}()
+	select {
+	case err := <-bumped:
+		t.Fatalf("the claim overtook a transaction in flight: %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	close(release)
+	if err := <-inFlight; err != nil {
+		t.Errorf("the transaction in flight: %v", err)
+	}
+	if err := <-bumped; err != nil {
+		t.Fatal(err)
+	}
+	if err := put("three"); !errors.Is(err, store.ErrLockLost) {
+		t.Errorf("a write after another controller claimed the database: %v, want ErrLockLost", err)
+	}
+	slugs, err := admin.Client().Org.Query().Select(org.FieldSlug).Strings(sys)
+	if err != nil || len(slugs) != 2 {
+		t.Errorf("orgs: %v %v, want one and two", slugs, err)
+	}
+
+	// A claim that finds a transaction that does not end refuses, and says so.
+	store.SetClaimTimeout(t.Cleanup, 300*time.Millisecond)
+	stuck, err := admin.Writer.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = stuck.Rollback() }()
+	if _, err := stuck.ExecContext(ctx, "SELECT 1 FROM instance WHERE id = 1 FOR SHARE"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ClaimFence(ctx, a); err == nil || !strings.Contains(err.Error(), "cannot claim") {
+		t.Errorf("a claim against a transaction that does not end: %v", err)
+	}
+}
+
+// TestPostgres_ActiveNode: the node that runs the controller is recorded in the instance row.
+func TestPostgres_ActiveNode(t *testing.T) {
+	dsn := migratedPG(t)
+	db, err := storetest.OpenPostgres(t, dsn, store.PostgresOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	sys := storetest.SystemCtx(t)
+	if id, err := store.ActiveNode(sys, db); err != nil || id != "" {
+		t.Fatalf("a new database: %q %v", id, err)
+	}
+	if err := store.SetActiveNode(sys, db, "ctn_x"); err != nil {
+		t.Fatal(err)
+	}
+	if id, err := store.ActiveNode(sys, db); err != nil || id != "ctn_x" {
+		t.Errorf("after SetActiveNode: %q %v", id, err)
+	}
+}
+
+// TestPostgres_PreviousSessionOfAnotherRole: a session of the controller before it that the new
+// holder may see but not end stops the start with an error that says what to grant, instead of
+// starting with the old session alive.
+func TestPostgres_PreviousSessionOfAnotherRole(t *testing.T) {
+	dsn := pgDSN(t)
+	admin, err := storetest.OpenPostgres(t, dsn, store.PostgresOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = admin.Close() }()
+	u, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := u.Path[1:]
+	suffix := db[len(db)-6:]
+	old, holder := "rpmgr_old_"+suffix, "rpmgr_new_"+suffix
+	for _, q := range []string{
+		"CREATE ROLE " + old + " LOGIN PASSWORD 'low-entropy-1'",
+		"CREATE ROLE " + holder + " LOGIN PASSWORD 'low-entropy-2'",
+		"GRANT pg_read_all_stats TO " + holder, // sees the other's sessions, may not end them
+		"GRANT CONNECT ON DATABASE " + db + " TO " + old + ", " + holder,
+	} {
+		if _, err := admin.Writer.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() {
+		for _, r := range []string{old, holder} {
+			_, _ = admin.Writer.Exec("DROP ROLE IF EXISTS " + r)
+		}
+	})
+	as := func(role, pw string) string {
+		c := *u
+		c.User = url.UserPassword(role, pw)
+		return c.String()
+	}
+	prev, err := storetest.OpenPostgres(t, as(old, "low-entropy-1"), store.PostgresOptions{Lock: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = prev.Close() }()
+	if _, err := admin.Writer.Exec(`SELECT pg_terminate_backend(pid) FROM pg_locks
+		WHERE locktype = 'advisory' AND classid = 1919970663 AND objid = 2 AND granted
+		AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = storetest.OpenPostgres(t, as(holder, "low-entropy-2"), store.PostgresOptions{Lock: true})
+	if err == nil || !strings.Contains(err.Error(), "cannot end the sessions of the previous controller") {
+		t.Errorf("a holder that may not end the previous sessions: %v", err)
 	}
 }

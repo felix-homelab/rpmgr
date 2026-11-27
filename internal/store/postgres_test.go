@@ -429,7 +429,8 @@ func TestPostgres_ControllerLock(t *testing.T) {
 
 	// The session that holds the lock ends: the controller is told, and another one can start.
 	if _, err := admin.Writer.Exec(`SELECT pg_terminate_backend(pid) FROM pg_locks
-		WHERE locktype = 'advisory' AND classid = 1919970663 AND objid = 2 AND granted`); err != nil {
+		WHERE locktype = 'advisory' AND classid = 1919970663 AND objid = 2 AND granted
+		AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`); err != nil {
 		t.Fatal(err)
 	}
 	select {

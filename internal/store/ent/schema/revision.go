@@ -52,6 +52,14 @@ func (Instance) Fields() []ent.Field {
 		// "Copying a database"). retired_to names the boot file of the target.
 		field.Time("retired_at").Optional().Nillable(),
 		field.String("retired_to").Optional().Nillable(),
+		// active_node is the node ID of the host that runs the controller on PostgreSQL, set by
+		// `rpmgr controller init` and `adopt-state`; a controller whose host has another refuses to
+		// start. Null until one claims it (docs/06-data-model.md, "Connecting to PostgreSQL").
+		field.String("active_node").Optional().Nillable(),
+		// fence_epoch is bumped by every controller that takes the controller lock on PostgreSQL;
+		// each of its write transactions reads it FOR SHARE and fails when it is not the one the
+		// controller claimed, so a stale transaction of an earlier controller cannot commit.
+		field.Int64("fence_epoch").Optional().Nillable(),
 	}
 }
 

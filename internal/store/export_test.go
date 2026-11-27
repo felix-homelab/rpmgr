@@ -47,6 +47,14 @@ func SetMigrationLockWait(cleanup func(func()), d time.Duration) {
 	cleanup(func() { migrationLockWait = old })
 }
 
+// SetClaimTimeout sets how long ClaimFence waits for a transaction of an earlier controller until
+// the test ends.
+func SetClaimTimeout(cleanup func(func()), d time.Duration) {
+	old := claimLockTimeout
+	claimLockTimeout = d
+	cleanup(func() { claimLockTimeout = old })
+}
+
 // CopyOrder is the order in which CopyDatabase copies the tables of db.
 func CopyOrder(db *DB) ([]*schema.Table, error) {
 	return copyOrder(context.Background(), db.Reader, db.Dialect)

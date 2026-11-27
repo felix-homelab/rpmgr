@@ -4,10 +4,12 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -110,6 +112,16 @@ func OpenPostgres(ctx context.Context, dsn string, o PostgresOptions) (*DB, erro
 	}
 	ctx, cancel := context.WithTimeout(ctx, connectTimeout)
 	defer cancel()
+	// Every connection of a controller carries its own name, so that the next exclusive holder can
+	// end the sessions of the controller before it (endPreviousSessions).
+	name := ""
+	if o.Lock {
+		name = controllerApp + randomHex()
+		if cfg.RuntimeParams == nil {
+			cfg.RuntimeParams = map[string]string{}
+		}
+		cfg.RuntimeParams["application_name"] = name
+	}
 	pool := stdlib.OpenDB(*cfg)
 	db := &DB{Dialect: Postgres, Writer: pool, Reader: pool, unlock: func() error { return nil }, refuseRetired: o.RefuseRetired}
 	if err := checkPostgres(ctx, pool); err != nil {
@@ -117,14 +129,16 @@ func OpenPostgres(ctx context.Context, dsn string, o PostgresOptions) (*DB, erro
 		return nil, unreachable(ctx, err)
 	}
 	if o.Lock {
-		unlock, lost, err := holdControllerLock(ctx, cfg, o.Shared)
+		unlock, lost, err := holdControllerLock(ctx, cfg, o.Shared, name)
 		if err != nil {
 			_ = db.Close()
 			return nil, unreachable(ctx, err)
 		}
 		db.unlock, db.lockLost = unlock, lost
+		db.fence.exclusive = !o.Shared
 	}
-	db.client = ent.NewClient(ent.Driver(fencedDriver{Driver: entsql.OpenDB(Postgres, pool), fence: fence{lost: db.lockLost}}))
+	db.fence.lost = db.lockLost
+	db.client = ent.NewClient(ent.Driver(fencedDriver{Driver: entsql.OpenDB(Postgres, pool), fence: &db.fence}))
 	db.readClient = db.client
 	return db, nil
 }
@@ -391,7 +405,7 @@ func checkServerVersion(num int) error {
 // holdControllerLock takes the controller's advisory lock, shared or exclusive, on a connection of its own, outside the
 // pool, and checks that connection every lockCheckInterval: the lock ends with the session, so a
 // lost connection closes the returned channel and the controller must stop.
-func holdControllerLock(ctx context.Context, cfg *pgx.ConnConfig, shared bool) (func() error, <-chan struct{}, error) {
+func holdControllerLock(ctx context.Context, cfg *pgx.ConnConfig, shared bool, name string) (func() error, <-chan struct{}, error) {
 	// The lock ends with its session, so the server must not end that for being idle, and a
 	// middlebox must see traffic: docs/06-data-model.md, "Connecting to PostgreSQL".
 	lc := cfg.Copy()
@@ -416,6 +430,12 @@ func holdControllerLock(ctx context.Context, cfg *pgx.ConnConfig, shared bool) (
 	if !got {
 		_ = conn.Close(ctx)
 		return nil, nil, ErrLocked // the lock is held shared by a controller or exclusively by a tool
+	}
+	if !shared {
+		if err := endPreviousSessions(ctx, conn, name); err != nil {
+			_ = conn.Close(ctx)
+			return nil, nil, err
+		}
 	}
 	lost, stop, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	go func() {
@@ -455,6 +475,33 @@ func holdControllerLock(ctx context.Context, cfg *pgx.ConnConfig, shared bool) (
 	return unlock, lost, nil
 }
 
+// controllerApp is the start of the application_name of every connection of a controller that
+// holds the lock; the rest is random per opened database.
+const controllerApp = "rpmgr-controller:"
+
+func randomHex() string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// endPreviousSessions ends every other session of a controller in this database, as the new
+// exclusive holder of the lock: a transaction of the controller before it that is still on the
+// wire, held back by a stalled socket or a frozen process, then fails instead of committing after
+// the new holder has started to write. Only sessions of the same role are visible and may be
+// ended, unless the role is a member of pg_signal_backend and pg_read_all_stats; a refusal stops
+// the start.
+func endPreviousSessions(ctx context.Context, conn *pgx.Conn, own string) error {
+	var n int
+	err := conn.QueryRow(ctx, `SELECT count(pg_terminate_backend(pid)) FROM pg_stat_activity
+ WHERE datname = current_database() AND application_name LIKE $1 AND application_name <> $2`,
+		controllerApp+"%", own).Scan(&n)
+	if err != nil {
+		return fmt.Errorf("store: cannot end the sessions of the previous controller (the role needs pg_signal_backend and pg_read_all_stats for sessions of another role): %w", err)
+	}
+	return nil
+}
+
 // lockMigrations takes the migration lock on PostgreSQL, waiting while another process migrates;
 // on SQLite the single writer connection already serialises migrations.
 func lockMigrations(ctx context.Context, db *DB) (func(), error) {
@@ -468,6 +515,8 @@ func lockMigrations(ctx context.Context, db *DB) (func(), error) {
 	wctx, cancel := context.WithTimeout(ctx, migrationLockWait)
 	defer cancel()
 	if _, err := conn.ExecContext(wctx, "SELECT pg_advisory_lock($1, $2)", advisoryNamespace, advisoryMigrations); err != nil {
+		// The statement may still be waiting on the server: never return this connection to the pool.
+		_ = conn.Raw(func(any) error { return driver.ErrBadConn })
 		_ = conn.Close()
 		if errors.Is(wctx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
 			return nil, fmt.Errorf("store: migration lock: another process has held it for more than %s: %w", migrationLockWait, err)
