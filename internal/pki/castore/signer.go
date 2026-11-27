@@ -26,6 +26,9 @@ func SignerCertificates(ctx context.Context, db *store.DB, p pki.Purpose) (signe
 	}
 	active := false
 	for _, r := range rows {
+		if len(r.Certificate) == 0 {
+			continue // a request for the offline root's signature that a compromise ended before it was signed
+		}
 		c, err := x509.ParseCertificate(r.Certificate)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("pki: certificate of key %s: %w", r.ID, err)

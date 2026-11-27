@@ -118,10 +118,11 @@ type Status string
 
 // Status values.
 const (
-	StatusNext    Status = "next"
-	StatusActive  Status = "active"
-	StatusRetired Status = "retired"
-	StatusOverlap Status = "overlap"
+	StatusNext        Status = "next"
+	StatusActive      Status = "active"
+	StatusRetired     Status = "retired"
+	StatusOverlap     Status = "overlap"
+	StatusCompromised Status = "compromised"
 )
 
 func (s Status) String() string {
@@ -131,7 +132,7 @@ func (s Status) String() string {
 // StatusValidator is a validator for the "status" field enum values. It is called by the builders before save.
 func StatusValidator(s Status) error {
 	switch s {
-	case StatusNext, StatusActive, StatusRetired, StatusOverlap:
+	case StatusNext, StatusActive, StatusRetired, StatusOverlap, StatusCompromised:
 		return nil
 	default:
 		return fmt.Errorf("cakey: invalid enum value for status field: %q", s)

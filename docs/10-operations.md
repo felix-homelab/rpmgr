@@ -1524,18 +1524,31 @@ Each runbook: **symptoms → steps → done when**.
      when their certificates expire ([04](04-security.md#root-compromise)). Public traffic stops
      with the gateways; that is the cost.
   2. Stop every controller, then run `rpmgr ca new-root --compromised --tokens-out <file>` on the
-     controller host. It makes a new root in the **same trust domain**, new intermediate and
-     signing keys, marks every older CA key compromised and every certificate revoked, and writes
-     one re-enrollment token per connector and gateway to the file (mode 0600, never overwriting).
-     It prints the new `--ca-pin`.
-  3. Start the controller. It trusts the new root alone.
-  4. Re-enroll **every** agent with `rpmgr enroll --controller <url> --ca-pin <new pin>
-     --token-file <its token> --replace`, gateways first. An agent given the old pin finds no
-     matching root and stops. Identities and routes are kept.
+     controller host; it asks for a confirmation (`--yes` skips it) and refuses while a controller
+     runs. It makes a new root in the **same trust domain**, new intermediate and signing keys,
+     marks every older CA key compromised (wiping its key) and every certificate revoked,
+     invalidates the unused enrollment tokens, and writes one re-enrollment token per connector and
+     gateway to the file (mode 0600, never overwriting; `--token-ttl` sets how long they last).
+     All-in-one's own gateway and connector, and ephemeral connectors, get none. It prints the new
+     `--ca-pin` and never a token. If it fails, nothing changed and the file is gone: run it again
+     (an interrupted run may have left the file, which a new run refuses to overwrite: remove it).
+  3. Start the controller. It trusts the new root alone. `rpmgr ca status` warns, with the IDs,
+     until every connector and gateway holds a certificate that is neither revoked nor expired.
+  4. Re-enroll **every** agent, gateways first, with its own line of the file: the line is
+     `role`, org, ID, name and token, separated by tabs, and `--token-file` takes the token alone,
+     so write each agent's token to a file of mode 0600 on its host, for example with
+     `awk -F'\t' '$3 == "<id>" { printf "%s", $5 }' <file> > <its token file>`, then run
+     `rpmgr enroll --controller <url> --ca-pin <new pin> --token-file <its token file> --replace`
+     there. An agent given the old pin finds no matching root and stops, and its token stays
+     unused. A token works once; the agent keeps its identity and routes. Delete the tokens file,
+     and the token files, when every agent has enrolled.
   5. Investigate how the KEK and database were exposed, and rotate the KEK.
-  Backups from before the command trust the old root: a restore of one **refuses**, because the
-  issuer revocation names a key that is active in it; use a later backup, or restore it and run the
-  command again before anything connects ([04](04-security.md#root-compromise)).
+  Backups from before the command trust the old root: a restore of one **refuses** and changes
+  nothing, because the revocation log's `root_compromised` marker names a root that is active in
+  it; use a backup taken after the command ([04](04-security.md#root-compromise)). Take one at once.
+  Audit checkpoints signed before the command stay verifiable only below the entry that records
+  it; verify older history with an export made before it and the old pin
+  ([04](04-security.md#root-compromise)).
 - **Done when**: no agent presents a certificate from the old root, and every agent has re-enrolled
   (`rpmgr ca status` lists none).
 

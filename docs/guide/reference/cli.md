@@ -631,7 +631,7 @@ rpmgr ca <command>
 | [`rpmgr ca offline-root`](#rpmgr-ca-offline-root) | Move the root's key into a passphrase file and out of the database |
 | [`rpmgr ca sign-intermediate`](#rpmgr-ca-sign-intermediate) | Sign a request for an intermediate with the offline root, on the offline host |
 | [`rpmgr ca import-intermediate`](#rpmgr-ca-import-intermediate) | Import the intermediate the offline root signed |
-| [`rpmgr ca new-root`](#rpmgr-ca-new-root) | Rotate the root by cross-signing: make the new root and its intermediate |
+| [`rpmgr ca new-root`](#rpmgr-ca-new-root) | Rotate the root by cross-signing, or replace a compromised one: make the new root and its intermediate |
 | [`rpmgr ca drop-root`](#rpmgr-ca-drop-root) | Drop the old root of a rotation from the trust bundle |
 
 ## rpmgr ca status
@@ -707,7 +707,7 @@ rpmgr ca import-intermediate [flags]
 
 ## rpmgr ca new-root
 
-Rotate the root by cross-signing: make the new root and its intermediate.
+Rotate the root by cross-signing, or replace a compromised one: make the new root and its intermediate.
 
 ```text
 rpmgr ca new-root [flags]
@@ -716,8 +716,12 @@ rpmgr ca new-root [flags]
 | Flag | Default | Description |
 |---|---|---|
 | `--abort` |  | give up a rotation that waits for the offline root's signatures and has not moved issuing: remove the new root and intermediate |
+| `--compromised` |  | the root leaked: replace it within the trust domain with no cross-certificate, end every old CA key, revoke every certificate and write a re-enrollment token per connector and gateway to --tokens-out; every agent must enroll again (a hard cut of the data plane). Needs every controller stopped |
 | `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
 | `--csr-out string` |  | with an offline old root: write the request for the new root to this new file, and the one for the new intermediate to the file with the suffix .intermediate (never overwritten) |
+| `--token-ttl duration` |  | with --compromised: how long the tokens last (default 168h0m0s) |
+| `--tokens-out string` |  | with --compromised: the new file (mode 0600, never overwritten) that receives the re-enrollment tokens |
+| `--yes` |  | with --compromised: do not ask for the confirmation |
 
 ## rpmgr ca drop-root
 

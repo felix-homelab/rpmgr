@@ -291,7 +291,47 @@ replayed old snapshot changes nothing.
 
 ## The root, if it leaked
 
-If the root's key is compromised, every certificate is untrusted: set up a new controller, which
-creates a new root and pin, and enroll every agent again with the new pin
-([Root compromise](../../10-operations.md#root-compromise)). Keep the controller's database and its
-KEK, which protects the CA's keys, apart and backed up ([Backup and restore](backup-and-restore.md)).
+If the root's key is compromised, every certificate is untrusted, and the old root must not
+survive in any form. `rpmgr ca new-root --compromised` replaces it with a new root in the same
+trust domain, so every identity and route stays, **but every agent has to enroll again**: agents
+trust the old root until they do, so none can connect to the new controller, and public traffic
+stops with the gateways. Plan for that outage
+([Root compromise](../../10-operations.md#root-compromise),
+[04](../../04-security.md#root-compromise)).
+
+1. **Stop what you can reach.** Stop the gateways and connectors you can, so the old key's
+   exposure ends now and not when their certificates expire.
+2. **Stop every controller, then replace the root** on the controller host. The command refuses
+   while a controller runs, asks for a confirmation, and writes one single-use token per connector
+   and gateway to a new file that only you can read; it never overwrites a file and never prints a
+   token:
+
+   ```sh
+   sudo rpmgr ca new-root --compromised --tokens-out /root/reenroll-tokens
+   ```
+
+   It ends every key of the old CA and wipes the sealed ones, revokes every certificate,
+   invalidates the enrollment tokens that were unused, and prints the **new pin**. All-in-one's own
+   gateway and connector, and ephemeral connectors, get no token: they enroll anew. `--token-ttl`
+   sets how long the tokens last. If the command fails, nothing changed and the file is removed;
+   run it again. A file left by an interrupted run is never overwritten, so delete it first.
+3. **Start the controller.** It trusts the new root alone. `rpmgr ca status` warns, naming them,
+   until every connector and gateway has enrolled again.
+4. **Enroll every agent again, gateways first.** Each line of the file holds the agent's role,
+   org, ID and name, then its token, separated by tabs. Take the token of one agent to a file on
+   its host, and enroll with the new pin; the agent keeps its identity and routes:
+
+   ```sh
+   awk -F'\t' '$3 == "<id>" { printf "%s", $5 }' /root/reenroll-tokens > token
+   chmod 0600 token
+   sudo rpmgr enroll --controller https://panel.example.com --ca-pin <new pin> --token-file token --replace
+   ```
+
+   An agent that is given the old pin finds no matching root and stops, and its token stays
+   unused. Delete the tokens file and the token files when every agent has enrolled.
+5. **Find out how the key leaked**, and rotate the KEK ([Rotate the KEK](../../10-operations.md#rotate-the-kek)).
+
+A backup taken before the replacement is refused by `rpmgr restore`, because it would bring the
+compromised root back: restore a later one, and take a backup now
+([Backup and restore](backup-and-restore.md#the-revocation-log-sink)). Keep the controller's
+database and its KEK, which protects the CA's keys, apart and backed up.

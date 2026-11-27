@@ -600,30 +600,62 @@ successor, so no cross-certificate is made, and no agent can learn the new root 
 replacement is a **hard cut of the data plane** until every agent has re-enrolled.
 
 - **`rpmgr ca new-root --compromised`** runs on the controller host, needs the KEK, and refuses
-  while a controller runs (it takes the controller lock, like a restore). In one transaction it
-  makes a new root in the **same trust domain** with a new intermediate and new config-signing and
-  audit-checkpoint keys; sets every older CA key of every kind to `compromised` and wipes its
-  `key_enc`; marks **every issued certificate revoked** with the reason `ca_compromised`; appends
-  one revocation-log entry that names the SPKI hashes of the compromised keys, which a restore
-  applies again to the keys it names; and invalidates unused enrollment tokens. It writes, with
-  `--tokens-out <file>` (mode 0600, never overwriting), one **re-enrollment token** per connector
-  and gateway, which keeps its identity ([Tokens](#tokens)), and prints the new pin.
+  while a controller runs (it takes the controller lock, like a restore). It needs `--tokens-out`
+  and asks for a confirmation unless `--yes` is given. In one configuration transaction it makes a
+  new root in the **same trust domain** with a new intermediate and new config-signing and
+  audit-checkpoint keys; sets **every** older CA key, of any kind and status, to `compromised` and
+  wipes its `key_enc`; marks **every issued certificate** that is neither revoked nor expired
+  revoked with the reason `ca_compromised`; invalidates every unused enrollment token; mints one
+  **re-enrollment token** per connector and gateway, each bound to its agent so that it keeps its
+  identity ([Tokens](#tokens)); appends the audit entry `ca.root_compromised` to every audit chain
+  and signs a checkpoint of each with the new key ([Audit log](#audit-log)); and appends the
+  `root_compromised` markers, one per replaced root, last ([Revocation log](#revocation-log)). The
+  tokens are single-use and last 7 days unless `--token-ttl` says otherwise, at most the longest a
+  token may. They are written, with each agent's role, org, ID and name, to the new file
+  `--tokens-out` (mode 0600, never overwriting). The command prints the new pin and counts, never
+  a token. All-in-one's own gateway and connector and ephemeral connectors get none: they enroll
+  anew. It works in any state of the CA: during a root rotation, with the old root offline, and
+  with a new root that waits for the old root's signature, all of which it ends.
+- **Atomic.** The file is written inside the transaction, before the commit, and removed if the
+  transaction fails, so a file never exists without its tokens being valid, and a failed or
+  interrupted run leaves the database as it was: the old root still issues, nothing is revoked. A
+  run that was interrupted before the commit may leave the file: the next run refuses an existing
+  file, so remove it first. The marker is appended before the commit, so a failure after it leaves
+  a marker for a replacement that did not happen: a restore of a current backup refuses until the
+  command has run again ([Revocation log](#revocation-log)). The keys are sealed before the
+  transaction, and the root's row lock makes two runs take turns.
 - **Refused everywhere the controller can reach**: its own trust is the new root alone, so a
   certificate under the old chain fails on control sessions, `Enroll`, `Reauth`, the
   controller-to-controller listener and the web UI's agent endpoints, and the trust-bundle
   download holds the new root only. An agent that enrolls with the **old pin** finds no root that
-  matches it and stops.
+  matches it and stops, and its token stays unused. An agent that enrolled again holds the new
+  root alone, so a gateway refuses a connector with an old certificate and a connector refuses a
+  gateway with one.
 - **The cut.** Agents trust the old root until they re-enroll, so they cannot connect to the new
   controller and get no snapshot. Their data sessions go on while their certificates last (the
   leaf lifetime of [Leaf certificates](#leaf-certificates)) unless the operator stops the agents
   sooner; an attacker with the old key can mint identities such agents still accept until then.
   The runbook orders the steps ([10](10-operations.md#root-compromise)). Identities, routes and the
-  database stay.
-- **A restore of an older backup.** An archive made before the replacement holds the compromised
-  key as active. A restore that finds an issuer revocation naming an active CA key of the archive
-  **fails closed**: it refuses and changes nothing, and tells the operator to restore a later
-  backup, or to restore this one and run `rpmgr ca new-root --compromised` again before anything
-  connects.
+  database stay. `rpmgr ca status` warns, until each connector and gateway holds a certificate
+  that is neither revoked nor expired, how many have not enrolled again.
+- **A restore of an older backup** is refused. An archive made before the replacement holds the
+  compromised key as active; a restore that finds the `root_compromised` marker of a root the
+  archive still holds as active, in overlap or waiting **refuses and changes nothing**
+  ([Revocation log](#revocation-log)). The way back is a later backup; applying the replacement
+  again would leave the archive with no root that issues, as the new root's key is not in it.
+- **Audit checkpoints of a replaced root**. They stay verifiable **only below the replacement**: a checkpoint that a
+  replaced root vouches for counts when its seq is below that of the `ca.root_compromised` entry
+  in its chain, and is refused (`audit: the checkpoint is signed under a root replaced as
+  compromised …`) at that seq or later, and in a chain that has no such entry. The signer chooses a
+  checkpoint's time, so a time bound would bound nothing; the seq is held by the hash chain, which
+  breaks if the entry is removed. So whoever holds the leaked key cannot sign a checkpoint for a
+  head the replacement did not see, and what was anchored before it keeps its evidence; the new
+  key's checkpoint at the replacement's entry covers the history before it. This holds for the
+  verification of the chain and of an object-storage sink; **an offline verification of an export
+  against the new pin refuses the old checkpoints**, as no cross-certificate links the roots:
+  verify history from before the replacement with an export made then and the old pin. The leaked
+  key can still re-sign a rewritten history below the replacement; a copy of the checkpoints in
+  an audit sink is what shows that.
 
 ## Enrollment
 
@@ -2251,7 +2283,9 @@ Security regression tests ([12](12-testing-and-quality.md#security-testing)):
   once retention removed its first entries, from the signed checkpoint just before the first entry
   left. Every checkpoint must verify with a key the CA certified for audit checkpoints at its time,
   and must match its entry while the entry is left, so a chain rewritten under a checkpoint, or a
-  tail cut below one, is found.
+  tail cut below one, is found. The certifying root may be any the CA has had, but a root replaced
+  as compromised counts only for checkpoints below the replacement's entry in the chain
+  ([Root compromise](#root-compromise)).
 - **Phase 1 has no external sink.** Checkpoints are signed and stored in the database and in
   `/var/lib/rpmgr/audit-checkpoints.log`, which is included in every backup. Each line of the file
   carries the signer's certificate, so the file verifies with the CA's root and intermediates

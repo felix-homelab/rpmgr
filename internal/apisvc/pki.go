@@ -44,7 +44,10 @@ var (
 		cakey.StatusActive: rpmgrv1.CAKeyState_CA_KEY_STATE_ACTIVE, cakey.StatusRetired: rpmgrv1.CAKeyState_CA_KEY_STATE_RETIRED,
 		// The old root in the overlap of a rotation no longer issues but is still trusted: no enum value says
 		// that, and RETIRED would say agents may drop it, so it is reported as ACTIVE until it is dropped.
-		cakey.StatusOverlap: rpmgrv1.CAKeyState_CA_KEY_STATE_ACTIVE}
+		cakey.StatusOverlap: rpmgrv1.CAKeyState_CA_KEY_STATE_ACTIVE,
+		// A key replaced as compromised is shown as retired, which says only that it no longer issues; `rpmgr ca
+		// status` adds that the root was replaced as compromised and who has not enrolled again.
+		cakey.StatusCompromised: rpmgrv1.CAKeyState_CA_KEY_STATE_RETIRED}
 )
 
 // GetPkiStatus implements PkiService.

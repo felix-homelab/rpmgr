@@ -360,3 +360,46 @@ func TestCANewRootAbort(t *testing.T) {
 		t.Errorf("a new rotation after the abort: %q", stderr)
 	}
 }
+
+// TestCANewRootCompromised: the usage errors of `ca new-root --compromised`, which change nothing, and a run with
+// --yes that writes the tokens file (mode 0600) and prints the pin and counts but no token; a second run over
+// the file is refused.
+func TestCANewRootCompromised(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "controller.yaml")
+	boot := "version: 1\npublic_url: https://panel.example.com\ndatabase: {dsn: " + filepath.Join(dir, "controller.db") + "}\n" +
+		"kek: {source: file, path: " + filepath.Join(dir, "kek") + "}\n"
+	if err := os.WriteFile(cfg, []byte(boot), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run := func(args ...string) (int, string, string) { return runRpmgr(append(args, "--config", cfg)...) }
+	if code, _, stderr := run("controller", "init"); code != cli.ExitOK {
+		t.Fatal(stderr)
+	}
+	out := filepath.Join(dir, "tokens")
+	for name, args := range map[string][]string{
+		"no tokens file":      {"ca", "new-root", "--compromised", "--yes"},
+		"with --abort":        {"ca", "new-root", "--compromised", "--abort", "--tokens-out", out},
+		"with --csr-out":      {"ca", "new-root", "--compromised", "--csr-out", filepath.Join(dir, "r.csr"), "--tokens-out", out},
+		"tokens without flag": {"ca", "new-root", "--tokens-out", out},
+		"ttl without flag":    {"ca", "new-root", "--token-ttl", "1h"},
+	} {
+		if code, _, stderr := run(args...); code != cli.ExitUsage {
+			t.Errorf("%s: exit %d, %q", name, code, stderr)
+		}
+	}
+	if _, err := os.Stat(out); err == nil {
+		t.Fatal("a usage error wrote the tokens file")
+	}
+	code, stdout, stderr := run("ca", "new-root", "--compromised", "--yes", "--tokens-out", out)
+	if code != cli.ExitOK || !strings.Contains(stdout, "New --ca-pin: sha256:") || !strings.Contains(stdout, "4 CA keys ended") ||
+		strings.Contains(stdout+stderr, "rpmgr_enr_") {
+		t.Fatalf("exit %d: %q %q", code, stdout, stderr)
+	}
+	if st, err := os.Stat(out); err != nil || st.Mode().Perm() != 0o600 {
+		t.Fatalf("tokens file: %v, %v", st, err)
+	}
+	if code, _, stderr := run("ca", "new-root", "--compromised", "--yes", "--tokens-out", out); code != cli.ExitError || !strings.Contains(stderr, "never overwritten") {
+		t.Errorf("a second run over the file: exit %d, %q", code, stderr)
+	}
+}

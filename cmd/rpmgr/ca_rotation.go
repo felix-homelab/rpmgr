@@ -18,12 +18,27 @@ import (
 // newRootCommand is `rpmgr ca new-root`: the rotation of the root by cross-signing (docs/04-security.md,
 // "Root rotation").
 func newRootCommand() *cli.Command {
-	var csrOut string
-	var abort bool
-	return localCommand("new-root", "rotate the root by cross-signing: make the new root and its intermediate", func(fs *flag.FlagSet) {
+	var csrOut, tokensOut string
+	var abort, compromised, yes bool
+	var tokenTTL time.Duration
+	return localCommand("new-root", "rotate the root by cross-signing, or replace a compromised one: make the new root and its intermediate", func(fs *flag.FlagSet) {
+		fs.BoolVar(&compromised, "compromised", false, "the root leaked: replace it within the trust domain with no cross-certificate, end every old CA key, revoke every certificate and "+
+			"write a re-enrollment token per connector and gateway to --tokens-out; every agent must enroll again (a hard cut of the data plane). Needs every controller stopped")
+		fs.StringVar(&tokensOut, "tokens-out", "", "with --compromised: the new file (mode 0600, never overwritten) that receives the re-enrollment tokens")
+		fs.DurationVar(&tokenTTL, "token-ttl", 0, "with --compromised: how long the tokens last (default "+controller.DefaultCompromiseTokenTTL.String()+")")
+		fs.BoolVar(&yes, "yes", false, "with --compromised: do not ask for the confirmation")
 		fs.StringVar(&csrOut, "csr-out", "", "with an offline old root: write the request for the new root to this new file, and the one for the new intermediate to the file with the suffix "+controller.IntermediateSuffix+" (never overwritten)")
 		fs.BoolVar(&abort, "abort", false, "give up a rotation that waits for the offline root's signatures and has not moved issuing: remove the new root and intermediate")
 	}, func(ctx context.Context, env *cli.Env, path string) error {
+		if compromised {
+			if abort || csrOut != "" {
+				return cli.Usagef("--compromised excludes --abort and --csr-out")
+			}
+			return replaceCompromised(ctx, env, path, tokensOut, tokenTTL, yes)
+		}
+		if tokensOut != "" || tokenTTL != 0 || yes {
+			return cli.Usagef("--tokens-out, --token-ttl and --yes go with --compromised")
+		}
 		if abort {
 			if csrOut != "" {
 				return cli.Usagef("--abort and --csr-out exclude each other")
@@ -187,4 +202,38 @@ func rotationProgress(st controller.RotationStatus) string {
 			n, strings.Join(st.Disabled, ", "))
 	}
 	return b.String()
+}
+
+// replaceCompromised is `rpmgr ca new-root --compromised` (docs/04-security.md, "Root compromise").
+func replaceCompromised(ctx context.Context, env *cli.Env, path, tokensOut string, ttl time.Duration, yes bool) error {
+	if tokensOut == "" {
+		return cli.Usagef("--compromised needs --tokens-out <file>: the tokens are how the agents enroll again")
+	}
+	if !yes {
+		fmt.Fprintln(env.Stdout, "This replaces the root with a new one in the same trust domain and ends the old one: every certificate is revoked, so every\n"+
+			"connector and gateway stops until it has enrolled again with the new pin and its token. Public traffic stops with the gateways.\n"+
+			"Stop the agents you can reach first, and every controller must be stopped (rpmgr ca new-root --compromised refuses otherwise).")
+		ok, err := confirmPrompt("Replace the compromised root")
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errors.New("the root was not replaced: not confirmed")
+		}
+	}
+	res, err := controller.ReplaceCompromisedRoot(ctx, controller.CompromiseOptions{ConfigPath: path, TokensOut: tokensOut, TokenTTL: ttl,
+		Getenv: env.Getenv, Now: time.Now})
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(env.Stdout, "The root is replaced. %d CA keys ended, %d certificates revoked, %d unused enrollment tokens invalidated.\n"+
+		"Wrote %d re-enrollment tokens (%d connectors, %d gateways) to %s, one single-use token per line with its agent; %d agents (all-in-one's own, ephemeral connectors) have none.\n"+
+		"New --ca-pin: %s\n"+
+		"Start the controller, then enroll every agent, gateways first: rpmgr enroll --controller <url> --ca-pin <new pin> --token-file <its token> --replace\n"+
+		"Then investigate how the KEK and the database were exposed, and rotate the KEK. Delete %s when the agents have enrolled.\n",
+		res.Keys, res.Certificates, res.InvalidatedTokens, res.Connectors+res.Gateways, res.Connectors, res.Gateways, tokensOut, res.Skipped, res.Pin, tokensOut)
+	for _, w := range res.Warnings {
+		fmt.Fprintln(env.Stdout, "Warning: "+w)
+	}
+	return err
 }

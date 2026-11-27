@@ -38,7 +38,7 @@ Each entry holds:
 | `authMethod` | **Authentication** | How it signed in: `session`, `token`, `pwd+otp` … |
 | `ip`, `userAgent` | **Address**, **User agent** | The client |
 | `requestId` | **Request ID** | The request's ID, as the API's `Rpmgr-Request-Id` header returns it |
-| `action` | | What was done: the API method, such as `rpmgr.v1.RouteService.UpdateRoute` or `rpmgr.v1.AuthService.Login`, or a named event, such as `token.create`, `token.use`, `identity.revoke`, `route.delete`, `connector.enroll`, `connector.reenroll`, `agent.enroll` (a failed enrollment), `ca.rotate_intermediate`, `ca.root_offline`, `ca.request_intermediate`, `ca.import_intermediate`, `audit.export` or `audit.prune` |
+| `action` | | What was done: the API method, such as `rpmgr.v1.RouteService.UpdateRoute` or `rpmgr.v1.AuthService.Login`, or a named event, such as `token.create`, `token.use`, `identity.revoke`, `route.delete`, `connector.enroll`, `connector.reenroll`, `agent.enroll` (a failed enrollment), `ca.rotate_intermediate`, `ca.root_offline`, `ca.root_compromised`, `ca.request_intermediate`, `ca.import_intermediate`, `audit.export` or `audit.prune` |
 | `targetType`, `targetId` | | The kind and ID of what it was done to |
 | `result` | | `success`, `failure` or `denied` |
 | `diff` | | The request, with its secrets replaced |
@@ -147,7 +147,10 @@ rpmgr audit verify-export --ca-pin sha256:<base64> audit-org.jsonl
 
 It checks that the entries link and hash as the chain does, that every checkpoint carries a
 signature of a key your CA certified for audit checkpoints, and that nothing was removed,
-reordered or edited. A failure says at which entry and exits 1. Entries after the newest
+reordered or edited. After a root was replaced as compromised, the pin is the new root's, and a
+checkpoint that the old root certified fails the check, as nothing links the two roots: verify
+the history from before the replacement with an export made then, and the old pin
+([PKI](pki.md#the-root-if-it-leaked)). A failure says at which entry and exits 1. Entries after the newest
 checkpoint are reported as not yet anchored. An export proves the chain as of its newest
 checkpoint: a cut-off file is found only if its end no longer matches its header, so compare the
 newest checkpoint with a copy you keep elsewhere, such as `audit-checkpoints.log` in a backup.

@@ -55,6 +55,15 @@ Changes to the design documents are not recorded here: see the git history and t
   after the overlap, as the controller does by itself unless an enabled agent still lacks the new
   root, and an agent drops a root only on a snapshot newer than the one it runs
   ([Rotate the root](docs/guide/operations/pki.md#rotate-the-root)). (#697)
+- A root that leaked can be replaced. `rpmgr ca new-root --compromised --tokens-out <file>` makes a
+  new root in the same trust domain, ends every key of the old one, revokes every certificate and
+  writes one single-use re-enrollment token per connector and gateway to the file, which only you
+  can read and which never holds a token that is not valid. Every agent has to enroll again with
+  the new pin and its token, gateways first (`rpmgr enroll ... --replace`), and keeps its identity
+  and routes; until then it cannot connect, and `rpmgr ca status` names the ones that have not.
+  A restore refuses a backup from before the replacement, and audit checkpoints signed under the
+  old root count only below the entry that records the replacement
+  ([The root, if it leaked](docs/guide/operations/pki.md#the-root-if-it-leaked)). (#698)
 - Settings → PKI and `rpmgr ca status` alert when the next intermediate waits for the offline root's
   signature, in time before the active one expires, and when the signed one is not valid now. With
   the root offline, the page says so and leaves out the rotation button. (#694)

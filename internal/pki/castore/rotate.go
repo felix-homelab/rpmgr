@@ -376,25 +376,7 @@ func (p *Plan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
 			if k.kind == cakey.KindRoot && k.status == cakey.StatusActive {
 				p.to = pki.PublicKeyHash(k.kp.Cert.RawSubjectPublicKeyInfo)
 			}
-			if err := store.RecordSealed(ctx, tx, keyContext(k.id), k.sealed); err != nil {
-				return nil, err
-			}
-			c := tx.CAKey.Create().SetID(k.id).SetKind(k.kind).SetAlgorithm(keyAlgorithm).SetKeyEnc(k.sealed).SetStatus(k.status)
-			if r := k.request; r != nil {
-				// Not before and not after hold the validity the root will most likely give; the
-				// certificate's replace them at the import.
-				c.SetPublicKey(r.pub).SetCsr(r.csr).SetNotBefore(r.notBefore).SetNotAfter(r.notAfter)
-			} else {
-				c.SetPublicKey(k.kp.Cert.RawSubjectPublicKeyInfo).SetCertificate(k.kp.Cert.Raw).
-					SetNotBefore(k.kp.Cert.NotBefore).SetNotAfter(k.kp.Cert.NotAfter)
-			}
-			if len(k.cross) > 0 {
-				c.SetCrossCertificate(k.cross)
-			}
-			if k.request == nil && len(k.csr) > 0 {
-				c.SetCsr(k.csr)
-			}
-			if err := c.Exec(ctx); err != nil {
+			if err := createKey(ctx, tx, k); err != nil {
 				return nil, err
 			}
 		}
@@ -413,4 +395,27 @@ func hashOfRow(rows []*ent.CAKey, id string) string {
 		}
 	}
 	return ""
+}
+
+// createKey writes the new key k in tx, with the record of its sealed secret.
+func createKey(ctx context.Context, tx *ent.Tx, k *newKey) error {
+	if err := store.RecordSealed(ctx, tx, keyContext(k.id), k.sealed); err != nil {
+		return err
+	}
+	c := tx.CAKey.Create().SetID(k.id).SetKind(k.kind).SetAlgorithm(keyAlgorithm).SetKeyEnc(k.sealed).SetStatus(k.status)
+	if r := k.request; r != nil {
+		// Not before and not after hold the validity the root will most likely give; the
+		// certificate's replace them at the import.
+		c.SetPublicKey(r.pub).SetCsr(r.csr).SetNotBefore(r.notBefore).SetNotAfter(r.notAfter)
+	} else {
+		c.SetPublicKey(k.kp.Cert.RawSubjectPublicKeyInfo).SetCertificate(k.kp.Cert.Raw).
+			SetNotBefore(k.kp.Cert.NotBefore).SetNotAfter(k.kp.Cert.NotAfter)
+	}
+	if len(k.cross) > 0 {
+		c.SetCrossCertificate(k.cross)
+	}
+	if k.request == nil && len(k.csr) > 0 {
+		c.SetCsr(k.csr)
+	}
+	return c.Exec(ctx)
 }
