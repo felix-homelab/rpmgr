@@ -303,8 +303,9 @@ The systemd units that `rpmgr systemd-unit` prints let the service write only to
 is read-only for it. Two keys can name a directory elsewhere:
 
 - `revocation_log.sink` of a controller or an all-in-one, when it is a directory. `rpmgr
-  systemd-unit` reads the boot file and adds `ReadWritePaths=-<sink>` and `RequiresMountsFor=<sink>` to the
-  unit, so write the unit again after setting or changing the sink. The steps are in
+  systemd-unit` reads the boot file and adds `ReadWritePaths=-<sink>` and
+  `RequiresMountsFor=<sink>` to the unit, so write the unit again after setting or changing the
+  sink. The steps are in
   [Backup and restore](../operations/backup-and-restore.md#the-revocation-log-sink).
 - `state_dir`, `identity_dir` or `database.dsn`, when you move the state elsewhere. The unit does
   not name these.

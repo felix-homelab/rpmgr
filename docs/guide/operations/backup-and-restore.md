@@ -200,8 +200,8 @@ A restore puts the database and the logs of a backup in place. It needs every co
 - **The backup archive,** from `rpmgr backup`.
 - **The KEK that belongs to it:** the controller cannot start without it.
 - **The revocations since the backup:** on the same host, the local `revocations.log`, which the
-  restore reads by default; on a new host, the sink directory, the `s3://` sink or the old host's `revocations.log`.
-  Without them, the restore fails closed ([below](#when-the-restore-fails-closed)).
+  restore reads by default; on a new host, the sink directory, the `s3://` sink or the old host's
+  `revocations.log`. Without them, the restore fails closed ([below](#when-the-restore-fails-closed)).
 - **The same rpmgr version** as the backup, or a later one: the restore applies the binary's
   database migrations to the restored database.
 
