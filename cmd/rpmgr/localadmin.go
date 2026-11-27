@@ -163,6 +163,13 @@ func caCommand() *cli.Command {
 			if msg := signingAlertText(st); msg != "" {
 				fmt.Fprintf(env.Stdout, "\n%s\n", msg)
 			}
+			rot, err := controller.CARotationStatus(ctx, path, time.Now)
+			if err != nil {
+				return err
+			}
+			if msg := rotationText(rot); msg != "" {
+				fmt.Fprintf(env.Stdout, "\n%s\n", msg)
+			}
 			fmt.Fprintln(env.Stdout)
 			return writeCAKeys(env, st.GetKeys())
 		}),
@@ -187,7 +194,7 @@ func caCommand() *cli.Command {
 				k.GetSubject(), k.GetNotAfter().AsTime().UTC().Format(time.RFC3339))
 			return err
 		}),
-		offlineRootCommand(), signIntermediateCommand(), importIntermediateCommand())
+		offlineRootCommand(), signIntermediateCommand(), importIntermediateCommand(), newRootCommand(), dropRootCommand())
 }
 
 // signingAlertText is what `ca status` says of the need for the offline root's signature.

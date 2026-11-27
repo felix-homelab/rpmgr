@@ -4,6 +4,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -53,7 +54,7 @@ func CARotation(o CAOptions) lease.Job {
 			if err != nil {
 				return err
 			}
-			err = store.WriteTx(ctx, o.DB, func(tx *ent.Tx) error {
+			write := func(tx *ent.Tx) error {
 				if err := o.Leases.Fence(ctx, tx, l); err != nil {
 					return err
 				}
@@ -68,18 +69,58 @@ func CARotation(o CAOptions) lease.Job {
 					}
 				}
 				return nil
-			})
+			}
+			if plan.Config() {
+				// Issuing moved to a new root: the trust bundle changed, so the write is a configuration
+				// change and agents get snapshots of a new revision that carry it.
+				_, err = store.ConfigTx(ctx, o.DB, func(tx *ent.Tx) ([]string, error) { return []string{"pki"}, write(tx) })
+			} else {
+				err = store.WriteTx(ctx, o.DB, write)
+			}
 			if err != nil {
 				return err
 			}
 			o.warnSigning(ctx)
-			if len(done) == 0 {
+			dropped, err := o.dropOldRoot(ctx, l)
+			if err != nil {
+				return err
+			}
+			if len(done) == 0 && !dropped {
 				return nil
 			}
-			o.Logger.Info("rotated CA keys", "changes", done)
+			o.Logger.Info("rotated CA keys", "changes", done, "old_root_dropped", dropped)
 			_, err = o.CA.Reload(ctx, o.DB, o.Sealer, o.Now)
 			return err
 		}}
+}
+
+// dropOldRoot drops the old root of a root rotation once the overlap has passed, unless enabled
+// agents that were seen since still lack the new root: it then logs the alert "root rotation
+// stalled" at each run and leaves the root, so that no agent is stranded without the operator's
+// choice (`rpmgr ca drop-root --strand-stragglers`, docs/04-security.md, "Root rotation"). It
+// reports whether it dropped the root.
+func (o *CAOptions) dropOldRoot(ctx context.Context, l lease.Lease) (bool, error) {
+	overlap, err := RotationOverlap(ctx, o.DB.ReadClient())
+	if err != nil {
+		return false, err
+	}
+	plan, err := castore.PlanDropRoot(ctx, o.DB.ReadClient().CAKey, o.Now(), castore.DropOptions{Overlap: overlap, Stragglers: stragglerCount})
+	var early *castore.DropEarlyError
+	var stalled *castore.StragglersError
+	if errors.Is(err, castore.ErrNoRotation) || errors.As(err, &early) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	_, err = applyDrop(ctx, o.DB, plan, "ca-rotation", "the overlap of the root rotation has passed",
+		func(tx *ent.Tx) error { return o.Leases.Fence(ctx, tx, l) })
+	if errors.As(err, &stalled) {
+		o.Logger.Error("root rotation stalled: the old root is not dropped while enabled agents lack the new one; update, "+
+			"re-enroll or decommission them, or run `rpmgr ca drop-root --strand-stragglers`", "agents", stalled.N)
+		return false, nil
+	}
+	return err == nil, err
 }
 
 // warnSigning logs, on every run, that the next intermediate waits for the signature of an offline

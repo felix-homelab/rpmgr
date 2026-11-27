@@ -143,8 +143,10 @@ func NewControl(o ControlOptions) (*Control, error) {
 	c.rt = NewRuntime(RuntimeOptions{Identity: id, StateDir: o.StateDir, Applier: o.Applier, Now: o.Now, Logger: o.Logger,
 		Send:        func(m *agentv1.AgentMessage) bool { return c.client.Send(m) },
 		OnEndpoints: func(eps []string) { c.client.SetEndpoints(eps) }, OnOffer: onOffer,
-		Roots:        c.trust.Certs,
-		OnTrustRoots: func(der [][]byte) bool { return c.trust.Offer("a snapshot", der) },
+		Roots: c.trust.Certs,
+		OnTrustRoots: func(der [][]byte, verifiedBy func([]*x509.Certificate) bool) bool {
+			return c.trust.OfferNewer("a snapshot", der, verifiedBy)
+		},
 		// The Hello of the next session reports the roots the agent holds now; this happens once per
 		// rotation.
 		OnRootsChanged: c.endForRoots})
@@ -449,8 +451,15 @@ func (c *Control) Send(m *agentv1.AgentMessage) bool { return c.client.Send(m) }
 func (c *Control) Identity() Loaded {
 	id := c.id
 	id.RootCerts, id.Roots = c.trust.Certs(), c.trust.Pool()
+	if len(id.RootCerts) > 0 {
+		id.Root = id.RootCerts[0] // the first root of roots.pem is the pinned one; a rotation may have replaced it
+	}
 	return id
 }
+
+// Roots returns the roots the agent trusts now as a pool. A rotation makes a new pool, so a listener
+// that must trust a new root without a restart asks again at each handshake (pki.FollowRoots).
+func (c *Control) Roots() *x509.CertPool { return c.trust.Pool() }
 
 // Certificate returns the agent's current certificate, which renewal replaces, for the role's
 // TLS configurations.

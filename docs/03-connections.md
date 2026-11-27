@@ -471,12 +471,16 @@ Rules:
   its current bundle, records the agent's in `agent_sessions.roots_digest`
   ([06](06-data-model.md#desired-vs-observed-state)), and lists the agents whose digest differs as
   the stragglers of a rotation. Roots in `Welcome` are sent when the digest differs, or when `Hello`
-  has none; the snapshot always carries them, so a change of the bundle changes every snapshot's
-  hash and is pushed like a revision. The pusher's change key covers the **whole bundle,
+  has none; the snapshot always carries them. **A change of the bundle is a configuration change:**
+  the controller writes it in a configuration transaction, so it gets a new revision, and a snapshot
+  reads the bundle in the transaction of its revision, so that it holds the bundle of that revision
+  and an agent can order bundles by revision. The pusher's change key covers the **whole bundle,
   cross-certificates included**, so a new cross-certificate alone is pushed although the digest
   stays the same.
 - **What an agent does with them** is in [04](04-security.md#root-rotation): it keeps an offered
-  root only when a cross-certificate from a root it trusts verifies. A root that fails the rule is
+  root only when a cross-certificate from a root it trusts verifies, and drops a held root only
+  when a snapshot **newer than the one it runs** no longer lists it; `Welcome`, which carries no
+  revision, only adds. A root that fails the rule is
   ignored and logged, and never rejects the snapshot that carried it. The agent checks the limits
   below on the DER bytes **before** it parses anything and ignores an offer that exceeds them,
   whole. It keeps one root per public key, so the limit counts keys. It reads the digest it sends

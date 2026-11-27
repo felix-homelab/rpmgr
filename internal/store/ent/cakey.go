@@ -34,7 +34,11 @@ type CAKey struct {
 	// NotAfter holds the value of the "not_after" field.
 	NotAfter time.Time `json:"not_after,omitempty"`
 	// Status holds the value of the "status" field.
-	Status       cakey.Status `json:"status,omitempty"`
+	Status cakey.Status `json:"status,omitempty"`
+	// CrossCertificate holds the value of the "cross_certificate" field.
+	CrossCertificate []byte `json:"cross_certificate,omitempty"`
+	// RotatedAt holds the value of the "rotated_at" field.
+	RotatedAt    *time.Time `json:"rotated_at,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -43,11 +47,11 @@ func (*CAKey) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case cakey.FieldPublicKey, cakey.FieldCertificate, cakey.FieldCsr, cakey.FieldKeyEnc:
+		case cakey.FieldPublicKey, cakey.FieldCertificate, cakey.FieldCsr, cakey.FieldKeyEnc, cakey.FieldCrossCertificate:
 			values[i] = new([]byte)
 		case cakey.FieldID, cakey.FieldKind, cakey.FieldAlgorithm, cakey.FieldStatus:
 			values[i] = new(sql.NullString)
-		case cakey.FieldNotBefore, cakey.FieldNotAfter:
+		case cakey.FieldNotBefore, cakey.FieldNotAfter, cakey.FieldRotatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -124,6 +128,19 @@ func (_m *CAKey) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Status = cakey.Status(value.String)
 			}
+		case cakey.FieldCrossCertificate:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field cross_certificate", values[i])
+			} else if value != nil {
+				_m.CrossCertificate = *value
+			}
+		case cakey.FieldRotatedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field rotated_at", values[i])
+			} else if value.Valid {
+				_m.RotatedAt = new(time.Time)
+				*_m.RotatedAt = value.Time
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -185,6 +202,14 @@ func (_m *CAKey) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Status))
+	builder.WriteString(", ")
+	builder.WriteString("cross_certificate=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CrossCertificate))
+	builder.WriteString(", ")
+	if v := _m.RotatedAt; v != nil {
+		builder.WriteString("rotated_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }

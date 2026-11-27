@@ -137,10 +137,16 @@ func (s *Service) Enroll(ctx context.Context, req *agentv1.EnrollRequest) (_ *ag
 	if err != nil {
 		return nil, status.Error(codes.Internal, "enrollment failed")
 	}
+	// The whole trust bundle: in the overlap of a root rotation the old root, the new one and the
+	// cross-certificate, so that an agent that pins either root learns the other.
+	bundle, err := s.CA.TrustRoots()
+	if err != nil {
+		return nil, status.Error(codes.Internal, "enrollment failed")
+	}
 	return &agentv1.EnrollResponse{
 		AgentId:             id.ID,
 		Chain:               s.CA.Chain(cert),
-		TrustBundle:         [][]byte{s.CA.Root().Raw},
+		TrustBundle:         bundle,
 		SigningCertificates: s.CA.SigningChain(),
 		ControllerEndpoints: out.endpoints,
 		Ephemeral:           g.Ephemeral,
@@ -283,11 +289,17 @@ func hostOf(a net.Addr) string {
 // (docs/03-connections.md, "Enrollment"). It is unauthenticated; the agent keeps only the root that
 // matches its pin.
 func TrustBundleHandler(roots ...*x509.Certificate) http.Handler {
-	var body []byte
-	for _, r := range roots {
-		body = append(body, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: r.Raw})...)
-	}
+	return TrustBundleHandlerFunc(func() []*x509.Certificate { return roots })
+}
+
+// TrustBundleHandlerFunc is TrustBundleHandler for roots that change in a root rotation: it serves
+// what roots returns at each request.
+func TrustBundleHandlerFunc(roots func() []*x509.Certificate) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body []byte
+		for _, c := range roots() {
+			body = append(body, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: c.Raw})...)
+		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
