@@ -332,6 +332,7 @@ func TestPostgres_StaleEpochCannotCommit(t *testing.T) {
 	if _, err := stuck.ExecContext(ctx, "SELECT 1 FROM instance WHERE id = 1 FOR SHARE"); err != nil {
 		t.Fatal(err)
 	}
+	store.ResetClaim(a)
 	if err := store.ClaimFence(ctx, a); err == nil || !strings.Contains(err.Error(), "cannot claim") {
 		t.Errorf("a claim against a transaction that does not end: %v", err)
 	}
@@ -407,5 +408,111 @@ func TestPostgres_PreviousSessionOfAnotherRole(t *testing.T) {
 	_, err = storetest.OpenPostgres(t, as(holder, "low-entropy-2"), store.PostgresOptions{Lock: true})
 	if err == nil || !strings.Contains(err.Error(), "cannot end the sessions of the previous controller") {
 		t.Errorf("a holder that may not end the previous sessions: %v", err)
+	}
+}
+
+// TestPostgres_ReadOnlyTransactionsAfterClaim: the epoch check takes a row lock, which a read-only
+// transaction cannot, so ReadTx (the snapshot compiler, the event stream, the audit sinks) skips it:
+// after the claim reads work, and writes still check.
+func TestPostgres_ReadOnlyTransactionsAfterClaim(t *testing.T) {
+	dsn := migratedPG(t)
+	a, err := storetest.OpenPostgres(t, dsn, store.PostgresOptions{Lock: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = a.Close() }()
+	if err := store.ClaimFence(context.Background(), a); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ReadTx(storetest.SystemCtx(t), a, func(*ent.Tx, store.Revision) error { return nil }); err != nil {
+		t.Errorf("ReadTx after the claim: %v", err)
+	}
+	if err := store.WriteTx(storetest.SystemCtx(t), a, func(*ent.Tx) error { return nil }); err != nil {
+		t.Errorf("WriteTx after the claim: %v", err)
+	}
+}
+
+// TestPostgres_AutocommitWritesAreFenced: a single Ent Create, Update or Delete, which Ent runs
+// without a transaction of its own, goes through the epoch check as well: once another controller
+// claimed the database it fails, and while the claim is ours it commits (also one that returns
+// rows).
+func TestPostgres_AutocommitWritesAreFenced(t *testing.T) {
+	dsn := migratedPG(t)
+	ctx := context.Background()
+	sys := storetest.SystemCtx(t)
+	a, err := storetest.OpenPostgres(t, dsn, store.PostgresOptions{Lock: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = a.Close() }()
+	if err := store.ClaimFence(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	admin, err := storetest.OpenPostgres(t, dsn, store.PostgresOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = admin.Close() }()
+	o, err := a.Client().Org.Create().SetName("auto").SetSlug("auto").Save(sys) // INSERT ... RETURNING
+	if err != nil {
+		t.Fatalf("an autocommit insert while the claim is ours: %v", err)
+	}
+	if n, err := admin.Client().Org.Query().Where(org.Slug("auto")).Count(sys); err != nil || n != 1 {
+		t.Fatalf("the insert did not commit: %d %v", n, err)
+	}
+	if _, err := admin.Writer.Exec("UPDATE instance SET fence_epoch = fence_epoch + 1 WHERE id = 1"); err != nil {
+		t.Fatal(err)
+	}
+	for name, write := range map[string]func() error{
+		"create": func() error { return a.Client().Org.Create().SetName("late").SetSlug("late").Exec(sys) },
+		"create+ret": func() error {
+			_, err := a.Client().Org.Create().SetName("late2").SetSlug("late2").Save(sys)
+			return err
+		},
+		"update": func() error { return a.Client().Org.Update().Where(org.Slug("auto")).SetName("changed").Exec(sys) },
+		"delete": func() error { return a.Client().Org.DeleteOneID(o.ID).Exec(sys) },
+	} {
+		if err := write(); !errors.Is(err, store.ErrLockLost) {
+			t.Errorf("an autocommit %s after another controller claimed the database: %v, want ErrLockLost", name, err)
+		}
+	}
+	slugs, err := admin.Client().Org.Query().Select(org.FieldSlug).Strings(sys)
+	if err != nil || len(slugs) != 1 || slugs[0] != "auto" {
+		t.Errorf("orgs: %v %v, want only the one written under our claim", slugs, err)
+	}
+	if n, _ := admin.Client().Org.Query().Where(org.Name("changed")).Count(sys); n != 0 {
+		t.Error("the stale update committed")
+	}
+}
+
+// TestPostgres_RetirementBumpsTheEpoch: migrate-db's retirement of a PostgreSQL source bumps the
+// fence epoch in its own transaction, so a write transaction of a controller that queued before it
+// and commits after it fails.
+func TestPostgres_RetirementBumpsTheEpoch(t *testing.T) {
+	dsn := migratedPG(t)
+	ctx := context.Background()
+	sys := storetest.SystemCtx(t)
+	a, err := storetest.OpenPostgres(t, dsn, store.PostgresOptions{Lock: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = a.Close() }()
+	if err := store.ClaimFence(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	src, err := storetest.OpenPostgres(t, dsn, store.PostgresOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = src.Close() }()
+	tx, err := store.BeginSource(ctx, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteTx(sys, a, func(*ent.Tx) error { return nil }); !errors.Is(err, store.ErrLockLost) {
+		t.Errorf("a write after the source's retirement transaction: %v, want ErrLockLost", err)
 	}
 }

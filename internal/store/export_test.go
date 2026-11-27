@@ -47,6 +47,9 @@ func SetMigrationLockWait(cleanup func(func()), d time.Duration) {
 	cleanup(func() { migrationLockWait = old })
 }
 
+// ResetClaim forgets db's claimed epoch, so that ClaimFence runs again.
+func ResetClaim(db *DB) { db.fence.epoch.Store(0) }
+
 // SetClaimTimeout sets how long ClaimFence waits for a transaction of an earlier controller until
 // the test ends.
 func SetClaimTimeout(cleanup func(func()), d time.Duration) {
