@@ -2419,16 +2419,60 @@ Checkpoints prove tampering but cannot restore content, so revocations get their
   the controllers' alone.
 - **S3-compatible sink** (Phase 2, slice 9.1). The boot file names it as `revocation_log.sink:
   s3://<bucket>/<prefix>` with `revocation_log.s3.endpoint`, `region` and `credentials_file`, a
-  file of two lines, the access key ID and the secret key, of mode 0600 or 0400
-  ([10](10-operations.md#boot-files)). It uses the object-store client of the audit sink
-  ([08](08-software-stack.md#data)) with the same SigV4 signing. The credentials need to put, get
-  and list under the prefix, and **no delete or overwrite**. At start the controller **probes the
-  store**: it creates an object under `_probe/` twice with `If-None-Match: *`, and a store that
-  does not refuse the second with 412 would overwrite and leave gaps, so the controller **refuses
-  to start** and names the store ([VB-24](13-roadmap.md#verification-backlog)). Probe objects stay,
-  because a delete may be forbidden. A 412 on a log key is the lost race above, not an error; a
-  503, a timeout or a connection error is retried at the next tick and raises the backlog alert;
-  a 403 raises an alert of its own. The credentials appear in no log or error.
+  YAML file with the keys `access_key_id` and `secret_access_key` and nothing else, of mode 0600 or
+  0400, the file of the external audit sink ([10](10-operations.md#boot-files)). The endpoint is an
+  `https://` URL; `http://` is accepted for a loopback address only. It uses the object-store
+  client of the audit sink ([08](08-software-stack.md#data)) with the same SigV4 signing; an object
+  is the key `<prefix>/<seq>`, and the limits are those of
+  [03](03-connections.md#timeouts-keepalive-and-backoff).
+  - **The prefix** is required and is one that nothing else writes to: one foreign object under it
+    is an unexpected key and breaks the chain, so the bucket's root is not allowed, and neither
+    are a `.` or `..` segment, a control character or an empty segment.
+  - **Permissions.** The credentials need to put, get and list under the prefix, and **no delete
+    or overwrite**. A permission to put on S3 includes overwrite, which a policy cannot separate
+    from create, so the controller does not enforce that part. Set `lock_days` of the
+    `revocation_log.s3` section (30 to 3650) to write every entry with Object Lock in compliance
+    mode, as the audit sink does, in a bucket with Object Lock enabled, which needs versioning.
+    A locked entry cannot be removed before the lock ends, but a plain PUT to its key still
+    succeeds and becomes the current version, and a DELETE adds a delete marker; the original
+    stays in the bucket as an earlier version. A listing and a read see current versions only, so
+    a running replica finds a rewrite below its verified prefix as a break, and a restore reads
+    the current versions. Without `lock_days` nothing keeps the original unless the bucket is
+    versioned. A write with retention headers carries `x-amz-checksum-sha256`, which AWS requires
+    [V VB-24](13-roadmap.md#verification-backlog). A restore that reads the original version of
+    each object is [T] ([#1239](https://github.com/felix-homelab/rpmgr/issues/1239)).
+  - **The probe.** At start the controller probes the store: it creates the one object
+    `<prefix>/_probe/conditional-create` with `If-None-Match: *` and creates it again. A store that
+    does not refuse the second with 412 (a 412 on the first already proves it), or answers 400 or
+    501 to the header, would overwrite and leave gaps, so the controller **refuses to start** and
+    names the store. The probe object stays, because a delete may be forbidden, is the same at
+    every start, and the sink's own listing skips it. A store that cannot be asked at start (503,
+    a timeout, a connection error, 403) does not keep the controller from starting, because a
+    revocation never waits for the sink: the shipper probes again before it writes the first
+    entry, and never writes to a store that failed the probe. One found unfit at runtime is logged
+    at Error level, with its reason.
+  - **Answers.** A 412 on a log key is the lost race above, not an error, even when the listing
+    does not show the key yet: the shipper retries, and so it does for a gap at the end of the
+    listing, such as the key after next listed and the next one not yet; the sink is a break
+    when that lasts for the rounds of [03](03-connections.md#timeouts-keepalive-and-backoff), and
+    at once for a gap with a key after it. A 503, a timeout, a connection error or a 403 is retried
+    at the next tick, is logged once, and leaves the entries in the backlog, which raises the
+    alert "revocation log not yet off-host" after 5 min as for any sink. A 403 has no alert of its
+    own: the log line and the status name the reason (refused, unreachable, no conditional create,
+    broken). A listing that repeats a continuation token, does not end or does not run in key order
+    is an error of the round.
+  - **Restore.** `rpmgr restore` reads an `s3://` sink given with `--revocation-log` with the store
+    and the credentials file of the boot file's `revocation_log.s3`. The credentials appear in no
+    log or error.
+  - **A tampered sink.** Whoever can write the bucket can recompute the sink's hashes, which are
+    not keyed. A restore therefore recomputes the hash of the entry inside every sink object and
+    requires it to be the one the object claims, so that a forged entry cannot take the place of
+    another, such as a `root_offline` marker, in the de-duplication by hash; a sink that fails
+    this is a break. **Residual risk:** whoever can write or delete under the prefix can replace
+    any entry k by rewriting the entries k to n with new hashes, and can delete the tail or the
+    whole sink; a restore cannot detect that without an anchor outside the sink. The replicas'
+    own logs, which the restore is given with `--revocation-log`, remain the cross-check, and
+    credentials that only the controllers hold are the mitigation.
 - **Local format.** One line of JSON per entry: sequence number from 1, time, kind, org, subject,
   detail, the covered certificate's `NotAfter` where there is one, actor, the previous entry's hash
   and its own: the SHA-256 of the entry encoded with an empty hash. Text fields hold at most

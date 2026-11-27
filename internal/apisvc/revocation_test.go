@@ -6,8 +6,13 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,6 +20,7 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/controller"
+	"github.com/felix-homelab/rpmgr/internal/objstore/objstoretest"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 )
 
@@ -23,11 +29,64 @@ import (
 // committed and enforced immediately; the entries are in the replica's fsync'd local log; the
 // "revocation log not yet off-host" alert fires and clears after shipping; the sink's sequence
 // numbers have no gaps.
+//
+// It runs for the filesystem sink and for the S3 sink; with the build tag objstoreit the S3 sink is
+// SILO in a container.
 func TestRevocation_EnforcedWhileSinkDown(t *testing.T) {
+	t.Run("directory", func(t *testing.T) {
+		enforcedWhileSinkDown(t, func(e *env) sinkUnderTest {
+			sink := filepath.Join(t.TempDir(), "share") // not mounted yet
+			return sinkUnderTest{
+				shipper: &controller.RevocationShipper{Path: e.log, Sink: sink, Replica: "ctn_a", Now: func() time.Time { return e.clock }, Logger: quietLogger()},
+				up:      func() { _ = os.Mkdir(sink, 0o750) },
+				read:    revlog.NewSink(revlog.DirBackend{Dir: sink}).Read,
+			}
+		})
+	})
+	t.Run("s3", func(t *testing.T) {
+		enforcedWhileSinkDown(t, func(e *env) sinkUnderTest {
+			g := objstoretest.NewTarget(t)
+			// The store sits behind a proxy that answers 503 while the sink is down.
+			var down atomic.Bool
+			down.Store(true)
+			u, _ := url.Parse(g.Endpoint)
+			rp := httputil.NewSingleHostReverseProxy(u)
+			proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if down.Load() {
+					http.Error(w, "down", http.StatusServiceUnavailable)
+					return
+				}
+				rp.ServeHTTP(w, r)
+			}))
+			t.Cleanup(proxy.Close)
+			gp := g
+			gp.Endpoint = proxy.URL
+			b := revlog.NewS3Backend(context.Background(), gp.Client(t, 0), "revocations")
+			direct := revlog.NewS3Backend(context.Background(), g.Client(t, 0), "revocations")
+			return sinkUnderTest{
+				shipper: &controller.RevocationShipper{Path: e.log, Sink: "s3://" + g.Bucket + "/revocations", Backend: b, Replica: "ctn_a",
+					Now: func() time.Time { return e.clock }, Logger: quietLogger()},
+				up:   func() { down.Store(false) },
+				read: revlog.NewSink(direct).Read,
+			}
+		})
+	})
+}
+
+func quietLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
+
+// sinkUnderTest is a sink that is down until up is called.
+type sinkUnderTest struct {
+	shipper *controller.RevocationShipper
+	up      func()
+	read    func() ([]revlog.SinkEntry, error) // verifies the sink from entry 1
+}
+
+func enforcedWhileSinkDown(t *testing.T, mk func(*env) sinkUnderTest) {
 	e, ada, org, _ := gatewayEnv(t)
 	ctx := context.Background()
-	sink := filepath.Join(t.TempDir(), "share") // not mounted yet
-	shipper := &controller.RevocationShipper{Path: e.log, Sink: sink, Replica: "ctn_a", Now: func() time.Time { return e.clock }, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	su := mk(e)
+	shipper := su.shipper
 	e.revlogStatus = shipper.Status
 
 	// A connector revoked: committed, and the deny-list applied at once.
@@ -89,16 +148,14 @@ func TestRevocation_EnforcedWhileSinkDown(t *testing.T) {
 		t.Errorf("a backlog older than 5 min does not alert: %v", st)
 	}
 
-	if err := os.Mkdir(sink, 0o750); err != nil {
-		t.Fatal(err)
-	}
+	su.up()
 	if err := shipper.Ship(); err != nil {
 		t.Fatal(err)
 	}
 	if st := status(); st.GetUnshipped() != 0 || st.GetAlert() {
 		t.Errorf("after shipping: %v", st)
 	}
-	shipped, err := revlog.NewSink(revlog.DirBackend{Dir: sink}).Read() // also verifies 1..n without gaps
+	shipped, err := su.read() // also verifies 1..n without gaps
 	if err != nil || len(shipped) != len(local) {
 		t.Fatalf("the sink: %d entries, %v", len(shipped), err)
 	}

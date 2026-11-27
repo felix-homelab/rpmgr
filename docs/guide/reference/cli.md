@@ -574,7 +574,7 @@ rpmgr restore <command>
 | `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
 | `--dns-disabled` |  | set every managed DNS zone to disabled instead of held, for a copy that must never touch production DNS |
 | `--in string` |  | the archive of rpmgr backup (required) |
-| `--revocation-log value` |  | the revocation-log sink directory, or a replica's revocations.log; repeat for each (default the state directory's revocations.log) |
+| `--revocation-log value` |  | the revocation-log sink, a directory or an s3://\<bucket>/\<prefix> URL read with the boot file's revocation_log.s3, or a replica's revocations.log; repeat for each (default the state directory's revocations.log) |
 | `--stage-dir string` |  | where the restore does its SQLite work: a directory you own with mode 0700 that no one else can write (default a new private directory under the temporary one); the root updater passes /var/lib/rpmgr-update/restore |
 
 ## rpmgr restore confirm

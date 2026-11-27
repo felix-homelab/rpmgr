@@ -375,3 +375,35 @@ func TestPutTooLarge(t *testing.T) {
 		t.Fatal("an object over MaxObject was not refused")
 	}
 }
+
+// TestPutLockSendsChecksum (review item 7): a write with retention headers carries a signed
+// x-amz-checksum-sha256 of its body, which AWS requires [V VB-24]; a write without them does not.
+func TestPutLockSendsChecksum(t *testing.T) {
+	var got []http.Header
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Header.Clone())
+		_, _ = io.Copy(io.Discard, r.Body)
+	}))
+	defer srv.Close()
+	c, err := New(Config{Endpoint: srv.URL, Region: "us-east-1", Bucket: "bkt", Credentials: testCreds()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Put(context.Background(), "k1", []byte("abc"), PutOptions{IfNoneMatch: true,
+		LockMode: "COMPLIANCE", RetainUntil: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Put(context.Background(), "k2", []byte("abc"), PutOptions{IfNoneMatch: true}); err != nil {
+		t.Fatal(err)
+	}
+	const want = "ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=" // SHA-256 of "abc", base64
+	if h := got[0].Get("X-Amz-Checksum-Sha256"); h != want {
+		t.Errorf("a locked write sends the checksum %q, want %q", h, want)
+	}
+	if !strings.Contains(got[0].Get("Authorization"), "x-amz-checksum-sha256") {
+		t.Errorf("the checksum is not signed: %s", got[0].Get("Authorization"))
+	}
+	if h := got[1].Get("X-Amz-Checksum-Sha256"); h != "" {
+		t.Errorf("a write without a lock sends a checksum: %q", h)
+	}
+}

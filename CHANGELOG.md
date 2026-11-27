@@ -37,6 +37,17 @@ Changes to the design documents are not recorded here: see the git history and t
   latest version of a Transit key after you rotated it there, and `rpmgr kek rotate
   --previous-config <boot file>` moves the KEK between a file or credential and Transit, in either
   direction ([Rotate the KEK](docs/10-operations.md#rotate-the-kek)).
+- The revocation log can be shipped to an S3-compatible bucket instead of a directory:
+  `revocation_log.sink: s3://<bucket>/<prefix>` with the new `revocation_log.s3` section
+  (`endpoint`, `region` and `credentials_file`) in the boot file
+  ([Backup and restore](docs/guide/operations/backup-and-restore.md#an-s3-compatible-sink)). Every
+  entry is created only when its key is free (`If-None-Match: *`), so replicas leave no gap, and at
+  start the controller writes a probe object twice and refuses to start on a store that does not
+  refuse the second write. `rpmgr restore --revocation-log s3://<bucket>/<prefix>` reads such a
+  sink. The prefix is required, and `revocation_log.s3.lock_days` writes each entry with Object
+  Lock, so that an entry cannot be removed and a rewrite stays recoverable as an earlier version.
+  The credentials file holds `access_key_id` and `secret_access_key`, mode 0600 or 0400, and its
+  content is in no log or error. (#701)
 - The root CA's key can leave the controller. `rpmgr ca offline-root --out <file>` moves it into a
   file that a passphrase protects and removes it from the database; `rpmgr ca sign-intermediate`
   signs the next issuing intermediate on the offline host, and `rpmgr ca import-intermediate`
@@ -65,12 +76,15 @@ Changes to the design documents are not recorded here: see the git history and t
 - A webhook endpoint is no longer counted as failing, or disabled after three days, while the key
   service that holds the KEK (Vault or OpenBao Transit) is unreachable: the delivery waits and is
   tried again at the next pass, within the 24 hours in which an event is delivered; one that is
-  still waiting after that is dropped. Storing a secret, rotating a webhook secret and rotating the CA's keys no longer hold the
-  database's write lock while they wait for the key service.
+  still waiting after that is dropped. Storing a secret, rotating a webhook secret and rotating the
+  CA's keys no longer hold the database's write lock while they wait for the key service.
 - A controller that stops no longer logs an `ACME job` warning, `context canceled`. The job read
   the database under the controller's system context, which ends a moment before the job's own, so
   a pass that began in that gap failed as if it were an error. It now reads under the job's
   context, so the stop ends it as a shutdown.
+- An object written with Object Lock, by the audit log's object-storage sink or the revocation
+  log's S3 sink, now carries a SHA-256 checksum, which some S3-compatible stores require for a
+  locked write. (#701)
 
 ## [0.4.1] - 2026-11-23
 

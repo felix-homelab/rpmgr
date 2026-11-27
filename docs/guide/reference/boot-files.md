@@ -103,6 +103,11 @@ tracing section is described in [Monitoring](../operations/monitoring.md).
 | `tls.cert_file` | path | none | The certificate chain of the public URL's host, PEM, the certificate first. Goes with `tls.key_file` |
 | `tls.key_file` | path | none | Its private key, PEM |
 | `revocation_log.sink` | path | `""` | A directory, usually on a share, that keeps a copy of the revocation log off the host. It must exist, and the user `rpmgr` must be able to write to it. `rpmgr systemd-unit` makes it writable in the unit, so write the unit again after setting it ([below](#directories-outside-varlibrpmgr)). Empty keeps only the local log ([Backup and restore](../operations/backup-and-restore.md#the-revocation-log-sink)) |
+| `revocation_log.sink` as `s3://<bucket>/<prefix>` | URL | `""` | An S3-compatible bucket instead of a directory; needs a prefix that nothing else writes to, and `revocation_log.s3`. The store must support a conditional create, or the controller refuses to start. Nothing is mounted, so the unit adds no path ([Backup and restore](../operations/backup-and-restore.md#an-s3-compatible-sink)) |
+| `revocation_log.s3.endpoint` | URL | none | The store's `https://` URL (`http://` on a loopback address only) |
+| `revocation_log.s3.region` | string | none | The region the store signs for |
+| `revocation_log.s3.credentials_file` | path | none | A YAML file with `access_key_id` and `secret_access_key`, mode 0600 or 0400 |
+| `revocation_log.s3.lock_days` | number | `0` | Writes each entry with Object Lock in compliance mode for this many days, in a bucket with Object Lock enabled; `0` for no lock, otherwise 30 to 3650 |
 | `log`, `tracing` | | | As above |
 
 **The KEK.** With `systemd-credential`, systemd decrypts the credential
@@ -259,7 +264,7 @@ the connector reach the controller inside the process.
 | `state_dir` | path | `/var/lib/rpmgr` | The gateway's identity and state go to `<state_dir>/gateway/identity` and `<state_dir>/gateway`, the connector's to `<state_dir>/connector/identity` and `<state_dir>/connector` |
 | `policy_file` | path | `/etc/rpmgr/policy.yaml` | The local policy of the built-in connector `local` |
 | `firewall.backend`, `firewall.max_range` | | `""`, none | As for a gateway: the helper's files go to `<state_dir>/firewall/` |
-| `revocation_log.sink` | path | `""` | As for a controller |
+| `revocation_log.sink`, `revocation_log.s3` | | `""`, none | As for a controller |
 | `log`, `tracing` | | | As above |
 
 An all-in-one has no `listen.https`, because the gateway owns port 443, and no
@@ -297,9 +302,10 @@ The systemd units that `rpmgr systemd-unit` prints let the service write only to
 `/var/lib/rpmgr` (`ProtectSystem=strict` with `StateDirectory=rpmgr`); the rest of the file system
 is read-only for it. Two keys can name a directory elsewhere:
 
-- `revocation_log.sink` of a controller or an all-in-one. `rpmgr systemd-unit` reads the boot file
-  and adds `ReadWritePaths=-<sink>` and `RequiresMountsFor=<sink>` to the unit, so write the unit
-  again after setting or changing the sink. The steps are in
+- `revocation_log.sink` of a controller or an all-in-one, when it is a directory. `rpmgr
+  systemd-unit` reads the boot file and adds `ReadWritePaths=-<sink>` and
+  `RequiresMountsFor=<sink>` to the unit, so write the unit again after setting or changing the
+  sink. The steps are in
   [Backup and restore](../operations/backup-and-restore.md#the-revocation-log-sink).
 - `state_dir`, `identity_dir` or `database.dsn`, when you move the state elsewhere. The unit does
   not name these.

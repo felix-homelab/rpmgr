@@ -117,7 +117,7 @@ func ForController(c config.Controller) Options {
 	if c.KEK.Source == config.KEKSystemdCredential {
 		o.Credential = c.KEK.Name
 	}
-	if c.RevocationLog.Sink != "" {
+	if c.RevocationLog.Sink != "" && !strings.HasPrefix(c.RevocationLog.Sink, config.S3Scheme) { // a bucket is no path
 		o.Writable = []string{c.RevocationLog.Sink}
 	}
 	return o

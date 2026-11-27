@@ -118,14 +118,88 @@ type Controller struct {
 }
 
 // RevocationLog is where the revocation log keeps a copy off the host (docs/10-operations.md,
-// "Backup and restore"): a directory, usually a share mounted on every controller host.
+// "Backup and restore"): a directory, usually a share mounted on every controller host, or an
+// S3-compatible bucket.
 type RevocationLog struct {
 	Sink string `yaml:"sink"` // empty for none: a single node keeps only its local log
+	// S3 is the store of an s3://<bucket>/<prefix> sink, and only of that.
+	S3 RevocationLogS3 `yaml:"s3"`
+}
+
+// RevocationLogS3 is the connection to an S3-compatible store.
+type RevocationLogS3 struct {
+	Endpoint        string `yaml:"endpoint"`         // https://host[:port]
+	Region          string `yaml:"region"`           // the signing region
+	CredentialsFile string `yaml:"credentials_file"` // access_key_id and secret_access_key, mode 0600 or 0400
+	// LockDays locks each entry in Object Lock's compliance mode for that many days, so that not
+	// even the sink's credentials can overwrite or delete it; 0 for no lock. The bucket must have
+	// Object Lock enabled.
+	LockDays int `yaml:"lock_days"`
+}
+
+// The lock period of an S3 sink, as for the object-storage audit sink (docs/04-security.md).
+const (
+	MinS3LockDays = 30
+	MaxS3LockDays = 3650
+)
+
+// S3Scheme starts the sink of an S3-compatible store.
+const S3Scheme = "s3://"
+
+// S3Sink splits an s3://<bucket>/<prefix> sink into its bucket and key prefix, which ends in a
+// slash unless it is empty. ok is false for a sink that is a directory.
+func (r RevocationLog) S3Sink() (bucket, prefix string, ok bool, err error) {
+	rest, ok := strings.CutPrefix(r.Sink, S3Scheme)
+	if !ok {
+		return "", "", false, nil
+	}
+	bucket, prefix, _ = strings.Cut(rest, "/")
+	prefix = strings.Trim(prefix, "/")
+	switch {
+	case bucket == "":
+		return "", "", true, errors.New("revocation_log.sink: an s3:// sink names a bucket")
+	case prefix == "":
+		return "", "", true, errors.New("revocation_log.sink: an s3:// sink needs a prefix that nothing else writes to, s3://<bucket>/<prefix>: " +
+			"one foreign object under it stops the shipping")
+	case strings.Contains(prefix, "//") || strings.ContainsFunc(r.Sink, func(c rune) bool { return c < 0x21 || c == 0x7f || c == '?' || c == '#' || c == '\\' }):
+		return "", "", true, errors.New("revocation_log.sink: an s3:// sink is s3://<bucket>/<prefix> and nothing else")
+	}
+	for _, seg := range strings.Split(prefix, "/") {
+		if seg == "." || seg == ".." {
+			return "", "", true, errors.New("revocation_log.sink: the prefix of an s3:// sink has no . or .. segment")
+		}
+	}
+	return bucket, prefix + "/", true, nil
 }
 
 func (r RevocationLog) check() error {
 	if r.Sink == "" {
+		if r.S3 != (RevocationLogS3{}) {
+			return errors.New("revocation_log.s3 goes with an s3:// sink")
+		}
 		return nil
+	}
+	if _, _, isS3, err := r.S3Sink(); isS3 {
+		if err != nil {
+			return err
+		}
+		u, err := url.Parse(r.S3.Endpoint)
+		if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+			return errors.New("revocation_log.s3.endpoint: want an https:// URL")
+		}
+		if ip := net.ParseIP(u.Hostname()); u.Scheme == "http" && (ip == nil || !ip.IsLoopback()) && u.Hostname() != "localhost" {
+			return errors.New("revocation_log.s3.endpoint: an http:// endpoint is allowed on a loopback address only")
+		}
+		if r.S3.Region == "" {
+			return errors.New("revocation_log.s3.region: an s3:// sink needs the region the store signs for")
+		}
+		if d := r.S3.LockDays; d != 0 && (d < MinS3LockDays || d > MaxS3LockDays) {
+			return fmt.Errorf("revocation_log.s3.lock_days %d: 0 for no lock, or %d to %d", d, MinS3LockDays, MaxS3LockDays)
+		}
+		return checkAbs("revocation_log.s3.credentials_file", r.S3.CredentialsFile)
+	}
+	if r.S3 != (RevocationLogS3{}) {
+		return errors.New("revocation_log.s3 goes with an s3:// sink only")
 	}
 	return checkAbs("revocation_log.sink", r.Sink)
 }

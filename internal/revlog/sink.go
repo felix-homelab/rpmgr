@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/felix-homelab/rpmgr/internal/objstore"
 )
 
 // Backend is where a sink keeps its objects (docs/04-security.md, "Revocation log"). It has three
@@ -64,7 +66,16 @@ type Sink struct {
 	prev       string
 	shipped    map[string]map[string]bool // replica -> hashes of its local entries in the sink
 	broken     error
+	lagged     int // rounds in a row that found a taken key unlisted
 }
+
+// MaxUnlistedRounds is how many rounds in a row may find the key they lost unlisted before the sink
+// counts as broken (docs/04-security.md, "Revocation log").
+const MaxUnlistedRounds = 3
+
+// ErrListingLags is returned when a create was refused because the key exists and the listing does
+// not show it yet. It is not a break: the next round lists again.
+var ErrListingLags = errors.New("revlog: the sink's listing lags behind its writes")
 
 // ReverifyEvery is how often a Sink verifies the whole sink again from entry 1, so that a key
 // deleted or an object rewritten below the verified prefix is found (docs/03-connections.md,
@@ -98,12 +109,17 @@ func (e SinkEntry) hash() (string, error) {
 // also when it returns an error.
 func (s *Sink) scan(keys []string, seq uint64, prev string) ([]SinkEntry, error) {
 	var out []SinkEntry
-	for _, key := range keys {
+	for i, key := range keys {
 		n, ok := parseKey(key)
 		if !ok {
 			return out, fmt.Errorf("%w: the sink holds the unexpected key %q", ErrBroken, key)
 		}
 		if n != seq+1 {
+			if i == len(keys)-1 && n > seq+1 {
+				// The last key is ahead of the chain: a store whose listing lags shows the key
+				// before it a moment later. A gap with a key after it is a break.
+				return out, fmt.Errorf("%w: the sink has no entry %d, and the last key listed is %d: %w", errTailGap, seq+1, n, ErrBroken)
+			}
 			return out, fmt.Errorf("%w: the sink has no entry %d", ErrBroken, seq+1)
 		}
 		b, err := s.backend.Get(key)
@@ -120,6 +136,17 @@ func (s *Sink) scan(keys []string, seq uint64, prev string) ([]SinkEntry, error)
 		}
 		if e.Seq != n || e.Prev != prev || e.Hash != h {
 			return out, fmt.Errorf("%w: sink entry %d", ErrBroken, n)
+		}
+		// The sink's hash is unkeyed, so whoever can write the bucket can recompute it. The entry
+		// inside must still be the one its own hash names: a restore de-duplicates by that hash,
+		// and a forged entry that claimed another's hash would hide it.
+		if ih, err := e.Entry.hash(); err != nil {
+			return out, err
+		} else if ih != e.Entry.Hash {
+			return out, fmt.Errorf("%w: sink entry %d holds an entry that was altered", ErrBroken, n)
+		}
+		if err := e.Entry.checkShape(); err != nil {
+			return out, fmt.Errorf("%w: sink entry %d: %w", ErrBroken, n, err)
 		}
 		out, seq, prev = append(out, e), n, h
 	}
@@ -147,6 +174,18 @@ func (s *Sink) now() time.Time {
 	return time.Now()
 }
 
+// errTailGap marks a scan that ended at a key ahead of the chain, which may be a lagging listing.
+var errTailGap = errors.New("revlog: a gap at the tail of the listing")
+
+// tailGap is the answer to a gap at the tail: an error to retry, and a break after
+// MaxUnlistedRounds in a row.
+func (s *Sink) tailGap(err error) error {
+	if s.lagged++; s.lagged >= MaxUnlistedRounds {
+		return s.fail(err)
+	}
+	return fmt.Errorf("%w: %s", ErrListingLags, err.Error())
+}
+
 func (s *Sink) fail(err error) error {
 	s.broken = err
 	return err
@@ -163,6 +202,9 @@ func (s *Sink) fullCheck() error {
 	}
 	got, err := s.scan(keys, 0, "")
 	if err != nil {
+		if errors.Is(err, errTailGap) {
+			return s.tailGap(err)
+		}
 		if errors.Is(err, ErrBroken) {
 			return s.fail(err)
 		}
@@ -232,10 +274,16 @@ func (s *Sink) sync(checkTip bool) ([]SinkEntry, error) {
 	got, err := s.scan(keys, s.last, s.prev)
 	s.extend(got)
 	if err != nil {
+		if errors.Is(err, errTailGap) {
+			return got, s.tailGap(err)
+		}
 		if errors.Is(err, ErrBroken) {
 			return got, s.fail(err)
 		}
 		return got, err
+	}
+	if len(got) > 0 {
+		s.lagged = 0
 	}
 	return got, nil
 }
@@ -288,8 +336,14 @@ func (s *Sink) Ship(path, replica string) ([]Entry, error) {
 				}
 			}
 			if s.last == before {
-				return todo, s.fail(fmt.Errorf("%w: the sink key %s exists but is not listed", ErrBroken, Key(e.Seq)))
+				// A store whose listing lags behind its writes shows the key a moment later, so the
+				// first rounds are an error to retry; a key that stays unlisted is planted or hidden.
+				if s.lagged++; s.lagged >= MaxUnlistedRounds {
+					return todo, s.fail(fmt.Errorf("%w: the sink key %s exists but is not listed", ErrBroken, Key(e.Seq)))
+				}
+				return todo, fmt.Errorf("%w: the sink key %s exists but is not listed yet", ErrListingLags, Key(e.Seq))
 			}
+			s.lagged = 0
 			// The object may be this replica's own, whose reply was lost: it is shipped then.
 			var rest []Entry
 			for _, t := range todo {
@@ -308,6 +362,7 @@ func (s *Sink) Ship(path, replica string) ([]Entry, error) {
 			s.last, s.prev, todo = e.Seq, e.Hash, todo[1:]
 		}
 	}
+	s.lagged = 0
 	return nil, nil
 }
 
@@ -317,6 +372,33 @@ type Status struct {
 	Unshipped int       // entries the sink does not hold yet
 	Oldest    time.Time // when the oldest of them was logged; zero when none
 	LastOK    time.Time // when a shipping round last succeeded, or began if none has; zero unknown
+	Reason    string    // why the last round failed, one of the Reason constants; empty after a success
+}
+
+// Why a shipping round failed, for the status and the log.
+const (
+	ReasonRefused       = "refused"               // the store answered with a client error, such as 403
+	ReasonUnreachable   = "unreachable"           // a timeout, a transport failure, 5xx or a lagging listing
+	ReasonNoConditional = "no_conditional_create" // the store does not refuse a second create
+	ReasonBroken        = "broken"                // the sink's chain does not verify
+	ReasonError         = "error"
+)
+
+// ReasonOf names why a round failed with err; empty for nil.
+func ReasonOf(err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, ErrNoConditionalCreate):
+		return ReasonNoConditional
+	case errors.Is(err, ErrBroken):
+		return ReasonBroken
+	case errors.Is(err, ErrListingLags), errors.Is(err, ErrListing), objstore.Retryable(err):
+		return ReasonUnreachable
+	case objstore.Refused(err):
+		return ReasonRefused
+	}
+	return ReasonError
 }
 
 // OffHostAlert is how long an entry may stay unshipped before the alert "revocation log not yet

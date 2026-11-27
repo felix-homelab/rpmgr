@@ -213,7 +213,11 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	holder := pki.NewHolder(node)
-	shipper := &RevocationShipper{Path: filepath.Join(stateDir, "revocations.log"), Sink: cfg.RevocationLog.Sink, Replica: nodeID, Logger: o.Logger}
+	sinkBackend, err := OpenRevocationSink(ctx, cfg.RevocationLog, o.Logger)
+	if err != nil {
+		return err
+	}
+	shipper := &RevocationShipper{Path: filepath.Join(stateDir, "revocations.log"), Sink: cfg.RevocationLog.Sink, Backend: sinkBackend, Replica: nodeID, Logger: o.Logger}
 
 	sessions := NewSessions(SessionsOptions{DB: db, CA: ca, Node: nodeID, Version: o.Version, Sys: sys, Now: o.Now, RevLog: rl, Sealer: sealer,
 		Logger:   o.Logger,

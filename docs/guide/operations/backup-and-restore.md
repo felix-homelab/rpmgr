@@ -96,7 +96,8 @@ backup is older than the day the root went offline and still held it
 which is lost with the host.
 
 The boot setting `revocation_log.sink` keeps a copy off the host: a directory, usually on a share
-mounted on the controller's host ([Boot files](../reference/boot-files.md#controller)). The
+mounted on the controller's host, or a bucket of an S3-compatible store
+([below](#an-s3-compatible-sink)) ([Boot files](../reference/boot-files.md#controller)). The
 systemd unit lets the controller write only to `/var/lib/rpmgr`, unless it names the sink as well:
 `rpmgr systemd-unit` reads the boot file and adds the sink, so write the unit again after setting
 it. To set one up on a controller (on an all-in-one, use `all-in-one` in place of `controller`):
@@ -147,6 +148,51 @@ With one, it warns when an entry has waited too long to reach the sink
 ([10](../../10-operations.md#suggested-alerts)). Revocations are enforced at once either way
 ([10](../../10-operations.md#backup-and-restore)).
 
+### An S3-compatible sink
+
+A bucket of an S3-compatible store can be the sink instead of a directory, which is the choice
+for controller replicas on hosts that share no file system. Nothing is mounted, so the unit needs
+no change. The store must support a conditional create (`If-None-Match: *`): the controller writes
+a probe object under `_probe/` twice when it starts, and **refuses to start** when the store does
+not refuse the second write, because such a store would overwrite entries and leave gaps
+([04](../../04-security.md#revocation-log)). The probe objects stay in the bucket.
+
+1. **Create the bucket and an access key** that may put, get and list objects under a prefix that
+   nothing else writes to, and may not delete them; a foreign object under the prefix stops the
+   shipping. Keep the key for the controllers alone: whoever can write to the sink can stop
+   shipping. A permission to put includes the permission to overwrite. To keep the entries,
+   create the bucket with Object Lock enabled and set `lock_days` below: a locked entry cannot be
+   removed, and a rewrite stays recoverable as an earlier version. A running controller sees a
+   rewrite as a break; a restore reads the current versions.
+
+2. **Put the key in a file** that only `rpmgr` can read, mode 0600 or 0400, with the two keys of
+   the file the external audit sink uses and nothing else:
+
+   ```yaml
+   access_key_id: <access key ID>
+   secret_access_key: <secret key>
+   ```
+
+3. **Name the sink in the boot file,** `/etc/rpmgr/controller.yaml`, and restart the controller:
+
+   ```yaml
+   revocation_log:
+     sink: s3://my-bucket/rpmgr-revocations
+     s3:
+       endpoint: https://s3.example.com
+       region: eu-central-1
+       credentials_file: /etc/rpmgr/s3-credentials
+       lock_days: 365     # optional: Object Lock in compliance mode, 30 to 3650 days
+   ```
+
+   The prefix is required. The endpoint is an `https://` URL; plain `http://` is accepted for a
+   loopback address only. The key never appears in a log or an error message. A bucket without
+   Object Lock refuses the writes when `lock_days` is set.
+
+While the store does not answer, or refuses the key, the controller logs
+`revocation log: the sink takes no entries; revocations are still enforced` and tries again every
+few seconds; the entries wait in the local log and **Settings** warns as for a directory.
+
 ## Restore
 
 A restore puts the database and the logs of a backup in place. It needs every controller stopped.
@@ -156,8 +202,8 @@ A restore puts the database and the logs of a backup in place. It needs every co
 - **The backup archive,** from `rpmgr backup`.
 - **The KEK that belongs to it:** the controller cannot start without it.
 - **The revocations since the backup:** on the same host, the local `revocations.log`, which the
-  restore reads by default; on a new host, the sink directory or the old host's `revocations.log`.
-  Without them, the restore fails closed ([below](#when-the-restore-fails-closed)).
+  restore reads by default; on a new host, the sink directory, the `s3://` sink or the old host's
+  `revocations.log`. Without them, the restore fails closed ([below](#when-the-restore-fails-closed)).
 - **The same rpmgr version** as the backup, or a later one: the restore applies the binary's
   database migrations to the restored database.
 
@@ -181,7 +227,7 @@ re-enroll agents enrolled after the backup.
 | Flag | Meaning |
 |---|---|
 | `--in <file>` | Required. The archive of `rpmgr backup` |
-| `--revocation-log <dir or file>` | A revocation-log sink directory, or a controller's `revocations.log`. Repeat it for each. Default: the state directory's `revocations.log` |
+| `--revocation-log <dir, s3:// URL or file>` | A revocation-log sink directory, an `s3://<bucket>/<prefix>` sink, or a controller's `revocations.log`. Repeat it for each. An S3 sink is read with the store and the credentials file of the boot file's `revocation_log.s3`. Default: the state directory's `revocations.log` |
 | `--config <file>` | The boot file, as for `rpmgr backup` |
 
 The restore refuses to run while a controller holds the database. It prepares everything next to

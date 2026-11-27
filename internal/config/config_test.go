@@ -114,6 +114,7 @@ func TestPassthrough(t *testing.T) {
 func TestRefused(t *testing.T) {
 	const ctl = "version: 1\npublic_url: https://panel.example.com\n"
 	const agent = "version: 1\ncontroller: {endpoints: [https://panel.example.com]}\n"
+	const s3 = "{endpoint: \"https://s3.example.com\", region: r, credentials_file: /c}"
 	cases := []struct {
 		name, role, yaml, want string
 	}{
@@ -189,6 +190,25 @@ func TestRefused(t *testing.T) {
 		{"hand-off drain is no duration", "gateway", agent + "handoff: {drain: soon}\n", "cannot unmarshal"},
 		{"unknown hand-off key", "gateway", agent + "handoff: {wait: 1m}\n", "wait"},
 		{"passthrough on a connector", "connector", pt("10.0.0.5:443", ""), "only a gateway"},
+		{"a relative sink directory", "controller", ctl + "revocation_log: {sink: mnt/sink}\n", "absolute"},
+		{"an s3 section with a directory sink", "controller", ctl + "revocation_log: {sink: /mnt/sink, s3: " + s3 + "}\n", "s3:// sink only"},
+		{"an s3 section without a sink", "controller", ctl + "revocation_log: {s3: " + s3 + "}\n", "goes with an s3:// sink"},
+		{"an s3 sink without a bucket", "controller", ctl + "revocation_log: {sink: \"s3:///p\", s3: " + s3 + "}\n", "bucket"},
+		{"an s3 sink with a query", "controller", ctl + "revocation_log: {sink: \"s3://b/p?x=1\", s3: " + s3 + "}\n", "nothing else"},
+		{"an s3 sink with an empty path part", "controller", ctl + "revocation_log: {sink: \"s3://b/p//q\", s3: " + s3 + "}\n", "nothing else"},
+		{"an s3 sink without the store", "controller", ctl + "revocation_log: {sink: \"s3://b/p\"}\n", "endpoint"},
+		{"an s3 endpoint that is no URL", "controller", ctl + "revocation_log: {sink: \"s3://b/p\", s3: {endpoint: store, region: r, credentials_file: /c}}\n", "endpoint"},
+		{"an s3 sink without a region", "controller", ctl + "revocation_log: {sink: \"s3://b/p\", s3: {endpoint: \"https://s3.example.com\", credentials_file: /c}}\n", "region"},
+		{"an s3 sink with a relative credentials file", "controller", ctl + "revocation_log: {sink: \"s3://b/p\", s3: {endpoint: \"https://s3.example.com\", region: r, credentials_file: c}}\n", "credentials_file"},
+		{"an s3 sink without a prefix", "controller", ctl + "revocation_log: {sink: \"s3://b\", s3: " + s3 + "}\n", "prefix"},
+		{"an s3 sink with a slash for a prefix", "controller", ctl + "revocation_log: {sink: \"s3://b/\", s3: " + s3 + "}\n", "prefix"},
+		{"an s3 prefix with a dot segment", "controller", ctl + "revocation_log: {sink: \"s3://b/a/./c\", s3: " + s3 + "}\n", "segment"},
+		{"an s3 prefix with a dot-dot segment", "controller", ctl + "revocation_log: {sink: \"s3://b/a/../c\", s3: " + s3 + "}\n", "segment"},
+		{"an s3 prefix with a control character", "controller", ctl + "revocation_log: {sink: \"s3://b/a\\u0001b\", s3: " + s3 + "}\n", "nothing else"},
+		{"an s3 lock below the minimum", "controller", ctl + "revocation_log: {sink: \"s3://b/p\", s3: {endpoint: \"https://s3.example.com\", region: r, credentials_file: /c, lock_days: 7}}\n", "lock_days"},
+		{"an s3 lock above the maximum", "controller", ctl + "revocation_log: {sink: \"s3://b/p\", s3: {endpoint: \"https://s3.example.com\", region: r, credentials_file: /c, lock_days: 4000}}\n", "lock_days"},
+		{"an http endpoint on a public host", "controller", ctl + "revocation_log: {sink: \"s3://b/p\", s3: {endpoint: \"http://s3.example.com\", region: r, credentials_file: /c}}\n", "loopback"},
+		{"an unknown s3 key", "controller", ctl + "revocation_log: {sink: \"s3://b/p\", s3: {endpoint: \"https://s3.example.com\", region: r, credentials_file: /c, secret: x}}\n", "secret"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -367,5 +387,32 @@ func TestFirewall(t *testing.T) {
 	var c config.Connector
 	if err := config.Parse([]byte(agent+"firewall: {backend: ufw}\n"), &c); err == nil {
 		t.Error("a connector has no firewall section")
+	}
+}
+
+// TestRevocationLogS3: an s3:// sink is a bucket and a prefix that ends in a slash unless it is empty;
+// a directory is not one.
+func TestRevocationLogS3(t *testing.T) {
+	for sink, want := range map[string][2]string{
+		"s3://bucket/p":        {"bucket", "p/"},
+		"s3://bucket/revlog":   {"bucket", "revlog/"},
+		"s3://bucket/a/b/":     {"bucket", "a/b/"},
+		"s3://my.bucket-1/x/y": {"my.bucket-1", "x/y/"},
+	} {
+		b, p, ok, err := config.RevocationLog{Sink: sink}.S3Sink()
+		if err != nil || !ok || b != want[0] || p != want[1] {
+			t.Errorf("%s: %q %q %v %v, want %v", sink, b, p, ok, err, want)
+		}
+	}
+	if _, _, ok, err := (config.RevocationLog{Sink: "/mnt/sink"}).S3Sink(); ok || err != nil {
+		t.Errorf("a directory: %v %v", ok, err)
+	}
+	var c config.Controller
+	yml := "version: 1\npublic_url: https://panel.example.com\nrevocation_log:\n  sink: s3://bucket/revlog\n  s3: {endpoint: \"https://s3.example.com\", region: eu-central-1, credentials_file: /etc/rpmgr/s3-credentials, lock_days: 90}\n"
+	if err := config.Parse([]byte(yml), &c); err != nil {
+		t.Fatal(err)
+	}
+	if c.RevocationLog.S3.LockDays != 90 || c.RevocationLog.S3.Region != "eu-central-1" || c.RevocationLog.S3.CredentialsFile != "/etc/rpmgr/s3-credentials" {
+		t.Errorf("parsed %+v", c.RevocationLog)
 	}
 }
