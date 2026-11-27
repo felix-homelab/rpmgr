@@ -134,9 +134,9 @@ TestKMS_CredentialsNeverLoggedInAuditAndStatus	done	8.9	#692	fake Transit; kek s
 TestCA_OfflineRootNeverStored	done	8.10	#693	offline root (P2-M08, D179)
 TestCA_OfflineRootCeremony	done	8.11	#694	offline root (P2-M08, D179)
 TestCA_ImportedIntermediateMustChainAndConstrain	done	8.10	#693	offline root (P2-M08, D179)
-TestCA_RotationChainsVerifyWithOldRootOnly	pending	8.14	#697	root rotation (P2-M08, D180)
+TestCA_RotationChainsVerifyWithOldRootOnly	done	8.14	#697	root rotation (P2-M08, D180); internal/pki/castore, the old-only and new-only agents through Y and I2 and the drop; the agent clauses are TestAgent_DropsRootOnNewerBundle and TestAgent_ReplayedBundleNeitherDropsNorAdds
 TestAgent_SnapshotRootNeedsCrossSign	done	8.13	#696	root rotation (P2-M08, D180)
-TestCA_CompromisedRootRefusedEverywhere	pending	8.15	#698	root compromise (P2-M08, D179)
+TestCA_CompromisedRootRefusedEverywhere	done	8.15	#698	root compromise (P2-M08, D179); internal/itest, the control-session, Reauth, enrollment, gateway, connector and controller-peer clauses; the restore clause is TestReplaceCompromisedRoot_RestoreRefusesOlderArchives (internal/controller) and the audit clause TestVerifyChain_CompromisedRootCheckpoints (internal/audit)
 TestRevlogS3_NoOverwriteNoGap	pending	9.1	#701	S3 revocation-log sink (P2-M09, VB-24)
 TestHA_LostLeaseCommitsNothing	pending	9.2	#702	replicas (P2-M09, D177)
 TestHA_RevocationOnOtherReplicaEnforced	pending	9.3	#703	replicas (P2-M09, D112)

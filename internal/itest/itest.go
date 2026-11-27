@@ -17,6 +17,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -74,6 +75,8 @@ type Controller struct {
 	web    *http.Client
 	stops  []func()
 	sealer *secret.Sealer
+	kekRaw []byte
+	uiCert *tls.Certificate
 }
 
 // StartController starts a controller on a loopback port; t's cleanup stops it.
@@ -124,7 +127,7 @@ func StartController(t testing.TB, o Options) *Controller {
 		t.Fatal(err)
 	}
 	c := &Controller{DB: db, CA: ca, Org: storetest.Org(t, db, "org-a"), Sys: sys, opts: o, sealer: sealer, RevLog: rl, RevLogPath: rlPath,
-		Logs: logs}
+		Logs: logs, kekRaw: raw}
 	c.URL, c.Sessions = c.StartReplica(t)
 	return c
 }
@@ -144,16 +147,15 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	roots := x509.NewCertPool()
-	roots.AddCert(c.CA.Root())
 	so := controller.SessionsOptions{DB: c.DB, CA: c.CA, Node: nodeID, Version: c.opts.Version,
 		Sys: c.Sys, Now: c.opts.Now, Admission: c.opts.Admission, RevisionCheck: 50 * time.Millisecond, RevLog: c.RevLog, Sealer: c.sealer,
 		Logger: c.Logs.Logger()}
 	if len(c.opts.Sources) > 0 {
-		so.Compiler = &snapshot.Compiler{Sources: c.opts.Sources, Endpoints: controller.AgentEndpoints(url), Offer: snapshot.ReleaseOfferAt(url), Roots: c.CA.TrustRoots, Log: c.Logs.Logger()}
+		so.Compiler = &snapshot.Compiler{Sources: c.opts.Sources, Endpoints: controller.AgentEndpoints(url), Offer: snapshot.ReleaseOfferAt(url), Roots: func(ctx context.Context, tx *ent.Tx) ([][]byte, error) { return castore.TrustRootsOf(ctx, tx.CAKey) }, Log: c.Logs.Logger()}
 	}
 	sessions := controller.NewSessions(so)
-	cfg := pki.AgentEndpointConfig(pki.NewHolder(node), roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway},
+	// The roots follow the CA, as the controller's do, so that a root rotation needs no restart.
+	cfg := pki.AgentEndpointConfigFollowing(pki.NewHolder(node), c.CA.RootsPool, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway},
 		Denied: sessions.Denied}, nil, controller.ReauthChecks(c.DB, c.Sys))
 	split := controller.NewSplitter(td, ln.Addr())
 	agents := controller.NewAgentServer(cfg, td)
@@ -166,8 +168,13 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 	enrollment.Logger = c.Logs.Logger()
 	agentv1.RegisterEnrollmentServer(agents, enrollment)
 	mux := http.NewServeMux()
-	mux.Handle("/.well-known/rpmgr/trust-bundle", enroll.TrustBundleHandler(c.CA.Root()))
-	uiCert, uiRoots := webCertificate(t)
+	mux.Handle("/.well-known/rpmgr/trust-bundle", enroll.TrustBundleHandlerFunc(c.CA.Roots))
+	// The replicas share the UI certificate, so that one client trusts them all.
+	if c.uiCert == nil {
+		cert, roots := webCertificate(t)
+		c.uiCert, c.UIRoots = &cert, roots
+	}
+	uiCert, uiRoots := *c.uiCert, c.UIRoots
 	web := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = agents.Serve(split.Agents()) }()
 	webTLS := controller.WebTLS(func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return &uiCert, nil }, false)
@@ -177,11 +184,27 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 	c.stops = append(c.stops, stop)
 	t.Cleanup(stop)
 	if c.web == nil {
-		c.UIRoots = uiRoots
 		c.web = &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{RootCAs: uiRoots, MinVersion: tls.VersionTLS13}}}
 	}
 	return url, sessions
+}
+
+// BootFile writes the boot file of the controller, with a KEK file that holds its KEK, and returns the boot
+// file's path, so that a test runs a command of the controller host (`rpmgr ca new-root --compromised`)
+// against the database the replicas serve. The state directory is the database's.
+func (c *Controller) BootFile(t testing.TB) string {
+	t.Helper()
+	state := filepath.Dir(c.DB.Path)
+	kek := filepath.Join(state, "kek")
+	if err := os.WriteFile(kek, []byte(base64.StdEncoding.EncodeToString(c.kekRaw)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	boot := filepath.Join(t.TempDir(), "controller.yaml")
+	if err := os.WriteFile(boot, []byte("version: 1\npublic_url: https://panel.example.com\ndatabase: {dsn: "+c.DB.Path+"}\nkek: {source: file, path: "+kek+"}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return boot
 }
 
 // Sealer returns the sealer of the controller's KEK.

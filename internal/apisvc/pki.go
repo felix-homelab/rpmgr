@@ -41,7 +41,12 @@ var (
 		cakey.KindIntermediate: rpmgrv1.CAKeyKind_CA_KEY_KIND_INTERMEDIATE, cakey.KindConfigSigning: rpmgrv1.CAKeyKind_CA_KEY_KIND_CONFIG_SIGNING,
 		cakey.KindAuditCheckpoint: rpmgrv1.CAKeyKind_CA_KEY_KIND_AUDIT_CHECKPOINT}
 	caKeyStates = map[cakey.Status]rpmgrv1.CAKeyState{cakey.StatusNext: rpmgrv1.CAKeyState_CA_KEY_STATE_NEXT,
-		cakey.StatusActive: rpmgrv1.CAKeyState_CA_KEY_STATE_ACTIVE, cakey.StatusRetired: rpmgrv1.CAKeyState_CA_KEY_STATE_RETIRED}
+		cakey.StatusActive: rpmgrv1.CAKeyState_CA_KEY_STATE_ACTIVE, cakey.StatusRetired: rpmgrv1.CAKeyState_CA_KEY_STATE_RETIRED,
+		// The old root in the overlap of a rotation no longer issues but is still trusted.
+		cakey.StatusOverlap: rpmgrv1.CAKeyState_CA_KEY_STATE_OVERLAP,
+		// A key replaced as compromised is shown as retired, which says only that it no longer issues; `rpmgr ca
+		// status` adds that the root was replaced as compromised and who has not enrolled again.
+		cakey.StatusCompromised: rpmgrv1.CAKeyState_CA_KEY_STATE_RETIRED}
 )
 
 // GetPkiStatus implements PkiService.
@@ -67,12 +72,16 @@ func (p *Pki) GetPkiStatus(ctx context.Context, _ *connect.Request[rpmgrv1.GetPk
 			return nil, err
 		}
 		if r.Kind == cakey.KindRoot && r.Status == cakey.StatusActive {
+			out.RootOffline = r.KeyEnc == nil || len(*r.KeyEnc) == 0
+		}
+		// The pin new agents enroll with: the active root, or in the overlap of a root rotation the old
+		// one, so that they hold both roots (docs/04-security.md, "Root rotation").
+		if r.Kind == cakey.KindRoot && (r.Status == cakey.StatusOverlap || r.Status == cakey.StatusActive && out.RootPin == "") {
 			root, err := x509.ParseCertificate(r.Certificate)
 			if err != nil {
 				return nil, err
 			}
 			out.RootPin = pki.RootPin(root)
-			out.RootOffline = r.KeyEnc == nil || len(*r.KeyEnc) == 0
 		}
 		out.Keys = append(out.Keys, k)
 	}
@@ -84,9 +93,9 @@ func (p *Pki) GetPkiStatus(ctx context.Context, _ *connect.Request[rpmgrv1.GetPk
 			return nil, storeError(err)
 		}
 	}
-	// Active, then next, then retired; by kind; the newest first.
-	rank := map[rpmgrv1.CAKeyState]int{rpmgrv1.CAKeyState_CA_KEY_STATE_ACTIVE: 0, rpmgrv1.CAKeyState_CA_KEY_STATE_NEXT: 1,
-		rpmgrv1.CAKeyState_CA_KEY_STATE_RETIRED: 2}
+	// Active, then the old root of an overlap, then next, then retired; by kind; the newest first.
+	rank := map[rpmgrv1.CAKeyState]int{rpmgrv1.CAKeyState_CA_KEY_STATE_ACTIVE: 0, rpmgrv1.CAKeyState_CA_KEY_STATE_OVERLAP: 1,
+		rpmgrv1.CAKeyState_CA_KEY_STATE_NEXT: 2, rpmgrv1.CAKeyState_CA_KEY_STATE_RETIRED: 3}
 	slices.SortFunc(out.Keys, func(a, b *rpmgrv1.CAKey) int {
 		return cmp.Or(cmp.Compare(rank[a.GetState()], rank[b.GetState()]), cmp.Compare(a.GetKind(), b.GetKind()),
 			b.GetNotBefore().AsTime().Compare(a.GetNotBefore().AsTime()))

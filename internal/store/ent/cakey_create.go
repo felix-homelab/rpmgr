@@ -74,6 +74,54 @@ func (_c *CAKeyCreate) SetStatus(v cakey.Status) *CAKeyCreate {
 	return _c
 }
 
+// SetCrossCertificate sets the "cross_certificate" field.
+func (_c *CAKeyCreate) SetCrossCertificate(v []byte) *CAKeyCreate {
+	_c.mutation.SetCrossCertificate(v)
+	return _c
+}
+
+// SetRotatedAt sets the "rotated_at" field.
+func (_c *CAKeyCreate) SetRotatedAt(v time.Time) *CAKeyCreate {
+	_c.mutation.SetRotatedAt(v)
+	return _c
+}
+
+// SetNillableRotatedAt sets the "rotated_at" field if the given value is not nil.
+func (_c *CAKeyCreate) SetNillableRotatedAt(v *time.Time) *CAKeyCreate {
+	if v != nil {
+		_c.SetRotatedAt(*v)
+	}
+	return _c
+}
+
+// SetDropAfter sets the "drop_after" field.
+func (_c *CAKeyCreate) SetDropAfter(v time.Time) *CAKeyCreate {
+	_c.mutation.SetDropAfter(v)
+	return _c
+}
+
+// SetNillableDropAfter sets the "drop_after" field if the given value is not nil.
+func (_c *CAKeyCreate) SetNillableDropAfter(v *time.Time) *CAKeyCreate {
+	if v != nil {
+		_c.SetDropAfter(*v)
+	}
+	return _c
+}
+
+// SetWasOffline sets the "was_offline" field.
+func (_c *CAKeyCreate) SetWasOffline(v bool) *CAKeyCreate {
+	_c.mutation.SetWasOffline(v)
+	return _c
+}
+
+// SetNillableWasOffline sets the "was_offline" field if the given value is not nil.
+func (_c *CAKeyCreate) SetNillableWasOffline(v *bool) *CAKeyCreate {
+	if v != nil {
+		_c.SetWasOffline(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *CAKeyCreate) SetID(v string) *CAKeyCreate {
 	_c.mutation.SetID(v)
@@ -250,6 +298,22 @@ func (_c *CAKeyCreate) createSpec() (*CAKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(cakey.FieldStatus, field.TypeEnum, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.CrossCertificate(); ok {
+		_spec.SetField(cakey.FieldCrossCertificate, field.TypeBytes, value)
+		_node.CrossCertificate = value
+	}
+	if value, ok := _c.mutation.RotatedAt(); ok {
+		_spec.SetField(cakey.FieldRotatedAt, field.TypeTime, value)
+		_node.RotatedAt = &value
+	}
+	if value, ok := _c.mutation.DropAfter(); ok {
+		_spec.SetField(cakey.FieldDropAfter, field.TypeTime, value)
+		_node.DropAfter = &value
+	}
+	if value, ok := _c.mutation.WasOffline(); ok {
+		_spec.SetField(cakey.FieldWasOffline, field.TypeBool, value)
+		_node.WasOffline = &value
 	}
 	return _node, _spec
 }

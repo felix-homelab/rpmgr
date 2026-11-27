@@ -65,3 +65,23 @@ func RotateIntermediate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now t
 	_, err = p.Apply(ctx, tx)
 	return err
 }
+
+// NewRoot plans and applies `ca new-root` in tx, for tests that have no key service to wait for, and
+// returns what it changed and, with an offline old root, the requests.
+func NewRoot(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) ([]string, *RootRequests, error) {
+	p, err := PlanNewRoot(ctx, tx.CAKey, s, now)
+	if err != nil {
+		return nil, nil, err
+	}
+	done, err := p.Apply(ctx, tx)
+	return done, p.Requests(), err
+}
+
+// DropRoot plans and applies the drop of the old root in tx, for tests.
+func DropRoot(ctx context.Context, tx *ent.Tx, now time.Time, o DropOptions) ([]string, error) {
+	p, err := PlanDropRoot(ctx, tx.CAKey, now, o)
+	if err != nil {
+		return nil, err
+	}
+	return p.Apply(ctx, tx)
+}

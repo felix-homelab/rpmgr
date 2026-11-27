@@ -6,6 +6,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"errors"
@@ -57,7 +58,7 @@ func NewRoot(td string, now time.Time) (KeyPair, error) {
 		return KeyPair{}, err
 	}
 	tmpl := &x509.Certificate{
-		Subject:               pkix.Name{CommonName: "rpmgr root CA " + td},
+		Subject:               rootSubject(td),
 		NotBefore:             now.Add(-Backdate),
 		NotAfter:              now.Add(RootLifetime),
 		IsCA:                  true,
@@ -136,6 +137,20 @@ type Issuer struct {
 // NewIssuer checks that inter is a name-constrained intermediate of root with its key, and returns
 // an Issuer that also verifies certificates of the older intermediates.
 func NewIssuer(root *x509.Certificate, inter KeyPair, now func() time.Time, older ...*x509.Certificate) (*Issuer, error) {
+	return NewIssuerRoots([]*x509.Certificate{root}, inter, now, nil, older...)
+}
+
+// NewIssuerRoots is NewIssuer for a root rotation (docs/04-security.md, "Root rotation"): roots[0]
+// is the root that issues, the others are old roots still trusted during the overlap. inter must be
+// signed by roots[0], every older intermediate by one of roots, so that leaves issued under either
+// root verify. cross holds the certificates that the old roots signed for inter's key; they are
+// intermediates of the verifier's pool, and so a chain `leaf <- Y <- old root` is found.
+func NewIssuerRoots(roots []*x509.Certificate, inter KeyPair, now func() time.Time, cross []*x509.Certificate,
+	older ...*x509.Certificate) (*Issuer, error) {
+	if len(roots) == 0 {
+		return nil, errors.New("pki: no root")
+	}
+	root := roots[0]
 	td, err := TrustDomainOf(root)
 	if err != nil {
 		return nil, err
@@ -149,10 +164,19 @@ func NewIssuer(root *x509.Certificate, inter KeyPair, now func() time.Time, olde
 		return nil, errors.New("pki: the intermediate is not constrained to the trust domain")
 	}
 	is := &Issuer{td: td, root: root, inter: inter, roots: x509.NewCertPool(), inters: x509.NewCertPool(), now: now}
-	is.roots.AddCert(root)
-	for _, c := range append([]*x509.Certificate{inter.Cert}, older...) {
-		if err := c.CheckSignatureFrom(root); err != nil {
-			return nil, fmt.Errorf("pki: intermediate %s is not signed by the root: %w", c.Subject, err)
+	for _, r := range roots {
+		if rtd, err := TrustDomainOf(r); err != nil || rtd != td {
+			return nil, fmt.Errorf("pki: root %s is not in the trust domain %s", r.Subject, td)
+		}
+		is.roots.AddCert(r)
+	}
+	if err := inter.Cert.CheckSignatureFrom(root); err != nil {
+		return nil, fmt.Errorf("pki: intermediate %s is not signed by the root: %w", inter.Cert.Subject, err)
+	}
+	is.inters.AddCert(inter.Cert)
+	for _, c := range append(slices.Clone(cross), older...) {
+		if !slices.ContainsFunc(roots, func(r *x509.Certificate) bool { return c.CheckSignatureFrom(r) == nil }) {
+			return nil, fmt.Errorf("pki: intermediate %s is not signed by a root", c.Subject)
 		}
 		is.inters.AddCert(c)
 	}
@@ -253,11 +277,27 @@ func create(tmpl, parent *x509.Certificate, pub *ecdsa.PublicKey, signer *ecdsa.
 		return nil, err
 	}
 	tmpl.SerialNumber = serial
+	if tmpl.IsCA && len(tmpl.SubjectKeyId) == 0 {
+		// One method for every CA certificate: a cross-certificate must carry the SubjectKeyId of the
+		// root it vouches for, whatever Go version made which.
+		tmpl.SubjectKeyId = keyID(pub)
+	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, parent, pub, signer)
 	if err != nil {
 		return nil, err
 	}
 	return x509.ParseCertificate(der)
+}
+
+// keyID is the SubjectKeyId of a CA certificate for pub: the first 20 bytes of the SHA-256 of its
+// PKIX encoding (RFC 7093, method 1).
+func keyID(pub *ecdsa.PublicKey) []byte {
+	der, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		return nil
+	}
+	sum := sha256.Sum256(der)
+	return sum[:20]
 }
 
 // randomSerial returns 128 random bits, positive and non-zero (RFC 5280 allows up to 20 octets).

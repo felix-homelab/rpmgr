@@ -162,23 +162,27 @@ func offlineRootCommand() *cli.Command {
 
 // signIntermediateCommand is `rpmgr ca sign-intermediate`; it needs no boot file.
 func signIntermediateCommand() *cli.Command {
-	var rootFile, csr, out, passFile, keyHash string
+	var rootFile, csr, out, passFile, keyHash, kind string
 	var yes bool
 	return &cli.Command{
 		Name:    "sign-intermediate",
 		Summary: "sign a request for an intermediate with the offline root, on the offline host",
 		Flags: func(fs *flag.FlagSet) {
 			fs.StringVar(&rootFile, "root-file", "", "the root file that `ca offline-root` wrote")
-			fs.StringVar(&csr, "csr", "", "the request that `ca rotate-intermediate --csr-out` wrote")
+			fs.StringVar(&csr, "csr", "", "the request that `ca rotate-intermediate --csr-out` or `ca new-root --csr-out` wrote")
 			fs.StringVar(&out, "out", "", "the certificate to write, which must not exist")
 			fs.StringVar(&passFile, "passphrase-file", "", "read the passphrase from this file (mode 0600) instead of asking for it")
 			fs.StringVar(&keyHash, "key-sha256", "", "the SHA-256 of the key the request must carry, as `ca status` and `ca rotate-intermediate --csr-out` show it; required with --yes")
 			fs.BoolVar(&yes, "yes", false, "sign without asking for a confirmation, on a host where nobody is")
+			fs.StringVar(&kind, "kind", "intermediate", "intermediate, or cross-root for the request of a new root that ca new-root --csr-out wrote")
 		},
 		NoArgEcho: true,
 		Run: func(_ context.Context, env *cli.Env, _ []string) error {
 			if rootFile == "" || csr == "" || out == "" {
 				return cli.Usagef("sign-intermediate needs --root-file, --csr and --out")
+			}
+			if kind != "intermediate" && kind != "cross-root" {
+				return cli.Usagef("--kind is intermediate or cross-root, not %q", kind)
 			}
 			if yes && keyHash == "" {
 				return cli.Usagef("--yes signs without asking, so it needs --key-sha256, the hash of the key the request must carry")
@@ -194,6 +198,7 @@ func signIntermediateCommand() *cli.Command {
 				return err
 			}
 			_, err = controller.SignIntermediate(controller.SignOptions{RootFile: rootFile, CSR: csr, Out: out, Passphrase: pass, KeyHash: keyHash,
+				CrossRoot: kind == "cross-root",
 				Confirm: func(s controller.IntermediateSummary) (bool, error) {
 					fmt.Fprintf(env.Stdout, "Request to sign:\n  Subject:     %s (the request's own subject is ignored)\n  Key SHA-256: %s\n"+
 						"  Valid:       %s to %s\n  Constraints: %s\n", s.Subject, s.KeyHash, s.NotBefore.UTC().Format(time.RFC3339),
@@ -201,7 +206,11 @@ func signIntermediateCommand() *cli.Command {
 					if yes {
 						return true, nil
 					}
-					return confirmPrompt("The key hash must equal the one `ca rotate-intermediate --csr-out` printed. Sign")
+					printed := "`ca rotate-intermediate --csr-out`"
+					if kind == "cross-root" {
+						printed = "`ca new-root --csr-out`"
+					}
+					return confirmPrompt("The key hash must equal the one " + printed + " printed. Sign")
 				}})
 			if err != nil {
 				return err

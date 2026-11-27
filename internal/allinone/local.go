@@ -142,13 +142,26 @@ func (a *builtIn) claimedGateway(ctx context.Context, c *ent.Client) (string, er
 	if a.leaf == nil || len(a.leaf.URIs) != 1 {
 		return "", nil
 	}
-	ca, err := c.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusActive)).Only(ctx)
+	// The roots of this database's trust bundle: the root that issues, and the old one in the overlap
+	// of a root rotation, under which an identity made before the rotation still chains.
+	cas, err := c.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusIn(cakey.StatusActive, cakey.StatusOverlap)).All(ctx)
 	if err != nil {
 		return "", err
 	}
-	root, err := x509.ParseCertificate(ca.Certificate)
-	if err != nil {
-		return "", err
+	roots, inter := x509.NewCertPool(), x509.NewCertPool()
+	var root *x509.Certificate
+	for _, ca := range cas {
+		r, err := x509.ParseCertificate(ca.Certificate)
+		if err != nil {
+			return "", err
+		}
+		roots.AddCert(r)
+		if ca.Status == cakey.StatusActive {
+			root = r
+		}
+	}
+	if root == nil {
+		return "", errors.New("allinone: the database holds no active root")
 	}
 	td, err := pki.TrustDomainOf(root)
 	if err != nil {
@@ -158,8 +171,6 @@ func (a *builtIn) claimedGateway(ctx context.Context, c *ent.Client) (string, er
 	if err != nil || id.Kind != pki.KindGateway {
 		return "", nil //nolint:nilerr // another trust domain or kind names no gateway of this database
 	}
-	roots, inter := x509.NewCertPool(), x509.NewCertPool()
-	roots.AddCert(root)
 	for _, c := range a.chain {
 		inter.AddCert(c)
 	}
@@ -254,9 +265,17 @@ func (l *local) prepare(ctx context.Context, cfg config.AllInOne, now time.Time)
 			return err
 		}
 		l.names = group.PublicHostnames
-		ca, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusActive)).Only(sys)
+		// The root the built-in agent enrols with is the oldest one in the bundle, as EnrollmentRoot
+		// says: in the overlap of a root rotation the old root, which the new one chains from, so that
+		// the agent holds both. Active alone, it would pin a root the old agents' state does not have.
+		roots, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusIn(cakey.StatusActive, cakey.StatusOverlap)).
+			Order(ent.Asc(cakey.FieldID)).All(sys)
 		if err != nil {
 			return err
+		}
+		ca := enrollmentRootRow(roots)
+		if ca == nil {
+			return errors.New("allinone: the database has no active root")
 		}
 		if l.root, err = x509.ParseCertificate(ca.Certificate); err != nil {
 			return err
@@ -699,4 +718,17 @@ func (o *ownPorts) refresh(now time.Time) {
 		}
 	}
 	o.addrs, o.next = found, next
+}
+
+// enrollmentRootRow picks the row of the root an agent enrols with from the active and overlap roots:
+// the overlap root while a rotation runs, else the active one.
+func enrollmentRootRow(roots []*ent.CAKey) *ent.CAKey {
+	var active *ent.CAKey
+	for _, r := range roots {
+		if r.Status == cakey.StatusOverlap {
+			return r
+		}
+		active = r
+	}
+	return active
 }

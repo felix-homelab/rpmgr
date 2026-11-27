@@ -381,15 +381,19 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 		Type: "CAKey",
 		Fields: map[string]*sqlgraph.FieldSpec{
-			cakey.FieldKind:        {Type: field.TypeEnum, Column: cakey.FieldKind},
-			cakey.FieldAlgorithm:   {Type: field.TypeString, Column: cakey.FieldAlgorithm},
-			cakey.FieldPublicKey:   {Type: field.TypeBytes, Column: cakey.FieldPublicKey},
-			cakey.FieldCertificate: {Type: field.TypeBytes, Column: cakey.FieldCertificate},
-			cakey.FieldCsr:         {Type: field.TypeBytes, Column: cakey.FieldCsr},
-			cakey.FieldKeyEnc:      {Type: field.TypeBytes, Column: cakey.FieldKeyEnc},
-			cakey.FieldNotBefore:   {Type: field.TypeTime, Column: cakey.FieldNotBefore},
-			cakey.FieldNotAfter:    {Type: field.TypeTime, Column: cakey.FieldNotAfter},
-			cakey.FieldStatus:      {Type: field.TypeEnum, Column: cakey.FieldStatus},
+			cakey.FieldKind:             {Type: field.TypeEnum, Column: cakey.FieldKind},
+			cakey.FieldAlgorithm:        {Type: field.TypeString, Column: cakey.FieldAlgorithm},
+			cakey.FieldPublicKey:        {Type: field.TypeBytes, Column: cakey.FieldPublicKey},
+			cakey.FieldCertificate:      {Type: field.TypeBytes, Column: cakey.FieldCertificate},
+			cakey.FieldCsr:              {Type: field.TypeBytes, Column: cakey.FieldCsr},
+			cakey.FieldKeyEnc:           {Type: field.TypeBytes, Column: cakey.FieldKeyEnc},
+			cakey.FieldNotBefore:        {Type: field.TypeTime, Column: cakey.FieldNotBefore},
+			cakey.FieldNotAfter:         {Type: field.TypeTime, Column: cakey.FieldNotAfter},
+			cakey.FieldStatus:           {Type: field.TypeEnum, Column: cakey.FieldStatus},
+			cakey.FieldCrossCertificate: {Type: field.TypeBytes, Column: cakey.FieldCrossCertificate},
+			cakey.FieldRotatedAt:        {Type: field.TypeTime, Column: cakey.FieldRotatedAt},
+			cakey.FieldDropAfter:        {Type: field.TypeTime, Column: cakey.FieldDropAfter},
+			cakey.FieldWasOffline:       {Type: field.TypeBool, Column: cakey.FieldWasOffline},
 		},
 	}
 	graph.Nodes[14] = &sqlgraph.Node{
@@ -3491,6 +3495,26 @@ func (f *CAKeyFilter) WhereNotAfter(p entql.TimeP) {
 // WhereStatus applies the entql string predicate on the status field.
 func (f *CAKeyFilter) WhereStatus(p entql.StringP) {
 	f.Where(p.Field(cakey.FieldStatus))
+}
+
+// WhereCrossCertificate applies the entql []byte predicate on the cross_certificate field.
+func (f *CAKeyFilter) WhereCrossCertificate(p entql.BytesP) {
+	f.Where(p.Field(cakey.FieldCrossCertificate))
+}
+
+// WhereRotatedAt applies the entql time.Time predicate on the rotated_at field.
+func (f *CAKeyFilter) WhereRotatedAt(p entql.TimeP) {
+	f.Where(p.Field(cakey.FieldRotatedAt))
+}
+
+// WhereDropAfter applies the entql time.Time predicate on the drop_after field.
+func (f *CAKeyFilter) WhereDropAfter(p entql.TimeP) {
+	f.Where(p.Field(cakey.FieldDropAfter))
+}
+
+// WhereWasOffline applies the entql bool predicate on the was_offline field.
+func (f *CAKeyFilter) WhereWasOffline(p entql.BoolP) {
+	f.Where(p.Field(cakey.FieldWasOffline))
 }
 
 // addPredicate implements the predicateAdder interface.

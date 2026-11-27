@@ -539,7 +539,7 @@ func (a *AuditSinks) VerifyAuditSink(ctx context.Context, req *connect.Request[r
 	if row.Kind != eauditsink.KindS3 {
 		return nil, badSink("only an object-storage sink can be read back")
 	}
-	signers, inters, root, err := castore.SignerCertificates(a.Sys, a.DB, pki.PurposeAuditCheckpoint)
+	signers, inters, roots, err := castore.SignerCertificates(a.Sys, a.DB, pki.PurposeAuditCheckpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -548,7 +548,7 @@ func (a *AuditSinks) VerifyAuditSink(ctx context.Context, req *connect.Request[r
 		logger = slog.New(slog.DiscardHandler)
 	}
 	r := auditsink.NewRunner(auditsink.Options{DB: a.DB, Sealer: a.Sealer, Now: a.now, Logger: logger})
-	v, err := r.VerifyS3(sys, row, audit.Trust{Root: root, Intermediates: inters, Signers: signers})
+	v, err := r.VerifyS3(sys, row, audit.Trust{Root: roots[0], Roots: roots, Intermediates: inters, Signers: signers})
 	var unreachable *auditsink.UnreachableError
 	switch {
 	case errors.As(err, &unreachable):
