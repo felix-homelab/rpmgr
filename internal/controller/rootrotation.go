@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"entgo.io/ent/dialect/sql"
+
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/pki/castore"
@@ -23,6 +25,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 )
 
 // The rotation of the root by cross-signing (docs/04-security.md, "Root rotation"; docs/10-operations.md,
@@ -532,8 +535,11 @@ func AbortNewRoot(ctx context.Context, path string, now func() time.Time) ([]str
 	return done, err
 }
 
-// unseenBeforeSwitch lists the agents without a session that enrolled between `since` and the switch:
-// they cannot have learned the new root. Empty when the window starts at the switch, as for a plain drop.
+// unseenBeforeSwitch lists the agents, not decommissioned, that hold a leaf the old root's chain issued in
+// the window from `since` to the switch, not revoked or superseded, and have no session seen since `since`:
+// they cannot have learned the new root. The leaf is what shows an agent enrolled, or enrolled again, in the
+// window; the agent's own row may be older, or made ahead by an admin. Empty when the window starts at the
+// switch, as for a plain drop. The sessions and the agents are subqueries, not lists of bind parameters.
 func unseenBeforeSwitch(ctx context.Context, tx *ent.Tx, since time.Time) ([]string, error) {
 	old, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusOverlap)).Only(ctx)
 	if ent.IsNotFound(err) {
@@ -545,21 +551,20 @@ func unseenBeforeSwitch(ctx context.Context, tx *ent.Tx, since time.Time) ([]str
 	if old.RotatedAt == nil || !since.Before(*old.RotatedAt) {
 		return nil, nil
 	}
-	seen, err := tx.AgentSession.Query().IDs(ctx)
-	if err != nil {
-		return nil, err
+	notSeen := func(s *sql.Selector) {
+		sess := sql.Table(agentsession.Table)
+		s.Where(sql.NotIn(s.C(issuedcertificate.FieldSubjectID),
+			sql.Select(sess.C(agentsession.FieldID)).From(sess).Where(sql.GTE(sess.C(agentsession.FieldLastSeenAt), since))))
 	}
-	gws, err := tx.Gateway.Query().Where(gateway.DecommissionedAtIsNil(), gateway.CreatedAtGTE(since), gateway.CreatedAtLT(*old.RotatedAt),
-		gateway.IDNotIn(seen...)).IDs(ctx)
-	if err != nil {
-		return nil, err
+	live := func(s *sql.Selector) {
+		con, gw := sql.Table(connector.Table), sql.Table(gateway.Table)
+		s.Where(sql.Or(
+			sql.In(s.C(issuedcertificate.FieldSubjectID), sql.Select(con.C(connector.FieldID)).From(con).Where(sql.IsNull(con.C(connector.FieldDecommissionedAt)))),
+			sql.In(s.C(issuedcertificate.FieldSubjectID), sql.Select(gw.C(gateway.FieldID)).From(gw).Where(sql.IsNull(gw.C(gateway.FieldDecommissionedAt))))))
 	}
-	cons, err := tx.Connector.Query().Where(connector.DecommissionedAtIsNil(), connector.CreatedAtGTE(since), connector.CreatedAtLT(*old.RotatedAt),
-		connector.IDNotIn(seen...)).IDs(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return append(gws, cons...), nil
+	return tx.IssuedCertificate.Query().Where(issuedcertificate.SubjectTypeIn(issuedcertificate.SubjectTypeConnector, issuedcertificate.SubjectTypeGateway),
+		issuedcertificate.NotBeforeGTE(since), issuedcertificate.NotBeforeLT(*old.RotatedAt), issuedcertificate.RevokedAtIsNil(),
+		issuedcertificate.SupersededAtIsNil(), notSeen, live).Unique(true).Select(issuedcertificate.FieldSubjectID).Strings(ctx)
 }
 
 // auditedIDs lists agents in an audit reason, up to maxAuditedAgents, and counts the rest.

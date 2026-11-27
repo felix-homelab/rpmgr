@@ -31,6 +31,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
@@ -621,40 +622,48 @@ func TestRotationStatusWarnsOfAnExpiringIntermediate(t *testing.T) {
 	}
 }
 
-// TestDropRootForceCountsAnAgentThatNeverConnected: an enabled agent that enrolled before the switch and has no
-// session cannot have learned the new root, so it holds a --force drop back; one that enrolled after the
-// switch holds both roots and does not; and --force after the earliest date is a plain drop.
-func TestDropRootForceCountsAnAgentThatNeverConnected(t *testing.T) {
-	ctx := context.Background()
-	h, _ := initHost(t)
-	now := time.Now()
-	org := hostOrg(t, h)
-	// Enrolled three days before the switch; the connector rows are made by hand, without a session.
-	addUnseen := func(created time.Time) {
-		t.Helper()
-		db, err := store.OpenSQLite(ctx, h.db, store.SQLiteOptions{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = db.Close() }()
-		id := ids.New("con")
-		if err := db.Client().Connector.Create().SetID(id).SetOrgID(org).SetName("con-" + strings.ToLower(id[len(id)-6:])).SetSpiffeID("spiffe://x/" + id).
-			SetPubkeySha256("00").SetEnabled(true).SetCreatedAt(created).Exec(storetest.SystemCtx(t)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := controller.NewRoot(ctx, h.cfg, "", noEnv, func() time.Time { return now }); err != nil {
+// hostLeaf records a current leaf of an agent, as the CA issued it at notBefore, in a host's database; the
+// agent's own row stays as it is.
+func hostLeaf(t *testing.T, h host, org, subjectType, id string, notBefore time.Time) {
+	t.Helper()
+	db, err := store.OpenSQLite(context.Background(), h.db, store.SQLiteOptions{})
+	if err != nil {
 		t.Fatal(err)
 	}
-	at := func(d time.Duration) func() time.Time { return func() time.Time { return now.Add(d) } }
-	addUnseen(now.Add(2 * rotationDay)) // after the switch: holds both roots
-	if _, err := controller.DropRoot(ctx, h.cfg, true, false, at(3*rotationDay)); err != nil {
-		t.Fatalf("--force with only an agent that enrolled after the switch: %v", err)
+	defer func() { _ = db.Close() }()
+	if err := db.Client().IssuedCertificate.Create().SetID(strings.ToLower(ids.New("crt")[4:])).SetOrgID(org).SetSubjectType(issuedcertificate.SubjectType(subjectType)).
+		SetSubjectID(id).SetSpiffeID("spiffe://x/" + id).SetPubkeySha256("00").SetNotBefore(notBefore).SetNotAfter(notBefore.Add(7 * rotationDay)).
+		Exec(storetest.SystemCtx(t)); err != nil {
+		t.Fatal(err)
 	}
 }
 
-// TestDropRootForceBlockedByAnAgentThatNeverConnected is the other half: enrolled before the switch.
-func TestDropRootForceBlockedByAnAgentThatNeverConnected(t *testing.T) {
+// hostRows makes an enabled connector and a gateway of a host with no session, created long ago (the connector)
+// or ahead by an admin (the gateway), and returns their IDs.
+func hostRows(t *testing.T, h host, org string, created time.Time) (con, gw string) {
+	t.Helper()
+	db, err := store.OpenSQLite(context.Background(), h.db, store.SQLiteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	sys := storetest.SystemCtx(t)
+	con = ids.New("con")
+	if err := db.Client().Connector.Create().SetID(con).SetOrgID(org).SetName("con-old").SetSpiffeID("spiffe://x/" + con).SetPubkeySha256("00").
+		SetEnabled(true).SetCreatedAt(created).Exec(sys); err != nil {
+		t.Fatal(err)
+	}
+	group := db.Client().GatewayGroup.Create().SetOrgID(org).SetName("gg").SaveX(sys).ID
+	gw = db.Client().Gateway.Create().SetOrgID(org).SetGatewayGroupID(group).SetName("gw1").SetSlot(1).SetEnabled(true).
+		SetTunnelEndpoints([]string{"gw1.example:443"}).SetSpiffeID("spiffe://x/gw1").SetCreatedAt(created).SaveX(sys).ID
+	return con, gw
+}
+
+// TestDropRootForceCountsAgentsThatEnrolledBeforeTheSwitch: an agent whose current leaf was issued in the window
+// before the switch and that has not connected since holds a --force drop back, whatever its row says: a
+// connector made long ago that enrolled again, and a gateway an admin made ahead. A leaf issued after the switch,
+// a revoked one and one from before the window do not.
+func TestDropRootForceCountsAgentsThatEnrolledBeforeTheSwitch(t *testing.T) {
 	ctx := context.Background()
 	h, _ := initHost(t)
 	now := time.Now()
@@ -662,22 +671,48 @@ func TestDropRootForceBlockedByAnAgentThatNeverConnected(t *testing.T) {
 	if _, err := controller.NewRoot(ctx, h.cfg, "", noEnv, func() time.Time { return now }); err != nil {
 		t.Fatal(err)
 	}
+	con, gw := hostRows(t, h, org, now.Add(-200*rotationDay))
+	force := func(d time.Duration) error {
+		_, err := controller.DropRoot(ctx, h.cfg, true, false, func() time.Time { return now.Add(d) })
+		return err
+	}
+	// Leaves that must not count, beside the ones that do: one outside the window, and one after the switch.
+	hostLeaf(t, h, org, "connector", con, now.Add(-100*rotationDay))
+	hostLeaf(t, h, org, "gateway", gw, now.Add(rotationDay))
+	var strag *castore.StragglersError
+	// The connector re-enrolled three days before the switch; the gateway, created ahead, enrolled two days before.
+	hostLeaf(t, h, org, "connector", con, now.Add(-3*rotationDay))
+	hostLeaf(t, h, org, "gateway", gw, now.Add(-2*rotationDay))
+	if err := force(rotationDay); !errors.As(err, &strag) || strag.N != 2 {
+		t.Fatalf("--force with a re-enrolled connector and a gateway enrolled before the switch = %v, want 2 stragglers", err)
+	}
+	// Past the earliest date --force is a plain drop, which does not count an agent not seen since the switch.
+	if err := force(38 * rotationDay); err != nil {
+		t.Fatalf("--force after the earliest date: %v", err)
+	}
+}
+
+// TestDropRootForceIgnoresLeavesThatDoNotCount: a leaf issued after the switch, a revoked or superseded one, and
+// one of an agent that was seen since the window began do not hold a --force drop back.
+func TestDropRootForceIgnoresLeavesThatDoNotCount(t *testing.T) {
+	ctx := context.Background()
+	h, _ := initHost(t)
+	now := time.Now()
+	org := hostOrg(t, h)
+	if _, err := controller.NewRoot(ctx, h.cfg, "", noEnv, func() time.Time { return now }); err != nil {
+		t.Fatal(err)
+	}
+	con, gw := hostRows(t, h, org, now.Add(-200*rotationDay))
+	hostLeaf(t, h, org, "connector", con, now.Add(rotationDay)) // after the switch
+	hostLeaf(t, h, org, "gateway", gw, now.Add(-2*rotationDay))
 	db, err := store.OpenSQLite(ctx, h.db, store.SQLiteOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	id := ids.New("con")
-	if err := db.Client().Connector.Create().SetID(id).SetOrgID(org).SetName("con-" + strings.ToLower(id[len(id)-6:])).SetSpiffeID("spiffe://x/" + id).
-		SetPubkeySha256("00").SetEnabled(true).SetCreatedAt(now.Add(-3 * rotationDay)).Exec(storetest.SystemCtx(t)); err != nil {
-		t.Fatal(err)
-	}
+	sys := storetest.SystemCtx(t)
+	db.Client().IssuedCertificate.Update().Where(issuedcertificate.SubjectID(gw)).SetRevokedAt(now).ExecX(sys) // revoked
 	_ = db.Close()
-	var strag *castore.StragglersError
-	if _, err := controller.DropRoot(ctx, h.cfg, true, false, func() time.Time { return now.Add(rotationDay) }); !errors.As(err, &strag) || strag.N != 1 {
-		t.Fatalf("--force with an agent that never connected = %v, want a StragglersError for 1", err)
-	}
-	// Past the earliest date --force is a plain drop, which never counts an agent that was not seen since the switch.
-	if _, err := controller.DropRoot(ctx, h.cfg, true, false, func() time.Time { return now.Add(38 * rotationDay) }); err != nil {
-		t.Fatalf("--force after the earliest date: %v", err)
+	if _, err := controller.DropRoot(ctx, h.cfg, true, false, func() time.Time { return now.Add(rotationDay) }); err != nil {
+		t.Fatalf("--force with no leaf that counts: %v", err)
 	}
 }
