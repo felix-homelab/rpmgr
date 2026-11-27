@@ -43,10 +43,8 @@ var (
 	caKeyStates = map[cakey.Status]rpmgrv1.CAKeyState{cakey.StatusNext: rpmgrv1.CAKeyState_CA_KEY_STATE_NEXT,
 		cakey.StatusActive: rpmgrv1.CAKeyState_CA_KEY_STATE_ACTIVE, cakey.StatusRetired: rpmgrv1.CAKeyState_CA_KEY_STATE_RETIRED,
 		// The old root in the overlap of a rotation no longer issues but is still trusted.
-		cakey.StatusOverlap: rpmgrv1.CAKeyState_CA_KEY_STATE_OVERLAP,
-		// A key replaced as compromised is shown as retired, which says only that it no longer issues; `rpmgr ca
-		// status` adds that the root was replaced as compromised and who has not enrolled again.
-		cakey.StatusCompromised: rpmgrv1.CAKeyState_CA_KEY_STATE_RETIRED}
+		cakey.StatusOverlap:     rpmgrv1.CAKeyState_CA_KEY_STATE_OVERLAP,
+		cakey.StatusCompromised: rpmgrv1.CAKeyState_CA_KEY_STATE_COMPROMISED}
 )
 
 // GetPkiStatus implements PkiService.
@@ -95,7 +93,8 @@ func (p *Pki) GetPkiStatus(ctx context.Context, _ *connect.Request[rpmgrv1.GetPk
 	}
 	// Active, then the old root of an overlap, then next, then retired; by kind; the newest first.
 	rank := map[rpmgrv1.CAKeyState]int{rpmgrv1.CAKeyState_CA_KEY_STATE_ACTIVE: 0, rpmgrv1.CAKeyState_CA_KEY_STATE_OVERLAP: 1,
-		rpmgrv1.CAKeyState_CA_KEY_STATE_NEXT: 2, rpmgrv1.CAKeyState_CA_KEY_STATE_RETIRED: 3}
+		rpmgrv1.CAKeyState_CA_KEY_STATE_NEXT: 2, rpmgrv1.CAKeyState_CA_KEY_STATE_RETIRED: 3,
+		rpmgrv1.CAKeyState_CA_KEY_STATE_COMPROMISED: 4}
 	slices.SortFunc(out.Keys, func(a, b *rpmgrv1.CAKey) int {
 		return cmp.Or(cmp.Compare(rank[a.GetState()], rank[b.GetState()]), cmp.Compare(a.GetKind(), b.GetKind()),
 			b.GetNotBefore().AsTime().Compare(a.GetNotBefore().AsTime()))

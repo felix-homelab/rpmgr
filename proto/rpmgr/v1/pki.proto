@@ -55,6 +55,8 @@ enum CAKeyState {
   // The old root of a root rotation after issuing moved: it no longer issues but is still trusted and in
   // the trust bundle, until it is dropped and becomes retired.
   CA_KEY_STATE_OVERLAP = 4;
+  // Replaced as compromised: it no longer issues, is trusted nowhere, and its key is wiped.
+  CA_KEY_STATE_COMPROMISED = 5;
 }
 
 // CAKey is one key of the CA, as its certificate shows it.
