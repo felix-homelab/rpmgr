@@ -535,13 +535,18 @@ method, list filter or search returns or modifies the other org's data
   socket, a process that was frozen). Two guards on the server cover that. **The new exclusive
   holder ends the other sessions of the controller before it**: every connection of a controller
   carries `application_name = rpmgr-controller:<random>`, and the holder runs
-  `pg_terminate_backend` on those of another name in the database right after it took the lock; a
-  role that may see but not end them (another role, without `pg_signal_backend` and
-  `pg_read_all_stats`) stops the start with an error. And **a fence epoch** in the `instance` row,
-  bumped by each controller after its migrations, is read `FOR SHARE` by every write transaction:
-  a transaction of an earlier controller, however late, finds another epoch and fails, and the
-  bump waits for a transaction still open (at most the time in [03](03-connections.md#timeouts-keepalive-and-backoff))
-  or stops the start. The server releases the lock only when it notices that the connection has
+  `pg_terminate_backend` on those of another name in the database right after it took the lock,
+  waiting for each to be gone (the time in [03](03-connections.md#timeouts-keepalive-and-backoff));
+  a role that may not end them (the sessions of another role need `pg_signal_backend`; a server
+  that hides other roles' `application_name` also needs `pg_read_all_stats`) or a session that
+  stays stops the start with an error. And **a fence epoch** in the `instance` row, bumped by each
+  controller before its migrations (or after, on a schema that has no epoch column yet), is read
+  `FOR SHARE` by every write transaction: a transaction of an earlier controller, however late,
+  finds another epoch and fails, and the bump waits for a transaction still open (at most the time
+  in that table) or stops the start. That covers every write: a statement that Ent runs without a
+  transaction of its own (a single `Create`, `Update` or `Delete`) is run inside one for the check,
+  and a read-only transaction, which cannot take the row lock and writes nothing, skips it.
+  `rpmgr migrate-db` bumps the epoch of a PostgreSQL source in the transaction that retires it. The server releases the lock only when it notices that the connection has
   gone, so a controller that has just taken the lock **waits the stop bound of that table plus a
   margin before its first write**; that covers the rest, such as a controller that has not yet
   noticed. A migration file commits on the pool outside the epoch, and is safe because the
@@ -560,8 +565,13 @@ method, list filter or search returns or modifies the other org's data
   `dl/`; `rpmgr controller adopt-state --old-host-lost` makes new ones when the old are gone for
   good. The database records the node ID of the controller host (`instance.active_node`, set by
   `init` and `adopt-state`, or by the first controller on a database that has none), and a
-  controller whose node ID differs refuses to start: after `adopt-state` on another host, the old
-  host, even with its files intact, is refused until `adopt-state` is run there on purpose.
+  controller whose node ID differs refuses to start, before it migrates, bumps the epoch or
+  writes anything: after `adopt-state` on another host, the old host, even with its files intact,
+  is refused until `adopt-state` is run there on purpose, and then only without its old
+  `revocations.log`: `adopt-state` refuses a host that has one while the database names another
+  host, since that log lacks what the active host recorded since, so the operator replaces it with
+  the active host's log or moves it aside (there is no override). `adopt-state` also refuses a
+  database whose schema is behind this binary.
 - **The database's clock** decides lease expiry ([`leases`](#system)).
 
 ### Copying a database
