@@ -532,9 +532,8 @@ func AbortNewRoot(ctx context.Context, path string, now func() time.Time) ([]str
 	return done, err
 }
 
-// unseenBeforeSwitch lists the agents, not decommissioned, that enrolled in the window from `since` to the
-// moment issuing moved and have no session at all: they cannot have learned the new root. Empty when the
-// window does not reach back past the switch, as for a plain drop.
+// unseenBeforeSwitch lists the agents without a session that enrolled between `since` and the switch:
+// they cannot have learned the new root. Empty when the window starts at the switch, as for a plain drop.
 func unseenBeforeSwitch(ctx context.Context, tx *ent.Tx, since time.Time) ([]string, error) {
 	old, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusOverlap)).Only(ctx)
 	if ent.IsNotFound(err) {
@@ -576,7 +575,7 @@ func disabledDetail(ids []string) string {
 	return fmt.Sprintf("%d disabled agents lack the new root and have to re-enroll: %s", len(ids), auditedIDs(ids))
 }
 
-// rotationRuns reports whether a root rotation is in progress: a next root waits or an old root is in the overlap.
+// rotationRuns reports whether a next root waits or an old root is in the overlap.
 func rotationRuns(ctx context.Context, db *store.DB) bool {
 	n, err := db.ReadClient().CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusIn(cakey.StatusNext, cakey.StatusOverlap)).Count(ctx)
 	return err != nil || n > 0 // when it cannot tell, look

@@ -581,9 +581,8 @@ func signerSwaps(rows []*ent.CAKey) ([]signerSwap, error) {
 	return swaps, nil
 }
 
-// DropAfter is the earliest date the old root in the overlap, row r, may be dropped: the later of the
-// date recorded when issuing moved and its start plus overlap, the one the settings give now. It is
-// zero for a row that does not record when issuing moved.
+// DropAfter is the earliest date the old root, row r, may be dropped: the later of the date recorded
+// at the switch and its start plus overlap, as the settings give it now; zero without a start.
 func DropAfter(r *ent.CAKey, overlap time.Duration) time.Time {
 	if r.RotatedAt == nil {
 		return time.Time{}
@@ -595,10 +594,8 @@ func DropAfter(r *ent.CAKey, overlap time.Duration) time.Time {
 	return d
 }
 
-// StragglersSince is the time from which an agent that was seen counts as one that may still need the
-// old root: since issuing moved, and, for a drop with Force, since the longest a leaf and the Reauth
-// grace can reach back, so that an agent that was offline across the switch and may still renew
-// through the old root holds the drop back too. It is the start of the overlap the old root has.
+// StragglersSince is the time from which a seen agent may still need the old root: the switch, and
+// for a drop with Force before the earliest date as far back as a leaf and the Reauth grace reach.
 func StragglersSince(r1 *ent.CAKey, now time.Time, o DropOptions) time.Time {
 	since := *r1.RotatedAt
 	// --force past the earliest date is a plain drop: only before it does the window reach back further.
