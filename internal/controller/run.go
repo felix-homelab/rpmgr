@@ -558,7 +558,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		}
 		bg.Go(func() { leases.Run(jobs, j, func(err error) { o.Logger.Warn(name, "error", err) }) })
 	}
-	caOpts := CAOptions{DB: db, CA: ca, Sealer: sealer, Leases: leases, Now: o.Now, Logger: o.Logger}
+	caOpts := CAOptions{DB: db, CA: ca, Sealer: sealer, Leases: leases, Now: o.Now, Logger: o.Logger, RevLog: rl}
 	job(CARotation(caOpts), "CA rotation job")
 	job(certManager.Job(acme.JobEvery), "ACME job")
 	job(apiServer.PruneJob(api.PruneEvery), "request_id pruning job")

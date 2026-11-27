@@ -66,6 +66,11 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Changed
 
+- `rpmgr restore` refuses a backup taken before the root changed: before issuing moved to a new
+  root, or before the old root was dropped. The
+  revocation log records each change as a marker, and the restore says which root and what
+  happened, and changes nothing; restore a later backup
+  ([Backup and restore](docs/guide/operations/backup-and-restore.md#the-revocation-log-sink)). (#698)
 - The keys that authenticate the API's page tokens and the previews of gateway pages are random and
   stored encrypted in the database instead of derived from the KEK, so every controller replica
   reads the same ones. Secrets are stored in a new envelope format (version 2); values of the older

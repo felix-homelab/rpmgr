@@ -92,8 +92,11 @@ Every revocation is first written to the controller's local `revocations.log`, w
 includes. A restore applies again every revocation made after the backup, so that a revoked
 certificate or token does not come back. It also takes an offline root's key out again, when the
 backup is older than the day the root went offline and still held it
-([PKI](pki.md#take-the-root-offline)). It reads them from the local log of the host it runs on,
-which is lost with the host.
+([PKI](pki.md#take-the-root-offline)). It refuses a backup taken before the root changed: before
+issuing moved to a new root, before the old root was dropped, or before a compromised root was
+replaced. Restore a later backup then, and take one after every change of the root
+([PKI](pki.md)). It reads them from the local log of the host it runs on, which is lost with the
+host.
 
 The boot setting `revocation_log.sink` keeps a copy off the host: a directory, usually on a share
 mounted on the controller's host ([Boot files](../reference/boot-files.md#controller)). The

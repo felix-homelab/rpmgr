@@ -2407,9 +2407,25 @@ Checkpoints prove tampering but cannot restore content, so revocations get their
 - An append-only **revocation log** records certificate revocations, API-token revocations, member
   removals and role downgrades, session revocations, and **credential supersessions** (password, MFA
   and recovery-code changes; removed shell grants and visitor grants; superseded certificate
-  serials), and, in Phase 2, **issuer revocations**: one entry that names the public-key hashes of
-  the CA keys replaced as compromised ([Root compromise](#root-compromise)), and the marker
-  `root_offline` of [Offline root CA](#offline-root-ca).
+  serials), and, in Phase 2, the **markers of a root change**, each of which names a root by the
+  SHA-256 hash of its public key: `root_offline` ([Offline root CA](#offline-root-ca)),
+  `root_switched` (issuing moved to a new root, and which) and `root_dropped` (the old root left the
+  bundle) of a [Root rotation](#root-rotation), and `root_compromised`, the issuer revocation of a
+  [Root compromise](#root-compromise), which names the replaced root and the root that replaces it.
+- **A marker is appended last in the transaction that changes the root, and the change waits for
+  it.** Unlike a revocation, which never waits, a switch, a drop or a replacement that cannot write
+  its marker is not made: the marker is what lets a restore refuse an older archive. If the commit
+  fails after the append the marker stays, and a restore refuses an archive that is still current
+  until the command is run again; that is the safe way to be wrong.
+- **A restore refuses an archive older than such a marker** and changes nothing. The archive is
+  older when its database, or the archive's own copy of the log, still holds the named root as it
+  was before the change: a root that issues (`root_switched`), a root that issues or sits in the
+  bundle (`root_dropped`, `root_compromised`). It is refused, not repaired, because applying the
+  change again needs keys that the archive does not hold (the new root), and an archive that issues
+  under a root that agents dropped, or under a compromised one, is worse than a restore that fails.
+  The restore names the marker and the root, and says to restore a later backup. The markers come
+  from the archive's log and from the logs given with `--revocation-log`, so a restore given none of
+  the newer log cannot see them (it fails closed into review for that reason alone).
 - **Security actions never wait for the log.** A revocation is committed and enforced immediately.
   Its entry is appended in the revoking transaction, before the commit, so a crash cannot commit a
   revocation without its entry; an append that fails is reported and does not stop the revocation.

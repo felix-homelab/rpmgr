@@ -56,6 +56,9 @@ type Plan struct {
 	// overlap, when set, is how long the old root stays after a step that starts an overlap: the date is
 	// recorded on the old root, so that a later change of the settings cannot shorten it.
 	overlap time.Duration
+	// from and to are the hashes of the public keys of the root that stopped issuing and of the one that
+	// issues now, once Apply moved issuing.
+	from, to string
 }
 
 // WithOverlap sets the overlap a plan that moves issuing to a new root records: the earliest drop
@@ -67,6 +70,11 @@ func (p *Plan) WithOverlap(d time.Duration) *Plan {
 
 // NewRoot returns the new root that a plan of PlanNewRoot makes; nil for a plan that makes none.
 func (p *Plan) NewRoot() *x509.Certificate { return p.newRoot }
+
+// RootSwitch returns, after Apply, the SHA-256 hashes of the public keys of the root that stopped
+// issuing and of the one that issues now; both are empty for a plan that moved no issuing. The caller
+// logs them as the `root_switched` marker of the revocation log.
+func (p *Plan) RootSwitch() (from, to string) { return p.from, p.to }
 
 // Config reports whether the plan changes the trust bundle or the root that issues, so that its
 // caller must write it in a configuration transaction (store.ConfigTx) and not a plain write.
@@ -327,6 +335,7 @@ func (p *Plan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
 			if n != 1 {
 				return nil, ErrRotated
 			}
+			p.from = hashOfRow(rows, st.overlap)
 		}
 		if st.retireNext != "" {
 			n, err := tx.CAKey.Update().Where(cakey.ID(st.retireNext), cakey.StatusEQ(cakey.StatusNext)).SetStatus(cakey.StatusRetired).Save(ctx)
@@ -359,8 +368,14 @@ func (p *Plan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
 			if err := tx.CAKey.UpdateOneID(st.promote).SetStatus(cakey.StatusActive).Exec(ctx); err != nil {
 				return nil, err
 			}
+			if p.from != "" && p.to == "" {
+				p.to = hashOfRow(rows, st.promote)
+			}
 		}
 		if k := st.create; k != nil {
+			if k.kind == cakey.KindRoot && k.status == cakey.StatusActive {
+				p.to = pki.PublicKeyHash(k.kp.Cert.RawSubjectPublicKeyInfo)
+			}
 			if err := store.RecordSealed(ctx, tx, keyContext(k.id), k.sealed); err != nil {
 				return nil, err
 			}
@@ -388,4 +403,14 @@ func (p *Plan) Apply(ctx context.Context, tx *ent.Tx) ([]string, error) {
 		}
 	}
 	return done, nil
+}
+
+// hashOfRow is the SHA-256 hash of the public key of the row id among rows, "" if it is not there.
+func hashOfRow(rows []*ent.CAKey, id string) string {
+	for _, r := range rows {
+		if r.ID == id {
+			return pki.PublicKeyHash(r.PublicKey)
+		}
+	}
+	return ""
 }
