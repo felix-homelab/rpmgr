@@ -109,6 +109,28 @@ func TestPassthrough(t *testing.T) {
 	}
 }
 
+// TestPostgresController: a controller's boot file takes driver postgres with a password file or a
+// credential, and its state directory is then /var/lib/rpmgr; all-in-one still refuses it.
+func TestPostgresController(t *testing.T) {
+	const ctl = "version: 1\npublic_url: https://panel.example.com\n"
+	var c config.Controller
+	if err := config.Parse([]byte(ctl+"database: {driver: postgres, dsn: postgres://rpmgr@db.example.com/rpmgr, password_file: /etc/rpmgr/db-password}\n"), &c); err != nil {
+		t.Fatal(err)
+	}
+	if c.Database.Driver != "postgres" || c.Database.PasswordFile != "/etc/rpmgr/db-password" || c.State() != config.PostgresStateDir {
+		t.Errorf("controller on PostgreSQL: %+v, state %q", c.Database, c.State())
+	}
+	var s config.Controller
+	if err := config.Parse([]byte(ctl), &s); err != nil || s.Database.Driver != "sqlite" || s.State() != "/var/lib/rpmgr" {
+		t.Errorf("default database: %+v %v", s.Database, err)
+	}
+	var a config.AllInOne
+	err := config.Parse([]byte(ctl+"database: {driver: postgres, dsn: postgres://rpmgr@db.example.com/rpmgr}\n"), &a)
+	if err == nil || !strings.Contains(err.Error(), "all-in-one") {
+		t.Errorf("all-in-one on PostgreSQL: %v, want it refused", err)
+	}
+}
+
 // TestRefused: each case changes a valid file in one place and must be refused with a message that
 // names the problem.
 func TestRefused(t *testing.T) {
@@ -131,7 +153,11 @@ func TestRefused(t *testing.T) {
 		{"public_url with a user", "controller", "version: 1\npublic_url: https://u@p.example\n", "public_url"},
 		{"public_url with a query", "controller", "version: 1\npublic_url: https://p.example?x\n", "public_url"},
 		{"public_url without a host", "controller", "version: 1\npublic_url: https:///\n", "public_url"},
-		{"postgres in Phase 1", "controller", ctl + "database: {driver: postgres, dsn: postgres://x}\n", "Phase 2"},
+		{"postgres without a DSN", "controller", ctl + "database: {driver: postgres}\n", "database.dsn"},
+		{"postgres with two password sources", "controller", ctl + "database: {driver: postgres, dsn: postgres://u@h/d, password_file: /a, password_credential: b}\n", "not both"},
+		{"relative password file", "controller", ctl + "database: {driver: postgres, dsn: postgres://u@h/d, password_file: pw}\n", "absolute"},
+		{"sqlite with a password file", "controller", ctl + "database: {driver: sqlite, password_file: /a}\n", "no password"},
+		{"postgres key that does not exist", "controller", ctl + "database: {driver: postgres, dsn: postgres://u@h/d, password: x}\n", "password"},
 		{"unknown driver", "controller", ctl + "database: {driver: mysql}\n", "driver"},
 		{"relative database path", "controller", ctl + "database: {dsn: controller.db}\n", "dsn"},
 		{"database path with a pragma", "controller", ctl + "database: {dsn: \"/x.db?_pragma=foreign_keys(0)\"}\n", "dsn"},

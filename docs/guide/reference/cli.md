@@ -122,6 +122,7 @@ rpmgr controller <command>
 | Command | What it does |
 |---|---|
 | [`rpmgr controller init`](#rpmgr-controller-init) | Initialise a controller: boot file, KEK, database, trust domain and CA |
+| [`rpmgr controller adopt-state`](#rpmgr-controller-adopt-state) | Make the node ID and revocation log of a PostgreSQL controller on this host |
 
 | Flag | Default | Description |
 |---|---|---|
@@ -141,6 +142,18 @@ rpmgr controller init [flags]
 | `--kek-path string` |  | KEK file of a new boot file with --kek-source file (default /etc/rpmgr/kek) |
 | `--kek-source string` |  | KEK source of a new boot file: systemd-credential or file (default systemd-credential from systemd 250, else file) |
 | `--public-url string` |  | https URL of the web UI and API; needed when the boot file does not exist |
+
+## rpmgr controller adopt-state
+
+Make the node ID and revocation log of a PostgreSQL controller on this host.
+
+```text
+rpmgr controller adopt-state [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
 
 ## rpmgr gateway
 

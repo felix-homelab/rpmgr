@@ -102,11 +102,13 @@ type Controller struct {
 		HTTP  *string `yaml:"http"` // "" disables
 		Admin string  `yaml:"admin"`
 	} `yaml:"listen"`
-	Database struct {
-		Driver string `yaml:"driver"`
-		DSN    string `yaml:"dsn"`
-	} `yaml:"database"`
-	KEK KEK `yaml:"kek"`
+	Database Database `yaml:"database"`
+	KEK      KEK      `yaml:"kek"`
+	// StateDir is where the controller keeps its files outside the database: the revocation log,
+	// the node identity, the release mirror and the audit checkpoints. It is not a key of the boot
+	// file: it is the directory of a SQLite database, and /var/lib/rpmgr with PostgreSQL, where a
+	// test may set it (State).
+	StateDir string `yaml:"-"`
 	// TLS is the certificate of the public URL from files; without it, ACME obtains one.
 	TLS struct {
 		CertFile string `yaml:"cert_file"`
@@ -236,8 +238,7 @@ func (c *Controller) defaults() {
 	setDefault(&c.Listen.HTTPS, ":443")
 	setDefaultPtr(&c.Listen.HTTP, ":80")
 	setDefault(&c.Listen.Admin, "127.0.0.1:7381")
-	setDefault(&c.Database.Driver, "sqlite")
-	setDefault(&c.Database.DSN, "/var/lib/rpmgr/controller.db")
+	c.Database.defaults()
 	setDefault(&c.KEK.Source, KEKSystemdCredential)
 	if c.KEK.Source == KEKSystemdCredential {
 		setDefault(&c.KEK.Name, "rpmgr-kek")
@@ -252,15 +253,8 @@ func (c *Controller) validate() error {
 	errs := []error{checkVersion(c.Version), checkURL("public_url", c.PublicURL),
 		checkAddr("listen.https", c.Listen.HTTPS, false), checkAddr("listen.http", *c.Listen.HTTP, true),
 		checkAdmin(c.Listen.Admin), checkLog(c.Log), c.Tracing.Check(), c.RevocationLog.check()}
-	switch c.Database.Driver {
-	case "sqlite":
-		if !filepath.IsAbs(c.Database.DSN) || strings.ContainsAny(c.Database.DSN, "?#%") {
-			errs = append(errs, fmt.Errorf("database.dsn %q: want an absolute path without '?', '#' or '%%'", c.Database.DSN))
-		}
-	case "postgres":
-		errs = append(errs, errors.New("database.driver: postgres comes with Phase 2 (D57); use sqlite"))
-	default:
-		errs = append(errs, fmt.Errorf("database.driver %q: want sqlite", c.Database.Driver))
+	if err := c.Database.check(); err != nil {
+		errs = append(errs, err)
 	}
 	switch {
 	case c.TLS.CertFile == "" && c.TLS.KeyFile == "":
@@ -429,12 +423,9 @@ type AllInOne struct {
 		HTTP      *string `yaml:"http"`
 		Admin     string  `yaml:"admin"`
 	} `yaml:"listen"`
-	Database struct {
-		Driver string `yaml:"driver"`
-		DSN    string `yaml:"dsn"`
-	} `yaml:"database"`
-	KEK KEK `yaml:"kek"`
-	TLS struct {
+	Database Database `yaml:"database"`
+	KEK      KEK      `yaml:"kek"`
+	TLS      struct {
 		CertFile string `yaml:"cert_file"`
 		KeyFile  string `yaml:"key_file"`
 	} `yaml:"tls"`
@@ -453,8 +444,7 @@ func (a *AllInOne) defaults() {
 	setDefault(&a.Listen.Admin, "127.0.0.1:7381")
 	setDefault(&a.StateDir, "/var/lib/rpmgr")
 	setDefault(&a.PolicyFile, "/etc/rpmgr/policy.yaml")
-	setDefault(&a.Database.Driver, "sqlite")
-	setDefault(&a.Database.DSN, "/var/lib/rpmgr/controller.db")
+	a.Database.defaults()
 	setDefault(&a.KEK.Source, KEKSystemdCredential)
 	if a.KEK.Source == KEKSystemdCredential {
 		setDefault(&a.KEK.Name, "rpmgr-kek")
@@ -463,7 +453,11 @@ func (a *AllInOne) defaults() {
 
 func (a *AllInOne) validate() error {
 	c, g, n := a.Controller(), a.Gateway(), a.Connector()
-	return errors.Join(checkAbs("state_dir", a.StateDir), c.validate(), g.validate(), n.validate())
+	errs := []error{checkAbs("state_dir", a.StateDir), c.validate(), g.validate(), n.validate()}
+	if a.Database.Driver == "postgres" {
+		errs = append(errs, errors.New("database.driver: all-in-one runs on SQLite only for now; use sqlite, or run a controller and a gateway as separate roles"))
+	}
+	return errors.Join(errs...)
 }
 
 // Controller is the controller part of the file; its ports 443 and 80 are the gateway's.
@@ -472,7 +466,7 @@ func (a *AllInOne) Controller() Controller {
 	c.Version, c.PublicURL, c.Log, c.Tracing = a.Version, a.PublicURL, a.Log, a.Tracing
 	none := ""
 	c.Listen.HTTPS, c.Listen.HTTP, c.Listen.Admin = a.Listen.TCP, &none, a.Listen.Admin
-	c.Database.Driver, c.Database.DSN = a.Database.Driver, a.Database.DSN
+	c.Database = a.Database
 	c.KEK = a.KEK
 	c.TLS.CertFile, c.TLS.KeyFile = a.TLS.CertFile, a.TLS.KeyFile
 	c.RevocationLog = a.RevocationLog

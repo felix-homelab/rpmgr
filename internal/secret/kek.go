@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // maxKEKFile bounds how much of a KEK file is read; the file holds 44 base64 characters.
@@ -64,7 +65,8 @@ func loadKEK(path, what string, groupRead bool) (KEK, error) {
 // root's) may read it too, as systemd gives a credential to a service that runs as another user.
 // Errors name the file and what it holds, never its content.
 func ReadFile(path, what string, groupRead bool, max int) ([]byte, error) {
-	f, err := os.Open(path) //nolint:gosec // G304: the path is the operator's boot configuration
+	// O_NONBLOCK: opening a FIFO for reading would wait for a writer; the check below refuses it.
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0) //nolint:gosec // G304: the path is the operator's boot configuration
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", what, err)
 	}

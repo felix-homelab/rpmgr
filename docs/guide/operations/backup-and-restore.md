@@ -5,6 +5,10 @@ log. This page shows how to back it up while it runs, what a backup holds and wh
 to keep the key-encryption key (KEK) safe, how to restore on the same host or a new one, and how to
 test a restore. Read it when you set up a controller, and again before you need it.
 
+This page describes a controller on SQLite. A controller on PostgreSQL is not backed up or restored
+by these commands yet: `rpmgr backup` and `rpmgr restore` refuse it, and a later release adds its
+method ([Topologies](../install/topologies.md#a-controller-on-postgresql)).
+
 Gateways and connectors need no backup: their configuration comes from the controller, and a lost
 agent host is installed and enrolled again ([Enrolling connectors](../connectors/enroll.md)).
 

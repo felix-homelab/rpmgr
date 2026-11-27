@@ -57,10 +57,12 @@ func openLocal(ctx context.Context, path, what string) (config.Controller, *stor
 	if err != nil {
 		return cfg, nil, nil, err
 	}
-	if _, err := os.Stat(cfg.Database.DSN); err != nil {
-		return cfg, nil, nil, fmt.Errorf("controller: no database at %s; run `rpmgr controller init` first: %w", cfg.Database.DSN, err)
+	if cfg.Database.Driver == "sqlite" {
+		if _, err := os.Stat(cfg.Database.DSN); err != nil {
+			return cfg, nil, nil, fmt.Errorf("controller: no database at %s; run `rpmgr controller init` first: %w", cfg.Database.DSN, err)
+		}
 	}
-	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{RefuseRetired: true})
+	db, err := openDatabase(ctx, cfg, nil, dbOptions{RefuseRetired: true, Local: true})
 	if err != nil {
 		return cfg, nil, nil, err
 	}
@@ -121,7 +123,10 @@ func CAStatusWarnings(ctx context.Context, path string) ([]string, error) {
 		return nil, err
 	}
 	defer func() { _ = db.Close() }()
-	log := filepath.Join(filepath.Dir(cfg.Database.DSN), "revocations.log")
+	if err := requireHostState(cfg); err != nil { // a host without the log would show no warning at all
+		return nil, err
+	}
+	log := filepath.Join(cfg.State(), "revocations.log")
 	if _, err := os.Stat(log); err != nil {
 		return nil, nil
 	}
@@ -352,6 +357,9 @@ func RotateKEK(ctx context.Context, path string, previous PreviousKEK, getenv fu
 	if err != nil {
 		return 0, "", err
 	}
+	if err := requireSQLite(cfg, "rpmgr kek rotate"); err != nil {
+		return 0, "", err
+	}
 	if previous == (PreviousKEK{}) && cfg.KEK.Source != config.KEKKMS {
 		return 0, "", ErrPreviousNeeded
 	}
@@ -383,7 +391,7 @@ func RotateKEK(ctx context.Context, path string, previous PreviousKEK, getenv fu
 	if err != nil {
 		return 0, "", err
 	}
-	// Only SQLite exists in this phase, so the one lock a command can take is the exclusive one;
+	// Only SQLite is supported here, so the one lock a command can take is the exclusive one;
 	// beside replicas it would be the shared one.
 	unlock, err := store.HoldLock(cfg.Database.DSN)
 	if errors.Is(err, store.ErrLocked) {
@@ -483,6 +491,9 @@ type MigrateResult struct {
 func Migrate(ctx context.Context, path string, now func() time.Time) (MigrateResult, error) {
 	cfg, err := loadController(path)
 	if err != nil {
+		return MigrateResult{}, err
+	}
+	if err := requireSQLite(cfg, "rpmgr migrate (a PostgreSQL controller migrates when it starts)"); err != nil {
 		return MigrateResult{}, err
 	}
 	dsn := cfg.Database.DSN

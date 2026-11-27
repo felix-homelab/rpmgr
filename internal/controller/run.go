@@ -138,6 +138,9 @@ func Run(ctx context.Context, o RunOptions) error {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
 	cfg := o.Config
+	if err := requireHostState(cfg); err != nil {
+		return err
+	}
 	public, err := url.Parse(cfg.PublicURL)
 	if err != nil {
 		return err
@@ -168,11 +171,26 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
-	db, err := store.OpenSQLite(ctx, cfg.Database.DSN, store.SQLiteOptions{Lock: true})
+	db, err := openDatabase(ctx, cfg, o.Getenv, dbOptions{Lock: true})
 	if err != nil {
 		return err
 	}
 	defer func() { _ = db.Close() }()
+	// From here on a lost lock ends the run: every context below derives from ctx, so the jobs, the
+	// sessions and the requests in flight stop at once, and the database fences what is left
+	// (store.ErrLockLost).
+	ctx, endRun := context.WithCancelCause(ctx)
+	defer endRun(nil)
+	go func() {
+		select {
+		case <-db.LockLost():
+			endRun(ErrLockLost)
+		case <-ctx.Done():
+		}
+	}()
+	if err := settleLock(ctx, db); err != nil {
+		return err
+	}
 	dir, err := migrations.Dir(db.Dialect)
 	if err != nil {
 		return err
@@ -199,7 +217,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		return explainOpen(err)
 	}
 	td := ca.TrustDomain()
-	stateDir := filepath.Dir(cfg.Database.DSN)
+	stateDir := cfg.State()
 	rl, err := revlog.Open(filepath.Join(stateDir, "revocations.log"), o.Now)
 	if err != nil {
 		return err
@@ -468,7 +486,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_settings_proto.Services().ByName("SettingsService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewSettingsServiceHandler(&apisvc.Settings{DB: db, Sys: sys, Sealer: sealer, Now: o.Now, RevocationLog: shipper.Status,
-				Boot: &apisvc.BootSource{Config: cfg, NodeID: nodeID, ConfigFile: o.ConfigFile, LoadedAt: o.Now()}}, opts...)
+				Boot: &apisvc.BootSource{Config: cfg, NodeID: nodeID, ConfigFile: o.ConfigFile, LoadedAt: o.Now(),
+					PasswordFile: cfg.Database.PasswordFile, PasswordCredential: cfg.Database.PasswordCredential}}, opts...)
 		}); err != nil {
 		return err
 	}
@@ -533,6 +552,13 @@ func Run(ctx context.Context, o RunOptions) error {
 		redirect = &http.Server{Handler: port80, ReadHeaderTimeout: 10 * time.Second}
 	}
 	split := NewSplitter(td, ln.Addr())
+	if errors.Is(context.Cause(ctx), ErrLockLost) { // lost while starting
+		_ = ln.Close()
+		if httpLn != nil {
+			_ = httpLn.Close()
+		}
+		return ErrLockLost
+	}
 
 	run, stop := context.WithCancel(ctx)
 	defer stop()
@@ -631,7 +657,26 @@ func Run(ctx context.Context, o RunOptions) error {
 	var result error
 	select {
 	case <-ctx.Done():
+		if errors.Is(context.Cause(ctx), ErrLockLost) {
+			result = ErrLockLost
+		}
 	case result = <-errs:
+	}
+	if errors.Is(result, ErrLockLost) || errors.Is(context.Cause(ctx), ErrLockLost) {
+		// Another controller may hold the database: no drain, no final checkpoint, nothing that
+		// waits. The listeners close, the connections are cut and the jobs stop.
+		_ = ln.Close()
+		if httpLn != nil {
+			_ = redirect.Close()
+		}
+		agents.Stop()
+		_ = web.Close()
+		stop()
+		<-sessionsDone
+		stopJobs()
+		bg.Wait()
+		admin.Wait()
+		return ErrLockLost
 	}
 	// Drain: agents move to another endpoint, then the servers stop.
 	select {

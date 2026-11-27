@@ -45,6 +45,9 @@ func Backup(ctx context.Context, path, out, version string, now func() time.Time
 	if err != nil {
 		return BackupInfo{}, err
 	}
+	if err := requireSQLite(cfg, "rpmgr backup"); err != nil {
+		return BackupInfo{}, err
+	}
 	f, err := os.OpenFile(out, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // G304: the operator's path
 	if err != nil {
 		return BackupInfo{}, err
@@ -65,6 +68,9 @@ func Backup(ctx context.Context, path, out, version string, now func() time.Time
 func BackupTo(ctx context.Context, path string, w io.Writer, version string, now func() time.Time) (BackupInfo, error) {
 	cfg, err := loadController(path)
 	if err != nil {
+		return BackupInfo{}, err
+	}
+	if err := requireSQLite(cfg, "rpmgr backup"); err != nil {
 		return BackupInfo{}, err
 	}
 	return backup(ctx, cfg.Database.DSN, w, version, now)

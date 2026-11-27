@@ -5,9 +5,8 @@ PostgreSQL or back. This page shows both directions, what the command checks and
 it leaves behind. Read it before the move, and keep [Backup and restore](backup-and-restore.md) at
 hand: a backup is the way back if anything goes wrong.
 
-A controller can run on PostgreSQL only in the release that wires it in. Until then the command is
-for preparing the move and for copying a database to a test host; its target, a boot file with
-`driver: postgres`, is not yet accepted by the controller itself.
+A controller runs on PostgreSQL with a boot file that has `driver: postgres`
+([Topologies](../install/topologies.md#a-controller-on-postgresql)). All-in-one does not yet.
 
 ## What the command does
 
@@ -54,9 +53,15 @@ for preparing the move and for copying a database to a test host; its target, a 
    ```
 
    It prints each table with its row count, then one line that says the counts and hashes agree.
-5. Put the new boot file in place and start the controller (from the release that runs on
-   PostgreSQL).
-6. Keep the SQLite database until the controller on PostgreSQL has run for a while. It is retired,
+5. Move the host's files. The revocation log and the node ID live in the state directory, and on
+   PostgreSQL that is always `/var/lib/rpmgr`, which the controller and the local commands that
+   use them insist on (they refuse a host without them). If the SQLite database was in another
+   directory, copy `controller-node.id`, `revocations.log`, `audit-checkpoints.log` and the `dl/`
+   directory from there to `/var/lib/rpmgr`, owned by the user `rpmgr`. Going back, copy them from
+   `/var/lib/rpmgr` into the directory of the new SQLite database. `rpmgr controller adopt-state`
+   is only for files that are gone for good: it makes an empty revocation log.
+6. Put the new boot file in place and start the controller.
+7. Keep the SQLite database until the controller on PostgreSQL has run for a while. It is retired,
    so it cannot start by mistake.
 
 ## Move back to SQLite
