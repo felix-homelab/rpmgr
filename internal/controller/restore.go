@@ -18,6 +18,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
+	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/dns/apply"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/pki/castore"
@@ -204,7 +205,7 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 		return RestoreResult{}, err
 	}
 	hook("staged")
-	newer, review, err := sinceBackup(staged(BackupRevocations), staged(localLog), o.RevocationLogs)
+	newer, review, err := sinceBackup(staged(BackupRevocations), staged(localLog), o.RevocationLogs, cfg.RevocationLog)
 	if err != nil {
 		return RestoreResult{}, err
 	}
@@ -386,7 +387,7 @@ func refuseLinks(root *os.Root, names ...string) error {
 // also returns why they may be incomplete: a source that cannot be read, has a broken chain or
 // holds a kind this version does not know, or no source at all. Without a sink a single node's
 // whole log is not off the host, so a lost local log is a backlog that cannot be reached.
-func sinceBackup(backupLog, local string, sources []string) ([]revlog.Entry, []string, error) {
+func sinceBackup(backupLog, local string, sources []string, rl config.RevocationLog) ([]revlog.Entry, []string, error) {
 	before, err := revlog.Read(backupLog)
 	if err != nil {
 		return nil, nil, fmt.Errorf("controller: the backup's revocation log: %w", err)
@@ -405,7 +406,7 @@ func sinceBackup(backupLog, local string, sources []string) ([]revlog.Entry, []s
 		}
 	}
 	for _, src := range sources {
-		entries, err := readSource(src)
+		entries, err := readSource(src, rl)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("%s: %v", src, err))
 			continue
@@ -425,8 +426,17 @@ func sinceBackup(backupLog, local string, sources []string) ([]revlog.Entry, []s
 	return newer, problems, nil
 }
 
-// readSource reads a sink directory or a local log, verifying its chain.
-func readSource(path string) ([]revlog.Entry, error) {
+// readSource reads a sink directory, an s3:// sink or a local log, verifying its chain. An s3://
+// sink is read with the store and the credentials file of the boot file's revocation_log.s3, which
+// need not be the boot file's own sink: a restore may read the old sink of another bucket.
+func readSource(path string, rl config.RevocationLog) ([]revlog.Entry, error) {
+	if _, _, isS3, _ := (config.RevocationLog{Sink: path}).S3Sink(); isS3 {
+		b, err := openS3Sink(rl, path)
+		if err != nil {
+			return nil, err
+		}
+		return readSink(revlog.NewSink(b))
+	}
 	st, err := os.Stat(path)
 	if err != nil {
 		return nil, err
@@ -434,7 +444,11 @@ func readSource(path string) ([]revlog.Entry, error) {
 	if !st.IsDir() {
 		return revlog.Read(path)
 	}
-	sink, err := revlog.NewSink(revlog.DirBackend{Dir: path}).Read()
+	return readSink(revlog.NewSink(revlog.DirBackend{Dir: path}))
+}
+
+func readSink(s *revlog.Sink) ([]revlog.Entry, error) {
+	sink, err := s.Read()
 	if err != nil {
 		return nil, err
 	}

@@ -20,9 +20,10 @@ const RevocationShipEvery = 10 * time.Second
 // and keeps where the log stands for the UI and the metrics (docs/10-operations.md, "Backup and
 // restore"). A revocation never waits for it: entries are appended and enforced first.
 type RevocationShipper struct {
-	Path    string // the local revocations.log
-	Sink    string // the sink directory; empty for none
-	Replica string // this controller's node ID
+	Path    string         // the local revocations.log
+	Sink    string         // the sink: a directory or an s3:// URL; empty for none
+	Backend revlog.Backend // where the sink keeps its objects; nil means the directory Sink
+	Replica string         // this controller's node ID
 	Logger  *slog.Logger
 	Now     func() time.Time // the clock; nil means time.Now
 
@@ -48,7 +49,11 @@ func (r *RevocationShipper) Ship() error {
 	}
 	r.mu.Lock()
 	if r.sink == nil {
-		r.sink = revlog.NewSink(revlog.DirBackend{Dir: r.Sink})
+		var b revlog.Backend = revlog.DirBackend{Dir: r.Sink}
+		if r.Backend != nil {
+			b = r.Backend
+		}
+		r.sink = revlog.NewSink(b)
 	}
 	sink := r.sink
 	if r.started.IsZero() {

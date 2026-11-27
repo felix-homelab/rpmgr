@@ -8,72 +8,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 )
 
-// startStore builds test/objstore, runs the store on a loopback port and returns its endpoint.
-func startStore(t *testing.T) string {
-	t.Helper()
-	dir, err := filepath.Abs("../../test/objstore")
-	if err != nil {
-		t.Fatal(err)
-	}
-	out, err := exec.Command("docker", "build", "-q", dir).CombinedOutput()
-	if err != nil {
-		t.Fatalf("docker build: %v\n%s", err, out)
-	}
-	image := strings.TrimSpace(string(out))
-	out, err = exec.Command("docker", "run", "-d", "--rm", "-p", "127.0.0.1::9000",
-		"-e", "MINIO_ROOT_USER=itadmin", "-e", "MINIO_ROOT_PASSWORD=it-password-1234",
-		image, "server", "/data").CombinedOutput()
-	if err != nil {
-		t.Fatalf("docker run: %v\n%s", err, out)
-	}
-	id := strings.TrimSpace(string(out))
-	t.Cleanup(func() { _ = exec.Command("docker", "stop", "-t", "1", id).Run() })
-	out, err = exec.Command("docker", "port", id, "9000/tcp").Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	endpoint := "http://" + strings.Fields(string(out))[0]
-	for i := 0; i < 60; i++ {
-		if resp, err := http.Get(endpoint + "/minio/health/live"); err == nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode == 200 {
-				return endpoint
-			}
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	t.Fatal("the store did not become ready")
-	return ""
-}
+func startStore(t *testing.T) string { return StartSilo(t) }
 
-// makeBucket creates a bucket, with Object Lock when lock is set, through the client's signer.
-func makeBucket(t *testing.T, endpoint, name string, lock bool) {
-	t.Helper()
-	req, _ := http.NewRequest(http.MethodPut, endpoint+"/"+name, nil)
-	if lock {
-		req.Header.Set("X-Amz-Bucket-Object-Lock-Enabled", "true")
-	}
-	sign(req, emptyHash, itCreds(), "us-east-1", time.Now())
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = resp.Body.Close()
-	if resp.StatusCode != 200 {
-		t.Fatalf("create bucket %s: %s", name, resp.Status)
-	}
-}
+func makeBucket(t *testing.T, endpoint, name string, lock bool) { MakeBucket(t, endpoint, name, lock) }
 
-func itCreds() Credentials { return creds("itadmin", "it-password-1234") }
+func itCreds() Credentials { return SiloCredentials() }
 
 func TestStore(t *testing.T) {
 	endpoint := startStore(t)

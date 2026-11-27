@@ -287,7 +287,7 @@ func restoreCommand() *cli.Command {
 		Summary: "restore the controller from a backup",
 		Flags: func(fs *flag.FlagSet) {
 			fs.StringVar(&in, "in", "", "the archive of rpmgr backup (required)")
-			fs.Func("revocation-log", "the revocation-log sink directory, or a replica's revocations.log; repeat for each (default the state directory's revocations.log)",
+			fs.Func("revocation-log", "the revocation-log sink, a directory or an s3://<bucket>/<prefix> URL read with the boot file's revocation_log.s3, or a replica's revocations.log; repeat for each (default the state directory's revocations.log)",
 				func(s string) error { logs = append(logs, s); return nil })
 			fs.StringVar(&stage, "stage-dir", "", "where the restore does its SQLite work: a directory you own with mode 0700 that no one else can write (default a new private directory under the temporary one); the root updater passes /var/lib/rpmgr-update/restore")
 			fs.BoolVar(&dnsDisabled, "dns-disabled", false, "set every managed DNS zone to disabled instead of held, for a copy that must never touch production DNS")

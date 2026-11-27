@@ -175,3 +175,5 @@ func SetEffectiveUID(t testing.TB, uid int) {
 	effectiveUID = func() int { return uid }
 	t.Cleanup(func() { effectiveUID = os.Geteuid })
 }
+
+var ReadSource = readSource

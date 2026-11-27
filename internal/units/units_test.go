@@ -113,9 +113,10 @@ func TestForController(t *testing.T) {
 	}{
 		"credential and sink": {controller(config.KEKSystemdCredential, "rpmgr-kek", "/mnt/sink"),
 			units.Options{Credential: "rpmgr-kek", Writable: []string{"/mnt/sink"}}}, //nolint:gosec // G101: a credential's name
-		"credential, no sink": {controller(config.KEKSystemdCredential, "kek-2", ""), units.Options{Credential: "kek-2"}},
-		"a KEK file, no sink": {controller(config.KEKFile, "", ""), units.Options{}},
-		"a KEK file and sink": {controller(config.KEKFile, "", "/srv/revocations"), units.Options{Writable: []string{"/srv/revocations"}}},
+		"credential, no sink":   {controller(config.KEKSystemdCredential, "kek-2", ""), units.Options{Credential: "kek-2"}},
+		"a KEK file, no sink":   {controller(config.KEKFile, "", ""), units.Options{}},
+		"an s3 sink is no path": {controller(config.KEKFile, "", "s3://bucket/revlog"), units.Options{}},
+		"a KEK file and sink":   {controller(config.KEKFile, "", "/srv/revocations"), units.Options{Writable: []string{"/srv/revocations"}}},
 	} {
 		if got := units.ForController(tc.c); !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("%s: %+v, want %+v", name, got, tc.want)

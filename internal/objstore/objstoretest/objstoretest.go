@@ -234,9 +234,13 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	if max <= 0 {
 		max = 1000
 	}
+	after := q.Get("continuation-token")
+	if after == "" {
+		after = q.Get("start-after")
+	}
 	var keys []string
 	for k := range s.objs {
-		if strings.HasPrefix(k, q.Get("prefix")) && k > q.Get("continuation-token") {
+		if strings.HasPrefix(k, q.Get("prefix")) && k > after {
 			keys = append(keys, k)
 		}
 	}

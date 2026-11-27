@@ -302,6 +302,12 @@ type Page struct {
 // List returns up to max keys (at most MaxListPage) that start with prefix, in key order, from
 // the continuation token of an earlier page.
 func (c *Client) List(ctx context.Context, prefix, token string, max int) (Page, error) {
+	return c.ListAfter(ctx, prefix, "", token, max)
+}
+
+// ListAfter is List for the keys that sort after startAfter, so that a caller that knows how far
+// it has read lists only the rest. A continuation token takes over from startAfter, as S3 does.
+func (c *Client) ListAfter(ctx context.Context, prefix, startAfter, token string, max int) (Page, error) {
 	if max <= 0 || max > MaxListPage {
 		max = MaxListPage
 	}
@@ -311,6 +317,8 @@ func (c *Client) List(ctx context.Context, prefix, token string, max int) (Page,
 	}
 	if token != "" {
 		q.Set("continuation-token", token)
+	} else if startAfter != "" {
+		q.Set("start-after", startAfter)
 	}
 	resp, err := c.do(ctx, "list", http.MethodGet, "", q, nil, nil)
 	if err != nil {

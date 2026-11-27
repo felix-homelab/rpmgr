@@ -118,14 +118,66 @@ type Controller struct {
 }
 
 // RevocationLog is where the revocation log keeps a copy off the host (docs/10-operations.md,
-// "Backup and restore"): a directory, usually a share mounted on every controller host.
+// "Backup and restore"): a directory, usually a share mounted on every controller host, or an
+// S3-compatible bucket.
 type RevocationLog struct {
 	Sink string `yaml:"sink"` // empty for none: a single node keeps only its local log
+	// S3 is the store of an s3://<bucket>/<prefix> sink, and only of that.
+	S3 RevocationLogS3 `yaml:"s3"`
+}
+
+// RevocationLogS3 is the connection to an S3-compatible store.
+type RevocationLogS3 struct {
+	Endpoint        string `yaml:"endpoint"`         // https://host[:port]
+	Region          string `yaml:"region"`           // the signing region
+	CredentialsFile string `yaml:"credentials_file"` // access_key_id and secret_access_key, mode 0600 or 0400
+}
+
+// S3Scheme starts the sink of an S3-compatible store.
+const S3Scheme = "s3://"
+
+// S3Sink splits an s3://<bucket>/<prefix> sink into its bucket and key prefix, which ends in a
+// slash unless it is empty. ok is false for a sink that is a directory.
+func (r RevocationLog) S3Sink() (bucket, prefix string, ok bool, err error) {
+	rest, ok := strings.CutPrefix(r.Sink, S3Scheme)
+	if !ok {
+		return "", "", false, nil
+	}
+	bucket, prefix, _ = strings.Cut(rest, "/")
+	prefix = strings.Trim(prefix, "/")
+	switch {
+	case bucket == "":
+		return "", "", true, errors.New("revocation_log.sink: an s3:// sink names a bucket")
+	case strings.Contains(prefix, "//") || strings.ContainsAny(r.Sink, "?#\\ \t\n"):
+		return "", "", true, errors.New("revocation_log.sink: an s3:// sink is s3://<bucket>/<prefix> and nothing else")
+	}
+	if prefix != "" {
+		prefix += "/"
+	}
+	return bucket, prefix, true, nil
 }
 
 func (r RevocationLog) check() error {
 	if r.Sink == "" {
+		if r.S3 != (RevocationLogS3{}) {
+			return errors.New("revocation_log.s3 goes with an s3:// sink")
+		}
 		return nil
+	}
+	if _, _, isS3, err := r.S3Sink(); isS3 {
+		if err != nil {
+			return err
+		}
+		if u, err := url.Parse(r.S3.Endpoint); err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+			return errors.New("revocation_log.s3.endpoint: want an https:// URL")
+		}
+		if r.S3.Region == "" {
+			return errors.New("revocation_log.s3.region: an s3:// sink needs the region the store signs for")
+		}
+		return checkAbs("revocation_log.s3.credentials_file", r.S3.CredentialsFile)
+	}
+	if r.S3 != (RevocationLogS3{}) {
+		return errors.New("revocation_log.s3 goes with an s3:// sink only")
 	}
 	return checkAbs("revocation_log.sink", r.Sink)
 }
