@@ -895,11 +895,13 @@ service that still runs the previous binary, with the command that restarts it.
     with the section `revocation_log.s3` ([Boot files](#boot-files)). Nothing is mounted, so the
     unit adds no writable path. Create a bucket for it and an access key that may put, get and list
     under the prefix and may not delete or overwrite; as a PUT permission includes overwrite, set
-    `lock_days` and enable Object Lock on the bucket to have the store refuse it
-    ([04](04-security.md#revocation-log)). The store must support a conditional create
-    (`If-None-Match: *`): the controller creates the object `_probe/conditional-create` twice at
-    start and refuses to start when the second create succeeds, or the store does not know the
-    header, so a store of that kind is never written to. The probe object stays in the bucket.
+    `lock_days` and enable Object Lock on the bucket: a locked entry cannot be removed, and a
+    rewrite stays recoverable as an earlier version; a running replica detects it as a break, and a
+    restore reads current versions ([04](04-security.md#revocation-log)). The store must support a
+    conditional create (`If-None-Match: *`): the controller creates the object
+    `_probe/conditional-create` twice at start and refuses to start when the second create
+    succeeds, or the store does not know the header, so a store of that kind is never written to.
+    The probe object stays in the bucket.
     When the store does not answer (503, a timeout, a refused credential) revocations are enforced
     as before, the entries wait in the local log, and the alert "revocation log not yet off-host"
     fires after 5 min; shipping goes on at the next tick. Verification, the break handling and the

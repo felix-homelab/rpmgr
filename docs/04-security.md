@@ -2432,10 +2432,15 @@ Checkpoints prove tampering but cannot restore content, so revocations get their
     or overwrite**. A permission to put on S3 includes overwrite, which a policy cannot separate
     from create, so the controller does not enforce that part. Set `lock_days` of the
     `revocation_log.s3` section (30 to 3650) to write every entry with Object Lock in compliance
-    mode, as the audit sink does, in a bucket with Object Lock enabled: then not even these
-    credentials can overwrite or delete an entry before the lock ends. Without it, an overwrite
-    below the verified prefix is found by the hourly verification and not prevented
-    ([VB-24](13-roadmap.md#verification-backlog)).
+    mode, as the audit sink does, in a bucket with Object Lock enabled, which needs versioning.
+    A locked entry cannot be removed before the lock ends, but a plain PUT to its key still
+    succeeds and becomes the current version, and a DELETE adds a delete marker; the original
+    stays in the bucket as an earlier version. A listing and a read see current versions only, so
+    a running replica finds a rewrite below its verified prefix as a break, and a restore reads
+    the current versions. Without `lock_days` nothing keeps the original unless the bucket is
+    versioned. A write with retention headers carries `x-amz-checksum-sha256`, which AWS requires
+    [V VB-24](13-roadmap.md#verification-backlog). A restore that reads the original version of
+    each object is [T] ([#1239](https://github.com/felix-homelab/rpmgr/issues/1239)).
   - **The probe.** At start the controller probes the store: it creates the one object
     `<prefix>/_probe/conditional-create` with `If-None-Match: *` and creates it again. A store that
     does not refuse the second with 412 (a 412 on the first already proves it), or answers 400 or
@@ -2447,8 +2452,10 @@ Checkpoints prove tampering but cannot restore content, so revocations get their
     entry, and never writes to a store that failed the probe. One found unfit at runtime is logged
     at Error level, with its reason.
   - **Answers.** A 412 on a log key is the lost race above, not an error, even when the listing
-    does not show the key yet: the shipper retries, and the sink is a break only when a taken key
-    stays unlisted for 3 rounds in a row. A 503, a timeout, a connection error or a 403 is retried
+    does not show the key yet: the shipper retries, and so it does for a gap at the end of the
+    listing, such as the key after next listed and the next one not yet; the sink is a break
+    when that lasts for the rounds of [03](03-connections.md#timeouts-keepalive-and-backoff), and
+    at once for a gap with a key after it. A 503, a timeout, a connection error or a 403 is retried
     at the next tick, is logged once, and leaves the entries in the backlog, which raises the
     alert "revocation log not yet off-host" after 5 min as for any sink. A 403 has no alert of its
     own: the log line and the status name the reason (refused, unreachable, no conditional create,
@@ -2461,10 +2468,11 @@ Checkpoints prove tampering but cannot restore content, so revocations get their
     not keyed. A restore therefore recomputes the hash of the entry inside every sink object and
     requires it to be the one the object claims, so that a forged entry cannot take the place of
     another, such as a `root_offline` marker, in the de-duplication by hash; a sink that fails
-    this is a break. **Residual risk:** deleting the tail of the sink, or the whole sink, cannot be
-    detected at a restore without an anchor outside it. The replicas' own logs, which the restore
-    is given with `--revocation-log`, are the check, and credentials that only the controllers
-    hold are the mitigation.
+    this is a break. **Residual risk:** whoever can write or delete under the prefix can replace
+    any entry k by rewriting the entries k to n with new hashes, and can delete the tail or the
+    whole sink; a restore cannot detect that without an anchor outside the sink. The replicas'
+    own logs, which the restore is given with `--revocation-log`, remain the cross-check, and
+    credentials that only the controllers hold are the mitigation.
 - **Local format.** One line of JSON per entry: sequence number from 1, time, kind, org, subject,
   detail, the covered certificate's `NotAfter` where there is one, actor, the previous entry's hash
   and its own: the SHA-256 of the entry encoded with an empty hash. Text fields hold at most

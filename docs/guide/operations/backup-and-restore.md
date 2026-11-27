@@ -160,8 +160,10 @@ not refuse the second write, because such a store would overwrite entries and le
 1. **Create the bucket and an access key** that may put, get and list objects under a prefix that
    nothing else writes to, and may not delete them; a foreign object under the prefix stops the
    shipping. Keep the key for the controllers alone: whoever can write to the sink can stop
-   shipping. A permission to put includes the permission to overwrite, so for the store to refuse an
-   overwrite as well, create the bucket with Object Lock enabled and set `lock_days` below.
+   shipping. A permission to put includes the permission to overwrite. To keep the entries,
+   create the bucket with Object Lock enabled and set `lock_days` below: a locked entry cannot be
+   removed, and a rewrite stays recoverable as an earlier version. A running controller sees a
+   rewrite as a break; a restore reads the current versions.
 
 2. **Put the key in a file** that only `rpmgr` can read, mode 0600 or 0400, with the two keys of
    the file the external audit sink uses and nothing else:

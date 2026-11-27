@@ -45,9 +45,9 @@ Changes to the design documents are not recorded here: see the git history and t
   start the controller writes a probe object twice and refuses to start on a store that does not
   refuse the second write. `rpmgr restore --revocation-log s3://<bucket>/<prefix>` reads such a
   sink. The prefix is required, and `revocation_log.s3.lock_days` writes each entry with Object
-  Lock so that not even the sink's credentials can overwrite it. The credentials file holds
-  `access_key_id` and `secret_access_key`, mode 0600 or 0400, and its content is in no log or
-  error. (#701)
+  Lock, so that an entry cannot be removed and a rewrite stays recoverable as an earlier version.
+  The credentials file holds `access_key_id` and `secret_access_key`, mode 0600 or 0400, and its
+  content is in no log or error. (#701)
 - The root CA's key can leave the controller. `rpmgr ca offline-root --out <file>` moves it into a
   file that a passphrase protects and removes it from the database; `rpmgr ca sign-intermediate`
   signs the next issuing intermediate on the offline host, and `rpmgr ca import-intermediate`
