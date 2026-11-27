@@ -1526,13 +1526,14 @@ Each runbook: **symptoms → steps → done when**.
   1. Stop the gateways and connectors that you can reach, to end the exposure now rather than
      when their certificates expire ([04](04-security.md#root-compromise)). Public traffic stops
      with the gateways; that is the cost.
-  2. Stop every controller, then run `rpmgr ca new-root --compromised --tokens-out <file>` on the
-     controller host; it asks for a confirmation (`--yes` skips it) and refuses while a controller
-     runs. It makes a new root in the **same trust domain**, new intermediate and signing keys,
+  2. Stop the controller (these `ca` commands work on a SQLite controller only in this phase), then
+     run `rpmgr ca new-root --compromised --tokens-out <file>` on the controller host; it asks for a
+     confirmation (`--yes` skips it) and refuses while a controller runs. It makes a new root in the **same trust domain**, new intermediate and signing keys,
      marks every older CA key compromised (wiping its key) and every certificate revoked,
      invalidates the unused enrollment tokens, and writes one re-enrollment token per connector and
      gateway to the file (mode 0600, never overwriting; `--token-ttl` sets how long they last).
-     All-in-one's own gateway and connector, and ephemeral connectors, get none. It prints the new
+     All-in-one's own gateway and connector, and ephemeral connectors, get none: an ephemeral
+     connector needs a new enrollment token. It prints the new
      `--ca-pin` and never a token. If it fails, nothing changed and the file is gone: run it again
      (an interrupted run may have left the file, which a new run refuses to overwrite: remove it).
   3. Start the controller. It trusts the new root alone. `rpmgr ca status` warns, with the IDs,
@@ -1549,8 +1550,10 @@ Each runbook: **symptoms → steps → done when**.
   Backups from before the command trust the old root: a restore of one **refuses** and changes
   nothing, because the revocation log's `root_compromised` marker names a root that is active in
   it; use a backup taken after the command ([04](04-security.md#root-compromise)). Take one at once.
-  Audit checkpoints signed before the command stay verifiable only below the entry that records
-  it; verify older history with an export made before it and the old pin
+  The refusal reads this host's own `revocations.log` whatever `--revocation-log` names, but a
+  restore on another host that has none of the log cannot know: **destroy the backups from before the
+  command**, as for a drop. Audit checkpoints signed before the command count only below the entry
+  that records it; an export made after it verifies with the new pin alone
   ([04](04-security.md#root-compromise)).
 - **Done when**: no agent presents a certificate from the old root, and every agent has re-enrolled
   (`rpmgr ca status` lists none).

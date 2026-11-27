@@ -227,7 +227,7 @@ func replaceCompromised(ctx context.Context, env *cli.Env, path, tokensOut strin
 		return err
 	}
 	_, err = fmt.Fprintf(env.Stdout, "The root is replaced. %d CA keys ended, %d certificates revoked, %d unused enrollment tokens invalidated.\n"+
-		"Wrote %d re-enrollment tokens (%d connectors, %d gateways) to %s, one single-use token per line with its agent; %d agents (all-in-one's own, ephemeral connectors) have none.\n"+
+		"Wrote %d re-enrollment tokens (%d connectors, %d gateways) to %s, one single-use token per line with its agent; %d agents have none: all-in-one's own gateway and connector, and ephemeral connectors, which need new enrollment tokens.\n"+
 		"New --ca-pin: %s\n"+
 		"Start the controller, then enroll every agent, gateways first: rpmgr enroll --controller <url> --ca-pin <new pin> --token-file <its token> --replace\n"+
 		"Then investigate how the KEK and the database were exposed, and rotate the KEK. Delete %s when the agents have enrolled.\n",

@@ -646,19 +646,28 @@ replacement is a **hard cut of the data plane** until every agent has re-enrolle
   archive still holds as active, in overlap or waiting **refuses and changes nothing**
   ([Revocation log](#revocation-log)). The way back is a later backup; applying the replacement
   again would leave the archive with no root that issues, as the new root's key is not in it.
-- **Audit checkpoints of a replaced root**. They stay verifiable **only below the replacement**: a checkpoint that a
-  replaced root vouches for counts when its seq is below that of the `ca.root_compromised` entry
-  in its chain, and is refused (`audit: the checkpoint is signed under a root replaced as
-  compromised …`) at that seq or later, and in a chain that has no such entry. The signer chooses a
-  checkpoint's time, so a time bound would bound nothing; the seq is held by the hash chain, which
-  breaks if the entry is removed. So whoever holds the leaked key cannot sign a checkpoint for a
-  head the replacement did not see, and what was anchored before it keeps its evidence; the new
-  key's checkpoint at the replacement's entry covers the history before it. This holds for the
-  verification of the chain and of an object-storage sink; **an offline verification of an export
-  against the new pin refuses the old checkpoints**, as no cross-certificate links the roots:
-  verify history from before the replacement with an export made then and the old pin. The leaked
-  key can still re-sign a rewritten history below the replacement; a copy of the checkpoints in
-  an audit sink is what shows that.
+- **Audit checkpoints of a replaced root.** They stay verifiable **only below the replacement**: a
+  checkpoint that a replaced root vouches for counts when its seq is below that of the
+  `ca.root_compromised` entry in its chain, and is refused (`audit: the checkpoint is signed under a
+  root replaced as compromised …`) at that seq or later, and in a chain that has no such entry. The
+  signer chooses a checkpoint's time, so a time bound would bound nothing; the seq is held by the
+  hash chain. The seq is also kept in `root_compromises` ([06](06-data-model.md#pki-and-acme)), which
+  audit retention never prunes, so the rule outlives the entry. Every root the run ends gets its
+  cutoff, including one an earlier rotation retired, which the run also marks compromised so that
+  nothing under a leaked key chains to it. So whoever holds the leaked key cannot sign a checkpoint
+  for a head the replacement did not see, and what was anchored before it keeps its evidence; the
+  new key's checkpoint at the replacement's entry covers the history before it through the hash
+  chain. This holds for the verification of the chain and of an object-storage sink.
+- **An export that spans the replacement** leaves out the checkpoints of the replaced roots once the
+  new key's checkpoint at the replacement's entry exists, except the one a retention cut anchors on.
+  It verifies with the **new pin** alone, and proves what any export proves of a chain: the entries
+  link and hash from the chain's first entry, and the new key's checkpoints match them, so the
+  history before the replacement is anchored by a key that did not leak, as of the replacement. It
+  does not prove anything about the old checkpoints it omits; an export made before the replacement
+  verifies with the old pin and holds them. With the old pin an export made after fails at the
+  checkpoints of the new key, as no cross-certificate links the roots. The leaked key can still
+  re-sign a history it rewrote below the replacement, if the database was written to before it; a
+  copy of the checkpoints in an audit sink is what shows that.
 
 ## Enrollment
 
@@ -2467,8 +2476,10 @@ Checkpoints prove tampering but cannot restore content, so revocations get their
   change again needs keys that the archive does not hold (the new root), and an archive that issues
   under a root that agents dropped, or under a compromised one, is worse than a restore that fails.
   The restore names the marker and the root, and says to restore a later backup. The markers come
-  from the archive's log and from the logs given with `--revocation-log`, so a restore given none of
-  the newer log cannot see them (it fails closed into review for that reason alone).
+  from the archive's log, from this host's own `revocations.log` **whatever logs were given with
+  `--revocation-log`** (a marker not shipped to a sink yet is in it), and from those logs. A restore on
+  another host that has none of the log cannot know of a change: destroy the backups from before a
+  replacement of the root, as for a drop.
 - **Security actions never wait for the log.** A revocation is committed and enforced immediately.
   Its entry is appended in the revoking transaction, before the commit, so a crash cannot commit a
   revocation without its entry; an append that fails is reported and does not stop the revocation.

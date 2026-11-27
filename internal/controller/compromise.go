@@ -137,6 +137,10 @@ func ReplaceCompromisedRoot(ctx context.Context, o CompromiseOptions) (Compromis
 			"# role, org, id, name, token (tab-separated); keep the file private and delete it when the agents have enrolled.\n" +
 			strings.Join(lines, "\n") + "\n"
 		if err := writeNew(o.TokensOut, []byte(file), 0o600); err != nil {
+			// A write that failed partway leaves a file of ours; one that exists already is not ours to remove.
+			if !errors.Is(err, os.ErrExist) {
+				_ = os.Remove(o.TokensOut)
+			}
 			return nil, err
 		}
 		created = true
@@ -245,8 +249,7 @@ func anchorAuditChains(ctx context.Context, tx *ent.Tx, plan *castore.Compromise
 	reason := fmt.Sprintf("the root was replaced as compromised: %d CA keys ended, %d certificates revoked, %d unused enrollment tokens invalidated",
 		res.Keys, res.Certificates, res.InvalidatedTokens)
 	for _, org := range orgs {
-		if _, err := audit.Append(ctx, tx, audit.Entry{OrgID: org, ActorType: audit.ActorSystem, ActorID: "local-cli", Action: audit.ActionRootCompromised,
-			TargetType: "ca", Result: audit.Success, Diff: audit.RootsDiff(plan.Replaced()), Reason: reason}); err != nil {
+		if _, err := audit.AnchorCompromise(ctx, tx, org, plan.Replaced(), reason); err != nil {
 			return nil, err
 		}
 	}

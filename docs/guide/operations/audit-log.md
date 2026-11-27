@@ -150,9 +150,9 @@ signature of a key your CA certified for audit checkpoints, and that nothing was
 reordered or edited. After a [root rotation](pki.md#rotate-the-root), use the **old** root's pin
 for an export that spans it: the new root's pin verifies only what was signed under the new root.
 After a root was replaced as compromised ([PKI](pki.md#the-root-if-it-leaked)) nothing links the two
-roots: an export made after it verifies only with the new pin and fails at the checkpoints signed
-before, so verify the history from before the replacement with an export made then, and the old
-pin. A failure says at which entry and exits 1. Entries after the newest
+roots: an export made after it leaves out the checkpoints of the old root and verifies with the **new**
+pin; it proves the entries link and the new key's checkpoints match them, as of the replacement, and
+nothing about the omitted ones. An export made before the replacement verifies with the old pin. A failure says at which entry and exits 1. Entries after the newest
 checkpoint are reported as not yet anchored. An export proves the chain as of its newest
 checkpoint: a cut-off file is found only if its end no longer matches its header, so compare the
 newest checkpoint with a copy you keep elsewhere, such as `audit-checkpoints.log` in a backup.

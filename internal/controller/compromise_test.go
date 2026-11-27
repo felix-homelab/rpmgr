@@ -4,6 +4,7 @@ package controller_test
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/enroll"
 	"github.com/felix-homelab/rpmgr/internal/ids"
@@ -147,6 +149,7 @@ func TestReplaceCompromisedRoot(t *testing.T) {
 	ctx := context.Background()
 	h, init := initHost(t)
 	f := seedFleet(t, h)
+	seedAudit(t, h, f.org)
 	out := filepath.Join(t.TempDir(), "tokens")
 	res, err := controller.ReplaceCompromisedRoot(ctx, compromiseOpts(h, out))
 	if err != nil {
@@ -244,10 +247,34 @@ func TestReplaceCompromisedRoot(t *testing.T) {
 		}
 	}
 
-	// The audit entry is in the instance chain and the org's, and a checkpoint of the new key anchors both.
-	entries := db.Client().AuditEntry.Query().Where(auditentry.Action("ca.root_compromised")).AllX(sys)
-	if len(entries) != 1 {
-		t.Fatalf("%d audit entries of the replacement, want one in the instance chain (the org has no entries yet)", len(entries))
+	// The audit entry is in the instance chain and the org's, a row of root_compromises holds each seq, and a
+	// checkpoint of the new key sits at each entry, so that the history before it is anchored under a key that
+	// did not leak.
+	newKey := db.Client().CAKey.Query().Where(cakey.KindEQ(cakey.KindAuditCheckpoint), cakey.StatusEQ(cakey.StatusActive)).OnlyX(sys)
+	newCert, err := x509.ParseCertificate(newKey.Certificate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := db.Client().AuditEntry.Query().Where(auditentry.Action(audit.ActionRootCompromised)).AllX(sys)
+	if len(entries) != 2 || db.Client().RootCompromise.Query().CountX(sys) != 2 {
+		t.Fatalf("%d audit entries and %d cutoffs of the replacement, want one of each per chain", len(entries), db.Client().RootCompromise.Query().CountX(sys))
+	}
+	for _, rc := range db.Client().RootCompromise.Query().AllX(sys) {
+		org := ""
+		if rc.Chain != audit.InstanceChain {
+			org = rc.Chain
+		}
+		var cps []audit.Checkpoint
+		if err := store.ReadTx(sys, db, func(tx *ent.Tx, _ store.Revision) error {
+			var err error
+			cps, err = audit.CheckpointsAfter(sys, tx, org, rc.Seq-1, 10)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if len(cps) != 1 || cps[0].Seq != rc.Seq || cps[0].KeyID != pki.KeyID(newCert) {
+			t.Errorf("chain %s: checkpoints from the entry at seq %d: %+v, want one of the new key", rc.Chain, rc.Seq, cps)
+		}
 	}
 	if n := db.Client().AuditEntry.Query().Where(auditentry.ActorID("local-cli")).CountX(sys); n == 0 {
 		t.Error("no audit entry of local-cli")
@@ -357,6 +384,18 @@ func TestReplaceCompromisedRoot_RestoreRefusesOlderArchives(t *testing.T) {
 	if got := compromiseState(t, h); got != state {
 		t.Fatalf("the refused restore changed the state")
 	}
+	// A log given with --revocation-log that lacks the marker, as a sink that has not been shipped to yet,
+	// does not hide the host's own: the archive is refused all the same.
+	source := filepath.Join(t.TempDir(), "other.log")
+	if _, err := revlog.Open(source, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.Restore(ctx, controller.RestoreOptions{ConfigPath: h.cfg, Archive: before, RevocationLogs: []string{source}}); !errors.Is(err, controller.ErrOlderThanRootChange) {
+		t.Fatalf("a restore with a source that lacks the marker = %v", err)
+	}
+	if got := compromiseState(t, h); got != state {
+		t.Fatalf("the refused restore with a source changed the state")
+	}
 	if _, err := controller.Restore(ctx, controller.RestoreOptions{ConfigPath: h.cfg, Archive: after}); err != nil {
 		t.Fatalf("a restore from after it: %v", err)
 	}
@@ -372,4 +411,99 @@ func TestReplaceCompromisedRoot_RestoreRefusesOlderArchives(t *testing.T) {
 	if !errors.Is(err, controller.ErrOlderThanRootChange) {
 		t.Fatalf("a restore from between two replacements = %v", err)
 	}
+}
+
+// seedAudit gives the org an audit chain, as an org that has been used has.
+func seedAudit(t *testing.T, h host, org string) {
+	t.Helper()
+	db, err := store.OpenSQLite(context.Background(), h.db, store.SQLiteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err := audit.Record(storetest.SystemCtx(t), db, audit.Entry{OrgID: org, ActorType: audit.ActorUser, ActorID: "usr_x", AuthMethod: "password",
+		IP: "192.0.2.10", Action: "session.login", Result: audit.Success}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// replacedAt runs the replacement on h and checks what holds whatever the state of the CA was: every old key is
+// compromised and wiped, exactly four new keys are active and sealed, the signer certificates still read, the
+// status shows the new pin, and a marker names each of the roots that were in the database.
+func replacedAt(t *testing.T, h host, wantRoots int) {
+	t.Helper()
+	ctx := context.Background()
+	res, err := controller.ReplaceCompromisedRoot(ctx, compromiseOpts(h, filepath.Join(t.TempDir(), "tokens")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, sealed := caRows(t, h)
+	if len(status) != 2 || status[cakey.StatusActive] != 4 || status[cakey.StatusCompromised] == 0 || sealed != 4 {
+		t.Fatalf("CA keys by status %v, %d sealed", status, sealed)
+	}
+	db, err := store.OpenSQLite(ctx, h.db, store.SQLiteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, _, roots, err := castore.SignerCertificates(storetest.SystemCtx(t), db, pki.PurposeAuditCheckpoint); err != nil || len(roots) != wantRoots+1 {
+		t.Fatalf("signer certificates: %d roots, %v; want the new root and %d replaced", len(roots), err, wantRoots)
+	}
+	if st, err := controller.CAStatus(ctx, h.cfg); err != nil || st.GetRootPin() != res.Pin {
+		t.Fatalf("status pin %q, %v", st.GetRootPin(), err)
+	}
+	n := 0
+	for _, m := range rootMarkers(t, filepath.Join(filepath.Dir(h.db), "revocations.log")) {
+		if m.Kind == revlog.RootCompromised {
+			n++
+		}
+	}
+	if n != wantRoots {
+		t.Fatalf("%d root_compromised markers, want one per replaced root (%d)", n, wantRoots)
+	}
+}
+
+// The replacement works in the overlap of a root rotation: the old root and the new one, and the keys under
+// both, are all ended, and each root gets its marker.
+func TestReplaceCompromisedRoot_DuringTheOverlapOfARotation(t *testing.T) {
+	h, _ := initHost(t)
+	if _, err := controller.NewRoot(context.Background(), h.cfg, "", noEnv, time.Now); err != nil {
+		t.Fatal(err)
+	}
+	replacedAt(t, h, 2)
+}
+
+// It works with the root offline and a new root that waits for the offline root's signatures: the waiting keys,
+// which have no certificate to show for the intermediate, are ended too, and nothing that reads the CA's
+// keys fails on them.
+func TestReplaceCompromisedRoot_WithAnOfflineRootAndAWaitingRequest(t *testing.T) {
+	ctx := context.Background()
+	h, _ := initHost(t)
+	if _, err := controller.OfflineRoot(ctx, controller.OfflineRootOptions{ConfigPath: h.cfg, Out: filepath.Join(t.TempDir(), "root.age"), Getenv: noEnv}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.NewRoot(ctx, h.cfg, filepath.Join(t.TempDir(), "r2.csr"), noEnv, time.Now); err != nil {
+		t.Fatal(err)
+	}
+	if status, _ := caRows(t, h); status[cakey.StatusNext] != 2 {
+		t.Fatalf("the premise: %v", status)
+	}
+	replacedAt(t, h, 2)
+}
+
+// A root that an earlier rotation retired is compromised with the rest, and marked.
+func TestReplaceCompromisedRoot_AfterARotationAndDrop(t *testing.T) {
+	ctx := context.Background()
+	h, _ := initHost(t)
+	now := time.Now()
+	if _, err := controller.NewRoot(ctx, h.cfg, "", noEnv, func() time.Time { return now }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.DropRoot(ctx, h.cfg, false, false, func() time.Time { return now.Add(38 * rotationDay) }); err != nil {
+		t.Fatal(err)
+	}
+	if status, _ := caRows(t, h); status[cakey.StatusRetired] == 0 {
+		t.Fatalf("the premise: %v", status)
+	}
+	replacedAt(t, h, 2)
 }

@@ -15,10 +15,10 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 )
 
-// TestReplaceCompromisedRoot_Faults: the replacement fails at each stage. Whatever the stage, nothing changes
-// in the database and no tokens file is left, as the transaction rolls back and the file is removed; the
-// markers are in the log only from the append on, where they make a restore of a current backup refuse
-// until the command has run again, which then succeeds and leaves one consistent state.
+// TestReplaceCompromisedRoot_Faults: a fault injected at each stage (an error, which is what a failed write or
+// commit is; it is not a crash of the process) rolls the transaction back and removes the tokens file, so the
+// database is as it was and no file is left. The markers are in the log only from the append on, where they
+// make a restore of a backup refuse until the command has run again; the run after that succeeds.
 func TestReplaceCompromisedRoot_Faults(t *testing.T) {
 	ctx := context.Background()
 	t.Cleanup(func() { controller.CeremonyFault = nil })

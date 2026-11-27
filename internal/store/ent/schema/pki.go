@@ -154,6 +154,36 @@ func (RevokedIdentity) Interceptors() []ent.Interceptor {
 // Hooks scope every mutation to the scope's org.
 func (RevokedIdentity) Hooks() []ent.Hook { return []ent.Hook{orgMutationHook} }
 
+// RootCompromise records, for a root replaced as compromised and for each audit chain, the seq of the audit
+// entry that records the replacement (docs/04-security.md, "Root compromise"): a checkpoint that root vouches
+// for counts only below it. The audit entry is the audited record; this row is its copy that audit retention
+// never prunes, so the rule outlives the entry.
+type RootCompromise struct{ ent.Schema }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (RootCompromise) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "root_compromises"}}
+}
+
+// Fields of a root compromise; chain is an org ID or "instance", root_hash the SHA-256 of the root's public key.
+func (RootCompromise) Fields() []ent.Field {
+	return []ent.Field{
+		idField("rcp"),
+		field.String("chain").NotEmpty().Immutable(),
+		field.String("root_hash").NotEmpty().Immutable(),
+		field.Int64("seq").Positive().Immutable(),
+		field.Time("created_at").Immutable().Default(time.Now),
+	}
+}
+
+// Indexes: one cutoff per root and chain.
+func (RootCompromise) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("chain", "root_hash").Unique()}
+}
+
+// Policy denies every query and mutation without a scope.
+func (RootCompromise) Policy() ent.Policy { return scopePolicy() }
+
 // RevokedSerial records a certificate revoked after the backup a restore came from, which the
 // restored issued_certificates does not hold: the restore keeps it on the deny-list until it
 // expires (docs/10-operations.md, "Backup and restore").

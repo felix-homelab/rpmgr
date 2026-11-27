@@ -62,7 +62,8 @@ Changes to the design documents are not recorded here: see the git history and t
   the new pin and its token, gateways first (`rpmgr enroll ... --replace`), and keeps its identity
   and routes; until then it cannot connect, and `rpmgr ca status` names the ones that have not.
   A restore refuses a backup from before the replacement, and audit checkpoints signed under the
-  old root count only below the entry that records the replacement
+  old root count only below the entry that records the replacement, an export made after it
+  verifies with the new pin, and `ca status` and Settings → PKI show the ended keys as compromised
   ([The root, if it leaked](docs/guide/operations/pki.md#the-root-if-it-leaked)). (#698)
 - Settings → PKI and `rpmgr ca status` alert when the next intermediate waits for the offline root's
   signature, in time before the active one expires, and when the signed one is not valid now. With

@@ -117,6 +117,13 @@ func Export(ctx context.Context, db *store.DB, orgID string, trust Trust, now ti
 		if _, err := scanFirst(rows, &first, &last); err != nil {
 			return err
 		}
+		// Checkpoints under a root replaced as compromised are left out once a checkpoint of the new key anchors
+		// the replacement: it covers the earlier history through the hash chain, and the export then verifies
+		// with the new pin alone. Without such an anchor, or for the checkpoint a retention cut anchors on, they stay.
+		if trust, err = trust.WithCompromises(ctx, tx); err != nil {
+			return err
+		}
+		cps = trust.withoutReplaced(cps, chainOf(orgID), first)
 		h := ExportHeader{Type: LineHeader, Format: ExportFormat, Chain: chainOf(orgID), Exported: now.UTC(),
 			Intermediates: raws(trust.Intermediates...), Signers: raws(trust.Signers...)}
 		if trust.Root != nil {

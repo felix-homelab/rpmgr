@@ -71,6 +71,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedserial"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/rollout"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/rollouttarget"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/rootcompromise"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
@@ -158,6 +159,7 @@ const (
 	TypeRevokedSerial      = "RevokedSerial"
 	TypeRollout            = "Rollout"
 	TypeRolloutTarget      = "RolloutTarget"
+	TypeRootCompromise     = "RootCompromise"
 	TypeRoute              = "Route"
 	TypeRouteHTTP          = "RouteHTTP"
 	TypeRouteHostname      = "RouteHostname"
@@ -47503,6 +47505,536 @@ func (m *RolloutTargetMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown RolloutTarget edge %s", name)
+}
+
+// RootCompromiseMutation represents an operation that mutates the RootCompromise nodes in the graph.
+type RootCompromiseMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	chain         *string
+	root_hash     *string
+	seq           *int64
+	addseq        *int64
+	created_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*RootCompromise, error)
+	predicates    []predicate.RootCompromise
+}
+
+var _ ent.Mutation = (*RootCompromiseMutation)(nil)
+
+// rootcompromiseOption allows management of the mutation configuration using functional options.
+type rootcompromiseOption func(*RootCompromiseMutation)
+
+// newRootCompromiseMutation creates new mutation for the RootCompromise entity.
+func newRootCompromiseMutation(c config, op Op, opts ...rootcompromiseOption) *RootCompromiseMutation {
+	m := &RootCompromiseMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRootCompromise,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withRootCompromiseID sets the ID field of the mutation.
+func withRootCompromiseID(id string) rootcompromiseOption {
+	return func(m *RootCompromiseMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *RootCompromise
+		)
+		m.oldValue = func(ctx context.Context) (*RootCompromise, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().RootCompromise.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRootCompromise sets the old RootCompromise of the mutation.
+func withRootCompromise(node *RootCompromise) rootcompromiseOption {
+	return func(m *RootCompromiseMutation) {
+		m.oldValue = func(context.Context) (*RootCompromise, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m RootCompromiseMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m RootCompromiseMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of RootCompromise entities.
+func (m *RootCompromiseMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *RootCompromiseMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *RootCompromiseMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().RootCompromise.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetChain sets the "chain" field.
+func (m *RootCompromiseMutation) SetChain(s string) {
+	m.chain = &s
+}
+
+// Chain returns the value of the "chain" field in the mutation.
+func (m *RootCompromiseMutation) Chain() (r string, exists bool) {
+	v := m.chain
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChain returns the old "chain" field's value of the RootCompromise entity.
+// If the RootCompromise object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RootCompromiseMutation) OldChain(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChain is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChain requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChain: %w", err)
+	}
+	return oldValue.Chain, nil
+}
+
+// ResetChain resets all changes to the "chain" field.
+func (m *RootCompromiseMutation) ResetChain() {
+	m.chain = nil
+}
+
+// SetRootHash sets the "root_hash" field.
+func (m *RootCompromiseMutation) SetRootHash(s string) {
+	m.root_hash = &s
+}
+
+// RootHash returns the value of the "root_hash" field in the mutation.
+func (m *RootCompromiseMutation) RootHash() (r string, exists bool) {
+	v := m.root_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRootHash returns the old "root_hash" field's value of the RootCompromise entity.
+// If the RootCompromise object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RootCompromiseMutation) OldRootHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRootHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRootHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRootHash: %w", err)
+	}
+	return oldValue.RootHash, nil
+}
+
+// ResetRootHash resets all changes to the "root_hash" field.
+func (m *RootCompromiseMutation) ResetRootHash() {
+	m.root_hash = nil
+}
+
+// SetSeq sets the "seq" field.
+func (m *RootCompromiseMutation) SetSeq(i int64) {
+	m.seq = &i
+	m.addseq = nil
+}
+
+// Seq returns the value of the "seq" field in the mutation.
+func (m *RootCompromiseMutation) Seq() (r int64, exists bool) {
+	v := m.seq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSeq returns the old "seq" field's value of the RootCompromise entity.
+// If the RootCompromise object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RootCompromiseMutation) OldSeq(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSeq is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSeq requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSeq: %w", err)
+	}
+	return oldValue.Seq, nil
+}
+
+// AddSeq adds i to the "seq" field.
+func (m *RootCompromiseMutation) AddSeq(i int64) {
+	if m.addseq != nil {
+		*m.addseq += i
+	} else {
+		m.addseq = &i
+	}
+}
+
+// AddedSeq returns the value that was added to the "seq" field in this mutation.
+func (m *RootCompromiseMutation) AddedSeq() (r int64, exists bool) {
+	v := m.addseq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSeq resets all changes to the "seq" field.
+func (m *RootCompromiseMutation) ResetSeq() {
+	m.seq = nil
+	m.addseq = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *RootCompromiseMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *RootCompromiseMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the RootCompromise entity.
+// If the RootCompromise object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RootCompromiseMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *RootCompromiseMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the RootCompromiseMutation builder.
+func (m *RootCompromiseMutation) Where(ps ...predicate.RootCompromise) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the RootCompromiseMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *RootCompromiseMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.RootCompromise, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *RootCompromiseMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *RootCompromiseMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (RootCompromise).
+func (m *RootCompromiseMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *RootCompromiseMutation) Fields() []string {
+	fields := make([]string, 0, 4)
+	if m.chain != nil {
+		fields = append(fields, rootcompromise.FieldChain)
+	}
+	if m.root_hash != nil {
+		fields = append(fields, rootcompromise.FieldRootHash)
+	}
+	if m.seq != nil {
+		fields = append(fields, rootcompromise.FieldSeq)
+	}
+	if m.created_at != nil {
+		fields = append(fields, rootcompromise.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *RootCompromiseMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case rootcompromise.FieldChain:
+		return m.Chain()
+	case rootcompromise.FieldRootHash:
+		return m.RootHash()
+	case rootcompromise.FieldSeq:
+		return m.Seq()
+	case rootcompromise.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *RootCompromiseMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case rootcompromise.FieldChain:
+		return m.OldChain(ctx)
+	case rootcompromise.FieldRootHash:
+		return m.OldRootHash(ctx)
+	case rootcompromise.FieldSeq:
+		return m.OldSeq(ctx)
+	case rootcompromise.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown RootCompromise field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RootCompromiseMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case rootcompromise.FieldChain:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChain(v)
+		return nil
+	case rootcompromise.FieldRootHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRootHash(v)
+		return nil
+	case rootcompromise.FieldSeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSeq(v)
+		return nil
+	case rootcompromise.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RootCompromise field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *RootCompromiseMutation) AddedFields() []string {
+	var fields []string
+	if m.addseq != nil {
+		fields = append(fields, rootcompromise.FieldSeq)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *RootCompromiseMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case rootcompromise.FieldSeq:
+		return m.AddedSeq()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RootCompromiseMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case rootcompromise.FieldSeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSeq(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RootCompromise numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *RootCompromiseMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *RootCompromiseMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *RootCompromiseMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown RootCompromise nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *RootCompromiseMutation) ResetField(name string) error {
+	switch name {
+	case rootcompromise.FieldChain:
+		m.ResetChain()
+		return nil
+	case rootcompromise.FieldRootHash:
+		m.ResetRootHash()
+		return nil
+	case rootcompromise.FieldSeq:
+		m.ResetSeq()
+		return nil
+	case rootcompromise.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown RootCompromise field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *RootCompromiseMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *RootCompromiseMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *RootCompromiseMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *RootCompromiseMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *RootCompromiseMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *RootCompromiseMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *RootCompromiseMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown RootCompromise unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *RootCompromiseMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown RootCompromise edge %s", name)
 }
 
 // RouteMutation represents an operation that mutates the Route nodes in the graph.

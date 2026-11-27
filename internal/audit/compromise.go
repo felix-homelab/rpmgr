@@ -7,8 +7,10 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
+	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
@@ -36,8 +38,8 @@ type Compromise struct {
 }
 
 // WithCompromises returns t with the roots replaced as compromised and their cutoffs, as tx reads them:
-// the roots from ca_keys, the cutoffs from the audit entries of ActionRootCompromised, which the hash
-// chain protects, so that removing one breaks the chain.
+// the roots from ca_keys, the cutoffs from root_compromises, the copy of the entries' seqs that audit
+// retention never prunes (AnchorCompromise).
 func (t Trust) WithCompromises(ctx context.Context, tx *ent.Tx) (Trust, error) {
 	// Raw SQL: the verification of an org's chain runs in that org's scope, which sees no CA key through the
 	// store's privacy rules, and this reads only certificates, which are public.
@@ -59,31 +61,21 @@ func (t Trust) WithCompromises(ctx context.Context, tx *ent.Tx) (Trust, error) {
 		return t, err
 	}
 	cuts := map[string]map[string]int64{} // root hash -> chain -> seq
-	res, err := tx.QueryContext(ctx, "SELECT org_id, seq, diff FROM audit_log WHERE action = $1 ORDER BY seq", ActionRootCompromised)
+	res, err := tx.QueryContext(ctx, "SELECT chain, root_hash, seq FROM root_compromises")
 	if err != nil {
 		return t, err
 	}
 	defer func() { _ = res.Close() }()
 	for res.Next() {
-		var org *string
+		var chain, hash string
 		var seq int64
-		var diff string
-		if err := res.Scan(&org, &seq, &diff); err != nil {
+		if err := res.Scan(&chain, &hash, &seq); err != nil {
 			return t, err
 		}
-		chain := InstanceChain
-		if org != nil {
-			chain = *org
+		if cuts[hash] == nil {
+			cuts[hash] = map[string]int64{}
 		}
-		list, _ := strings.CutPrefix(diff, rootsDiffPrefix)
-		for _, h := range strings.Split(list, ",") {
-			if cuts[h] == nil {
-				cuts[h] = map[string]int64{}
-			}
-			if _, seen := cuts[h][chain]; !seen {
-				cuts[h][chain] = seq
-			}
-		}
+		cuts[hash][chain] = seq
 	}
 	if err := res.Err(); err != nil {
 		return t, err
@@ -98,4 +90,48 @@ func (t Trust) WithCompromises(ctx context.Context, tx *ent.Tx) (Trust, error) {
 		out.Compromised = append(out.Compromised, Compromise{Root: cert, Cutoff: cuts[pki.PublicKeyHash(r.pub)]})
 	}
 	return out, nil
+}
+
+// AnchorCompromise records the replacement of the roots with the given hashes in the chain of orgID (empty:
+// the instance chain): the audit entry, which is the audited record, and the row of root_compromises that
+// holds its seq for every root, which VerifyChain and the sink verification hold the checkpoints under
+// those roots to. It returns the entry.
+func AnchorCompromise(ctx context.Context, tx *ent.Tx, orgID string, hashes []string, reason string) (Entry, error) {
+	e, err := Append(ctx, tx, Entry{OrgID: orgID, ActorType: ActorSystem, ActorID: "local-cli", Action: ActionRootCompromised,
+		TargetType: "ca", Result: Success, Diff: RootsDiff(hashes), Reason: reason})
+	if err != nil {
+		return e, err
+	}
+	for _, h := range hashes {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO root_compromises (id, chain, root_hash, seq, created_at) VALUES ($1, $2, $3, $4, $5)`,
+			ids.New("rcp"), chainOf(orgID), h, e.Seq, e.Time.UTC()); err != nil {
+			return e, fmt.Errorf("audit: record the cutoff of a replaced root: %w", err)
+		}
+	}
+	return e, nil
+}
+
+// withoutReplaced drops from cps, the checkpoints of chain in seq order, those that a root replaced as compromised
+// certifies, when a checkpoint of another root at or after the latest replacement's entry anchors the chain;
+// the one just before the first entry left, which anchors a chain that retention cut, stays.
+func (t Trust) withoutReplaced(cps []Checkpoint, chain string, first *int64) []Checkpoint {
+	var cut int64
+	for _, k := range t.Compromised {
+		cut = max(cut, k.Cutoff[chain])
+	}
+	if cut == 0 {
+		return cps
+	}
+	anchored := false
+	for _, c := range cps {
+		if c.Seq >= cut && !t.underReplaced(c) {
+			anchored = true
+		}
+	}
+	if !anchored {
+		return cps
+	}
+	return slices.DeleteFunc(slices.Clone(cps), func(c Checkpoint) bool {
+		return t.underReplaced(c) && (first == nil || c.Seq != *first-1)
+	})
 }

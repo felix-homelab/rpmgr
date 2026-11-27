@@ -32,8 +32,8 @@ type CompromisePlan struct {
 	now     time.Time
 	newRoot *x509.Certificate
 	keys    []*newKey
-	// replaced are the SHA-256 hashes of the public keys of the roots that were in service or waiting: the
-	// issuing root, the old root of a rotation's overlap and a new root that waited for its signature.
+	// replaced are the SHA-256 hashes of the public keys of every root this run ends: the issuing root, the old
+	// root of a rotation's overlap, a new root that waited for its signature and roots retired before.
 	replaced []string
 	audit    pki.KeyPair
 }
@@ -42,7 +42,7 @@ type CompromisePlan struct {
 type CompromiseResult struct {
 	Keys         int // the keys of the CA that were ended, of every status
 	Certificates int // the certificates revoked
-	Tokens       int // the enrollment tokens invalidated
+	Tokens       int // the enrollment tokens that could still have enrolled and are invalidated
 }
 
 // PlanCompromisedRoot makes the new root, its intermediate and the two signing keys, all active, in the
@@ -67,10 +67,15 @@ func PlanCompromisedRoot(ctx context.Context, c *ent.CAKeyClient, s *secret.Seal
 		return nil, err
 	}
 	p := &CompromisePlan{seen: keysSeen(rows), lock: r1.ID, now: now}
-	for _, row := range rows {
-		if row.Kind == cakey.KindRoot {
-			p.replaced = append(p.replaced, pki.PublicKeyHash(row.PublicKey))
-		}
+	// Every root this run ends, whatever its status, including one that an earlier rotation retired: its keys
+	// become compromised too, so that nothing under a leaked key chains to it, and its checkpoints need their
+	// cutoff as well.
+	roots, err := c.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusNEQ(cakey.StatusCompromised)).Order(ent.Asc(cakey.FieldID)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range roots {
+		p.replaced = append(p.replaced, pki.PublicKeyHash(row.PublicKey))
 	}
 	r2, err := pki.NewRoot(td, now)
 	if err != nil {
@@ -149,6 +154,17 @@ func (p *CompromisePlan) Apply(ctx context.Context, tx *ent.Tx) (CompromiseResul
 		SetRevokedAt(p.now).SetRevocationReason(ReasonCACompromised).Save(ctx); err != nil {
 		return res, err
 	}
-	res.Tokens, err = tx.EnrollmentToken.Update().Where(enrollmenttoken.RevokedAtIsNil()).SetRevokedAt(p.now).Save(ctx)
+	// Every token that is not revoked ends, so that a multi-use one cannot enroll under the old root; the count
+	// is of those that could still have enrolled: not expired and not used up.
+	live, err := tx.EnrollmentToken.Query().Where(enrollmenttoken.RevokedAtIsNil()).All(ctx)
+	if err != nil {
+		return res, err
+	}
+	for _, t := range live {
+		if t.ExpiresAt.After(p.now) && (t.MaxUses == nil || t.UseCount < *t.MaxUses) {
+			res.Tokens++
+		}
+	}
+	_, err = tx.EnrollmentToken.Update().Where(enrollmenttoken.RevokedAtIsNil()).SetRevokedAt(p.now).Save(ctx)
 	return res, err
 }

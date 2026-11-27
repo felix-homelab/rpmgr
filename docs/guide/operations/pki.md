@@ -303,7 +303,8 @@ stops with the gateways. Plan for that outage
 
 1. **Stop what you can reach.** Stop the gateways and connectors you can, so the old key's
    exposure ends now and not when their certificates expire.
-2. **Stop every controller, then replace the root** on the controller host. The command refuses
+2. **Stop the controller, then replace the root** on the controller host (these `ca` commands work on a
+   SQLite controller only in this phase). The command refuses
    while a controller runs, asks for a confirmation, and writes one single-use token per connector
    and gateway to a new file that only you can read; it never overwrites a file and never prints a
    token:
@@ -314,7 +315,8 @@ stops with the gateways. Plan for that outage
 
    It ends every key of the old CA and wipes the sealed ones, revokes every certificate,
    invalidates the enrollment tokens that were unused, and prints the **new pin**. All-in-one's own
-   gateway and connector, and ephemeral connectors, get no token: they enroll anew. `--token-ttl`
+   gateway and connector, and ephemeral connectors, get no token: an ephemeral connector needs a new
+   enrollment token. `--token-ttl`
    sets how long the tokens last. If the command fails, nothing changed and the file is removed;
    run it again. A file left by an interrupted run is never overwritten, so delete it first.
 3. **Start the controller.** It trusts the new root alone. `rpmgr ca status` warns, naming them,
@@ -333,7 +335,9 @@ stops with the gateways. Plan for that outage
    unused. Delete the tokens file and the token files when every agent has enrolled.
 5. **Find out how the key leaked**, and rotate the KEK ([Rotate the KEK](../../10-operations.md#rotate-the-kek)).
 
-A backup taken before the replacement is refused by `rpmgr restore`, because it would bring the
-compromised root back: restore a later one, and take a backup now
+A backup taken before the replacement is refused by `rpmgr restore` on this host, because it would
+bring the compromised root back; a restore on another host that has none of this host's
+`revocations.log` cannot know, so **destroy the backups from before the replacement**. Restore a
+later one, and take a backup now
 ([Backup and restore](backup-and-restore.md#the-revocation-log-sink)). Keep the controller's
 database and its KEK, which protects the CA's keys, apart and backed up.

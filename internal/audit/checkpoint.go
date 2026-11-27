@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sync"
 	"time"
 
@@ -180,7 +181,24 @@ var ErrCompromisedRoot = errors.New("audit: the checkpoint is signed under a roo
 // VerifySignature checks that a key the trust certifies for audit checkpoints at c's time signed
 // c. The key's certificate is one of the trust's signers, or c's own.
 func (t Trust) VerifySignature(c Checkpoint) error {
-	var cert *x509.Certificate
+	cert, used, err := t.signerRoot(c)
+	if err != nil {
+		return err
+	}
+	if err := t.checkAnchored(used, c); err != nil {
+		return err
+	}
+	pub, ok := cert.PublicKey.(*ecdsa.PublicKey)
+	digest := sha256.Sum256(c.signed())
+	if !ok || !ecdsa.VerifyASN1(pub, digest[:], c.Signature) {
+		return errors.New("audit: the checkpoint's signature does not verify")
+	}
+	return nil
+}
+
+// signerRoot finds the certificate of the key that signed c and the root that certifies it for audit
+// checkpoints at c's time, without checking the signature itself.
+func (t Trust) signerRoot(c Checkpoint) (cert, root *x509.Certificate, err error) {
 	for _, s := range t.Signers {
 		if pki.KeyID(s) == c.KeyID {
 			cert = s
@@ -192,32 +210,25 @@ func (t Trust) VerifySignature(c Checkpoint) error {
 		}
 	}
 	if cert == nil {
-		return fmt.Errorf("audit: no certificate for key %s", c.KeyID)
+		return nil, nil, fmt.Errorf("audit: no certificate for key %s", c.KeyID)
 	}
 	roots := t.Roots
 	if len(roots) == 0 {
 		roots = []*x509.Certificate{t.Root}
 	}
 	var verr error
-	var used *x509.Certificate
 	for _, r := range roots {
 		if verr = pki.VerifySigner(cert, t.Intermediates, r, pki.PurposeAuditCheckpoint, c.Time); verr == nil {
-			used = r
-			break
+			return cert, r, nil
 		}
 	}
-	if verr != nil {
-		return verr
-	}
-	if err := t.checkAnchored(used, c); err != nil {
-		return err
-	}
-	pub, ok := cert.PublicKey.(*ecdsa.PublicKey)
-	digest := sha256.Sum256(c.signed())
-	if !ok || !ecdsa.VerifyASN1(pub, digest[:], c.Signature) {
-		return errors.New("audit: the checkpoint's signature does not verify")
-	}
-	return nil
+	return nil, nil, verr
+}
+
+// underReplaced reports whether a root replaced as compromised certifies the key that signed c.
+func (t Trust) underReplaced(c Checkpoint) bool {
+	_, root, err := t.signerRoot(c)
+	return err == nil && slices.ContainsFunc(t.Compromised, func(k Compromise) bool { return k.Root.Equal(root) })
 }
 
 // checkAnchored refuses a checkpoint that the root replaced as compromised vouches for unless it is of a

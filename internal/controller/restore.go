@@ -211,7 +211,13 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 		return RestoreResult{}, err
 	}
 	res := RestoreResult{TrustDomain: a.info.TrustDomain, Backup: a.info.Created, OldEpoch: a.info.DBEpoch, Review: review}
-	if err := prepare(ctx, staged(live[0]), staged(BackupRevocations), a.info, newer, o.Now, o.DNSDisabled, &res); err != nil {
+	// This host's own log counts for the markers of a root change whichever sources were given: a marker not
+	// shipped to a sink yet is in it, and an archive older than it must be refused all the same.
+	markers, err := localRootMarkers(staged(localLog))
+	if err != nil {
+		res.Review = append(res.Review, "this host's revocations.log cannot be read for the markers of a root change: "+err.Error())
+	}
+	if err := prepare(ctx, staged(live[0]), staged(BackupRevocations), a.info, newer, markers, o.Now, o.DNSDisabled, &res); err != nil {
 		return RestoreResult{}, err
 	}
 
@@ -450,7 +456,7 @@ func readSource(path string) ([]revlog.Entry, error) {
 // prepare brings the staged database up to date and secures it: migrations, a new epoch, the
 // invalidations and the revocations since the backup, which also go into the staged log, and the
 // restore review when res.Review says why they may be incomplete.
-func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer []revlog.Entry, now func() time.Time, dnsDisabled bool, res *RestoreResult) error {
+func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer, markers []revlog.Entry, now func() time.Time, dnsDisabled bool, res *RestoreResult) error {
 	db, err := store.OpenSQLite(ctx, dbPath, store.SQLiteOptions{})
 	if err != nil {
 		return err
@@ -481,7 +487,7 @@ func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer
 	if err != nil {
 		return err
 	}
-	if err := refuseOlderArchive(sys, db, slices.Concat(own, newer)); err != nil {
+	if err := refuseOlderArchive(sys, db, slices.Concat(own, newer, markers)); err != nil {
 		return err
 	}
 	err = store.WriteTx(sys, db, func(tx *ent.Tx) error {
@@ -841,4 +847,17 @@ func refuseOlderArchive(ctx context.Context, db *store.DB, markers []revlog.Entr
 		}
 	}
 	return nil
+}
+
+// localRootMarkers reads the markers of a root change from the host's own revocation log, staged at path; a host
+// with no log has none.
+func localRootMarkers(path string) ([]revlog.Entry, error) {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	all, err := revlog.Read(path)
+	if err != nil {
+		return nil, err
+	}
+	return slices.DeleteFunc(all, func(e revlog.Entry) bool { _, ok := rootChangeStatus[e.Kind]; return !ok }), nil
 }
