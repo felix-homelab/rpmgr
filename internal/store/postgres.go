@@ -26,7 +26,10 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/stdlib"
 
+	entsql "entgo.io/ent/dialect/sql"
+
 	"github.com/felix-homelab/rpmgr/internal/secret"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
 )
 
 // MinPostgresMajor is the oldest PostgreSQL major version the controller runs on: every major
@@ -48,6 +51,21 @@ const (
 
 // lockCheckInterval is how often the connection that holds the controller lock is checked.
 var lockCheckInterval = 5 * time.Second
+
+// LockStopBound is the longest a controller can go on after it lost the controller lock before it
+// knows: an interval until the next check and the check itself (docs/03-connections.md, "Timeouts,
+// keepalive and backoff"). A controller that takes the lock waits this long, plus a margin, before
+// its first write, so that the one that lost it has stopped writing: its database fences every
+// write from the moment the loss is seen.
+func LockStopBound() time.Duration { return 2 * lockCheckInterval }
+
+// migrationLockWait is how long a migrator waits for the migration lock, which another migrator
+// holds for the length of its migrations (docs/03-connections.md).
+var migrationLockWait = 2 * time.Minute
+
+// lockKeepAlive is the TCP keepalive of the connection that holds the controller lock, so that
+// a middlebox does not drop it for being idle.
+const lockKeepAlive = 15 * time.Second
 
 // connectTimeout bounds opening a PostgreSQL database: the first connection, the version check and
 // the controller lock (docs/03-connections.md, "Timeouts, keepalive and backoff"). A server that
@@ -106,7 +124,7 @@ func OpenPostgres(ctx context.Context, dsn string, o PostgresOptions) (*DB, erro
 		}
 		db.unlock, db.lockLost = unlock, lost
 	}
-	db.client = NewClient(Postgres, pool)
+	db.client = ent.NewClient(ent.Driver(fencedDriver{Driver: entsql.OpenDB(Postgres, pool), fence: fence{lost: db.lockLost}}))
 	db.readClient = db.client
 	return db, nil
 }
@@ -374,7 +392,15 @@ func checkServerVersion(num int) error {
 // pool, and checks that connection every lockCheckInterval: the lock ends with the session, so a
 // lost connection closes the returned channel and the controller must stop.
 func holdControllerLock(ctx context.Context, cfg *pgx.ConnConfig, shared bool) (func() error, <-chan struct{}, error) {
-	conn, err := pgx.ConnectConfig(ctx, cfg)
+	// The lock ends with its session, so the server must not end that for being idle, and a
+	// middlebox must see traffic: docs/06-data-model.md, "Connecting to PostgreSQL".
+	lc := cfg.Copy()
+	if lc.RuntimeParams == nil {
+		lc.RuntimeParams = map[string]string{}
+	}
+	lc.RuntimeParams["idle_session_timeout"] = "0"
+	lc.DialFunc = (&net.Dialer{KeepAlive: lockKeepAlive}).DialContext
+	conn, err := pgx.ConnectConfig(ctx, lc)
 	if err != nil {
 		return nil, nil, fmt.Errorf("store: controller lock: %w", err)
 	}
@@ -439,8 +465,13 @@ func lockMigrations(ctx context.Context, db *DB) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1, $2)", advisoryNamespace, advisoryMigrations); err != nil {
+	wctx, cancel := context.WithTimeout(ctx, migrationLockWait)
+	defer cancel()
+	if _, err := conn.ExecContext(wctx, "SELECT pg_advisory_lock($1, $2)", advisoryNamespace, advisoryMigrations); err != nil {
 		_ = conn.Close()
+		if errors.Is(wctx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
+			return nil, fmt.Errorf("store: migration lock: another process has held it for more than %s: %w", migrationLockWait, err)
+		}
 		return nil, fmt.Errorf("store: migration lock: %w", err)
 	}
 	return func() {

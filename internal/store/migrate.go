@@ -82,6 +82,9 @@ func Pending(ctx context.Context, db *DB, dir migrate.Dir) ([]migrate.File, erro
 // PostgreSQL: Migrate holds an advisory lock while it runs, so of two processes that migrate the
 // same database one applies the files and the other then finds none pending.
 func Migrate(ctx context.Context, db *DB, dir migrate.Dir) (int, error) {
+	if err := (fence{lost: db.lockLost}).check(); err != nil { // migrations use the pool directly
+		return 0, err
+	}
 	unlock, err := lockMigrations(ctx, db)
 	if err != nil {
 		return 0, err
@@ -92,6 +95,9 @@ func Migrate(ctx context.Context, db *DB, dir migrate.Dir) (int, error) {
 		return 0, err
 	}
 	for i, f := range pending {
+		if err := (fence{lost: db.lockLost}).check(); err != nil { // migrations use the pool directly
+			return i, err
+		}
 		if err := applyFile(ctx, db.Dialect, db.Writer, dir, f); err != nil {
 			return i, fmt.Errorf("store: migration %s: %w", f.Name(), err)
 		}

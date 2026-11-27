@@ -40,6 +40,13 @@ func SetConnectTimeout(cleanup func(func()), d time.Duration) {
 	cleanup(func() { connectTimeout = old })
 }
 
+// SetMigrationLockWait sets how long a migrator waits for the migration lock until the test ends.
+func SetMigrationLockWait(cleanup func(func()), d time.Duration) {
+	old := migrationLockWait
+	migrationLockWait = d
+	cleanup(func() { migrationLockWait = old })
+}
+
 // CopyOrder is the order in which CopyDatabase copies the tables of db.
 func CopyOrder(db *DB) ([]*schema.Table, error) {
 	return copyOrder(context.Background(), db.Reader, db.Dialect)
